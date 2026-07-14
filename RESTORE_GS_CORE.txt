@@ -1,0 +1,26 @@
+ВОССТАНОВЛЕНИЕ GS-CORE
+
+1. Замени текущий package.json в GS-Core этим файлом.
+2. В терминале, находясь в C:\Users\NonF\Desktop\GS-Core, выполни:
+
+   rmdir /s /q node_modules
+   del package-lock.json
+   npm install
+
+3. Если npm снова покажет allow-scripts для native-пакетов, выполни:
+
+   npm approve-scripts better-sqlite3 canvas sharp
+
+   Затем:
+   npm rebuild better-sqlite3 canvas sharp
+
+4. Запуск бота:
+
+   npm start
+
+5. Регистрация slash-команд:
+
+   npm run deploy
+
+Важно: папки scripts/input/output генератора карточек могут оставаться внутри GS-Core,
+но в дальнейшем новые архивы с инструментами лучше распаковывать в отдельную папку.

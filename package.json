@@ -1,0 +1,33 @@
+{
+  "name": "gs-core",
+  "version": "2.3.1",
+  "private": true,
+  "description": "Game Syndicate Discord bot and card tools",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js",
+    "deploy": "node deploy-commands.js",
+    "cards:all": "node scripts/build-all.js input/000003.png",
+    "cards:build": "node scripts/build-card.js",
+    "cards:reference": "node scripts/build-reference-collection.js",
+    "cards:reference-one": "node scripts/build-reference-card.js",
+    "cards:final": "node scripts/build-final-collection.js",
+    "cards:v2:one": "node scripts/cards-v2-build-one.js",
+    "cards:v2:all": "node scripts/cards-v2-build-all.js",
+    "cards:create": "node scripts/createCard.js",
+    "cards:create-all": "node scripts/createCardAllRarities.js",
+    "telegram:setup": "node telegram/setup-token.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "canvas": "^3.2.0",
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2",
+    "omggif": "^1.0.10",
+    "sharp": "^0.34.5"
+  }
+}

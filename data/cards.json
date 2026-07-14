@@ -1,0 +1,647 @@
+[
+  {
+    "id": 1,
+    "code": "001",
+    "name": "NonF",
+    "type": "member",
+    "role": "Шеф Синдиката",
+    "series": "BASE2026",
+    "base_rarity": "legendary",
+    "description": "Основатель Game Syndicate. Организует игровые вечера и объединяет игроков вокруг общей идеи.",
+    "image": "assets/cards/base/001_nonf_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/001_nonf_common.jpg",
+      "rare": "assets/cards/base/001_nonf_rare.jpg",
+      "epic": "assets/cards/base/001_nonf_epic.jpg",
+      "legendary": "assets/cards/base/001_nonf_legendary.jpg",
+      "mythic": "assets/cards/base/001_nonf_mythic.jpg"
+    }
+  },
+  {
+    "id": 2,
+    "code": "002",
+    "name": "Сварщик",
+    "type": "member",
+    "role": "Администратор",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Спокойный и рассудительный администратор. Умеет мирить людей, выслушивать и поддерживать. Круто играет в игры, имеет высокий скилл и является братом CreeLess.",
+    "image": "assets/cards/base/002_svarschik_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/002_svarschik_common.jpg",
+      "rare": "assets/cards/base/002_svarschik_rare.jpg",
+      "epic": "assets/cards/base/002_svarschik_epic.jpg",
+      "legendary": "assets/cards/base/002_svarschik_legendary.jpg",
+      "mythic": "assets/cards/base/002_svarschik_mythic.jpg"
+    }
+  },
+  {
+    "id": 3,
+    "code": "003",
+    "name": "Кусь",
+    "type": "member",
+    "role": "Администратор",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Добрая, отзывчивая и эмоциональная. Душа коллектива, которая может громко заявить о себе, но всегда по делу.",
+    "image": "assets/cards/base/003_kus_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/003_kus_common.jpg",
+      "rare": "assets/cards/base/003_kus_rare.jpg",
+      "epic": "assets/cards/base/003_kus_epic.jpg",
+      "legendary": "assets/cards/base/003_kus_legendary.jpg",
+      "mythic": "assets/cards/base/003_kus_mythic.jpg"
+    }
+  },
+  {
+    "id": 4,
+    "code": "004",
+    "name": "Rafael",
+    "type": "member",
+    "role": "Элита Синдиката",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Дерзкий, помешанный на красоте и деньгах. Любит покупать людям игры и оставлять за собой ощущение дорогого хаоса.",
+    "image": "assets/cards/base/004_rafael_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/004_rafael_common.jpg",
+      "rare": "assets/cards/base/004_rafael_rare.jpg",
+      "epic": "assets/cards/base/004_rafael_epic.jpg",
+      "legendary": "assets/cards/base/004_rafael_legendary.jpg",
+      "mythic": "assets/cards/base/004_rafael_mythic.jpg"
+    }
+  },
+  {
+    "id": 5,
+    "code": "005",
+    "name": "Нела",
+    "type": "member",
+    "role": "Элита Синдиката",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Спокойная и взвешенная участница Элиты. Любит делать голос как в озвучке и держит атмосферу уверенно.",
+    "image": "assets/cards/base/005_nela_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/005_nela_common.jpg",
+      "rare": "assets/cards/base/005_nela_rare.jpg",
+      "epic": "assets/cards/base/005_nela_epic.jpg",
+      "legendary": "assets/cards/base/005_nela_legendary.jpg",
+      "mythic": "assets/cards/base/005_nela_mythic.jpg"
+    }
+  },
+  {
+    "id": 6,
+    "code": "006",
+    "name": "Paris Hilton",
+    "type": "member",
+    "role": "Элита Синдиката",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Любит всех злить, бывает противным, но всё равно остаётся частью семьи. Почти каждый день пьёт пиво.",
+    "image": "assets/cards/base/006_paris_hilton_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/006_paris_hilton_common.jpg",
+      "rare": "assets/cards/base/006_paris_hilton_rare.jpg",
+      "epic": "assets/cards/base/006_paris_hilton_epic.jpg",
+      "legendary": "assets/cards/base/006_paris_hilton_legendary.jpg",
+      "mythic": "assets/cards/base/006_paris_hilton_mythic.jpg"
+    }
+  },
+  {
+    "id": 7,
+    "code": "007",
+    "name": "Mr Oniwa",
+    "type": "member",
+    "role": "Элита Синдиката",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Добрый и весёлый парень. Любит футбол, работает фельдшером и иногда поддаётся на уговоры Paris Hilton выпить.",
+    "image": "assets/cards/base/007_mr_oniwa_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/007_mr_oniwa_common.jpg",
+      "rare": "assets/cards/base/007_mr_oniwa_rare.jpg",
+      "epic": "assets/cards/base/007_mr_oniwa_epic.jpg",
+      "legendary": "assets/cards/base/007_mr_oniwa_legendary.jpg",
+      "mythic": "assets/cards/base/007_mr_oniwa_mythic.jpg"
+    }
+  },
+  {
+    "id": 8,
+    "code": "008",
+    "name": "KRISSA",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Спокойная, иногда суровая и может наорать. Играет в странные игры, о которых почти никто не слышал. Может призвать двух фамильяров, которые появятся из ниоткуда и будут следовать за ней.",
+    "image": "assets/cards/base/008_krissa_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/008_krissa_common.jpg",
+      "rare": "assets/cards/base/008_krissa_rare.jpg",
+      "epic": "assets/cards/base/008_krissa_epic.jpg",
+      "legendary": "assets/cards/base/008_krissa_legendary.jpg",
+      "mythic": "assets/cards/base/008_krissa_mythic.jpg"
+    }
+  },
+  {
+    "id": 9,
+    "code": "009",
+    "name": "Pupochek",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Приятная, весёлая и эмоциональная. Не любит проигрывать, на неё можно положиться, а ещё у неё есть задатки лидера.",
+    "image": "assets/cards/base/009_pupochek_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/009_pupochek_common.jpg",
+      "rare": "assets/cards/base/009_pupochek_rare.jpg",
+      "epic": "assets/cards/base/009_pupochek_epic.jpg",
+      "legendary": "assets/cards/base/009_pupochek_legendary.jpg",
+      "mythic": "assets/cards/base/009_pupochek_mythic.jpg"
+    }
+  },
+  {
+    "id": 10,
+    "code": "010",
+    "name": "CreeLess",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Круто рисует, отлично играет в игры и обладает брутальностью в хорошем смысле. Весёлая, сильная и сестра Сварщика.",
+    "image": "assets/cards/base/010_creeless_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/010_creeless_common.jpg",
+      "rare": "assets/cards/base/010_creeless_rare.jpg",
+      "epic": "assets/cards/base/010_creeless_epic.jpg",
+      "legendary": "assets/cards/base/010_creeless_legendary.jpg",
+      "mythic": "assets/cards/base/010_creeless_mythic.jpg"
+    }
+  },
+  {
+    "id": 11,
+    "code": "011",
+    "name": "Done",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Очень хорошо играет во все игры. Задрот до мозга костей, резко появляется в играх с приходом KRISSA. Фамильяр участника KRISSA.",
+    "image": "assets/cards/base/011_done_common.png",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/011_done_common.png",
+      "rare": "assets/cards/base/011_done_rare.png",
+      "epic": "assets/cards/base/011_done_epic.png",
+      "legendary": "assets/cards/base/011_done_legendary.png",
+      "mythic": "assets/cards/base/011_done_mythic.png"
+    }
+  },
+  {
+    "id": 12,
+    "code": "012",
+    "name": "CHORUS",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Спокойный, холодный и надёжный. Не самый общительный, но один из нас. Фамильяр участника KRISSA.",
+    "image": "assets/cards/base/012_chorus_common.png",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/012_chorus_common.png",
+      "rare": "assets/cards/base/012_chorus_rare.png",
+      "epic": "assets/cards/base/012_chorus_epic.png",
+      "legendary": "assets/cards/base/012_chorus_legendary.png",
+      "mythic": "assets/cards/base/012_chorus_mythic.png"
+    }
+  },
+  {
+    "id": 13,
+    "code": "013",
+    "name": "13",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Самый молодой в Синдикате, но уже свой среди своих. Весёлый, дружелюбный, много играет в игры и любит плов.",
+    "image": "assets/cards/base/013_13_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/013_13_common.jpg",
+      "rare": "assets/cards/base/013_13_rare.jpg",
+      "epic": "assets/cards/base/013_13_epic.jpg",
+      "legendary": "assets/cards/base/013_13_legendary.jpg",
+      "mythic": "assets/cards/base/013_13_mythic.jpg"
+    }
+  },
+  {
+    "id": 14,
+    "code": "014",
+    "name": "Теневая сеть",
+    "type": "role",
+    "role": "Discord Bot",
+    "series": "EXCLUSIVE2026",
+    "base_rarity": "exclusive",
+    "description": "Роль дискорд-бота Game Syndicate. Невидимая система, которая управляет данными, автоматизирует процессы и поддерживает стабильность сообщества.",
+    "image": "assets/cards/exclusive/014_exclusive.png",
+    "collection": "exclusive",
+    "drop_rarities": [
+      "exclusive"
+    ],
+    "images": {
+      "exclusive": "assets/cards/exclusive/014_exclusive.png"
+    }
+  },
+  {
+    "id": 15,
+    "code": "015",
+    "name": "Шеф Синдиката",
+    "type": "role",
+    "role": "Founder",
+    "series": "EXCLUSIVE2026",
+    "base_rarity": "exclusive",
+    "description": "Глава, лидер и создатель движения. Определяет курс, принимает ключевые решения и ведёт сообщество к новым вершинам.",
+    "image": "assets/cards/exclusive/015_exclusive.png",
+    "collection": "exclusive",
+    "drop_rarities": [
+      "exclusive"
+    ],
+    "images": {
+      "exclusive": "assets/cards/exclusive/015_exclusive.png"
+    }
+  },
+  {
+    "id": 16,
+    "code": "016",
+    "name": "Администратор",
+    "type": "role",
+    "role": "Staff",
+    "series": "EXCLUSIVE2026",
+    "base_rarity": "exclusive",
+    "description": "Роль порядка, контроля и защиты сообщества. Следит за правилами, решает конфликты и поддерживает комфортную атмосферу.",
+    "image": "assets/cards/exclusive/016_exclusive.png",
+    "collection": "exclusive",
+    "drop_rarities": [
+      "exclusive"
+    ],
+    "images": {
+      "exclusive": "assets/cards/exclusive/016_exclusive.png"
+    }
+  },
+  {
+    "id": 17,
+    "code": "017",
+    "name": "Элита Синдиката",
+    "type": "role",
+    "role": "Elite",
+    "series": "EXCLUSIVE2026",
+    "base_rarity": "exclusive",
+    "description": "Проверенные временем участники, составляющие костяк Game Syndicate. Обладают высоким уровнем доверия и вносят вклад в развитие сообщества.",
+    "image": "assets/cards/exclusive/017_exclusive.png",
+    "collection": "exclusive",
+    "drop_rarities": [
+      "exclusive"
+    ],
+    "images": {
+      "exclusive": "assets/cards/exclusive/017_exclusive.png"
+    }
+  },
+  {
+    "id": 18,
+    "code": "018",
+    "name": "Мафиози",
+    "type": "role",
+    "role": "Mafia",
+    "series": "EXCLUSIVE2026",
+    "base_rarity": "exclusive",
+    "description": "Опытные участники Синдиката, которые действуют решительно и стратегически. Поддерживают сообщество как на фронте, так и в тени.",
+    "image": "assets/cards/exclusive/018_exclusive.png",
+    "collection": "exclusive",
+    "drop_rarities": [
+      "exclusive"
+    ],
+    "images": {
+      "exclusive": "assets/cards/exclusive/018_exclusive.png"
+    }
+  },
+  {
+    "id": 19,
+    "code": "019",
+    "name": "Агент",
+    "type": "role",
+    "role": "Member",
+    "series": "EXCLUSIVE2026",
+    "base_rarity": "exclusive",
+    "description": "Базовая роль обычных и новых участников. Каждый агент — важная часть Синдиката и будущая легенда сообщества.",
+    "image": "assets/cards/exclusive/019_exclusive.png",
+    "collection": "exclusive",
+    "drop_rarities": [
+      "exclusive"
+    ],
+    "images": {
+      "exclusive": "assets/cards/exclusive/019_exclusive.png"
+    }
+  },
+  {
+    "id": 20,
+    "code": "020",
+    "name": "2 суток в мусорке",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/020_holographic.jpg"
+    },
+    "image": "assets/cards/holographic/020_holographic.jpg"
+  },
+  {
+    "id": 21,
+    "code": "021",
+    "name": "ПомидорЮ",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/021_holographic.jpg"
+    },
+    "image": "assets/cards/holographic/021_holographic.jpg"
+  },
+  {
+    "id": 22,
+    "code": "022",
+    "name": "Слова в мусорке",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/022_holographic.jpg"
+    },
+    "image": "assets/cards/holographic/022_holographic.jpg"
+  },
+  {
+    "id": 23,
+    "code": "023",
+    "name": "Пьяные победили",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/023_holographic.png"
+    },
+    "image": "assets/cards/holographic/023_holographic.png"
+  },
+  {
+    "id": 24,
+    "code": "024",
+    "name": "Не тому дала дробовик",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/024_holographic.png"
+    },
+    "image": "assets/cards/holographic/024_holographic.png"
+  },
+  {
+    "id": 25,
+    "code": "025",
+    "name": "KRISSA мимик",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/025_holographic.png"
+    },
+    "image": "assets/cards/holographic/025_holographic.png"
+  },
+  {
+    "id": 26,
+    "code": "026",
+    "name": "Карма не прощает",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/026_holographic.png"
+    },
+    "image": "assets/cards/holographic/026_holographic.png"
+  },
+  {
+    "id": 27,
+    "code": "027",
+    "name": "Карма существует",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/027_holographic.png"
+    },
+    "image": "assets/cards/holographic/027_holographic.png"
+  },
+  {
+    "id": 28,
+    "code": "028",
+    "name": "Групповушка в пылесосе",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/028_holographic.png"
+    },
+    "image": "assets/cards/holographic/028_holographic.png"
+  },
+  {
+    "id": 29,
+    "code": "029",
+    "name": "KRISSA мимик — видеоверсия",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/029_holographic.png"
+    },
+    "image": "assets/cards/holographic/029_holographic.png"
+  },
+  {
+    "id": 30,
+    "code": "T-001",
+    "name": "Твой выбор. Твоя награда.",
+    "type": "reward",
+    "role": "Monthly Treasure",
+    "series": "TREASURE2026",
+    "collection": "treasure",
+    "base_rarity": "treasure",
+    "description": "Призовая карта: игра в Steam, кейс Goose Goose Duck или оформление Discord/Nitro. Только один победитель в месяц.",
+    "drop_rarities": [
+      "treasure"
+    ],
+    "images": {
+      "treasure": "assets/cards/treasure/T001_treasure.png"
+    },
+    "image": "assets/cards/treasure/T001_treasure.png",
+    "monthly_limit": 1
+  }
+]

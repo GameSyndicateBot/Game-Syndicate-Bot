@@ -1,0 +1,373 @@
+[
+  {
+    "id": "000001",
+    "name": "NonF",
+    "role": "Шеф Синдиката",
+    "badge": "FOUNDERS",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Основатель Game Syndicate. Организует игровые вечера и объединяет игроков вокруг общей идеи."
+    ],
+    "art": "art/000001.png"
+  },
+  {
+    "id": "000002",
+    "name": "СВАРЩИК",
+    "role": "АДМИНИСТРАТОР",
+    "badge": "STAFF",
+    "specialization": "Миротворец",
+    "ability": "ГАРМОНИЯ",
+    "abilityDescription": "Снимает напряжение и помогает найти общий язык в любой ситуации.",
+    "description": [
+      "Спокойный и рассудительный.",
+      "Умеет мирить людей и находить компромиссы.",
+      "Всегда выслушает и поддержит.",
+      "Отзывчивый и надёжный.",
+      "Круто играет в игры. Высокий скилл.",
+      "Брат CreeLess."
+    ],
+    "art": "art/000002.png",
+    "legacySource": "../input/2 #U0421#U0432#U0430#U0440#U0449#U0438#U043a.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000003",
+    "name": "Кусь",
+    "role": "Администратор",
+    "badge": "STAFF",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Добрая, отзывчивая и эмоциональная. Душа коллектива, которая может громко заявить о себе, но всегда по делу."
+    ],
+    "art": "art/000003.png",
+    "legacySource": "../input/000003.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000004",
+    "name": "Rafael",
+    "role": "Элита Синдиката",
+    "badge": "STAFF",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Дерзкий, помешанный на красоте и деньгах. Любит покупать людям игры и оставлять за собой ощущение дорогого хаоса."
+    ],
+    "art": "art/000004.png",
+    "legacySource": "../input/4 #U0440#U0430#U0444.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000005",
+    "name": "Нела",
+    "role": "Элита Синдиката",
+    "badge": "STAFF",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Спокойная и взвешенная участница Элиты. Любит делать голос как в озвучке и держит атмосферу уверенно."
+    ],
+    "art": "art/000005.png",
+    "legacySource": "../input/5 #U043d#U0435#U043b#U0430.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000006",
+    "name": "Paris Hilton",
+    "role": "Элита Синдиката",
+    "badge": "STAFF",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Любит всех злить, бывает противным, но всё равно остаётся частью семьи. Почти каждый день пьёт пиво."
+    ],
+    "art": "art/000006.png",
+    "legacySource": "../input/6 #U0434#U0435#U043d#U0438#U0441.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000007",
+    "name": "Mr Oniwa",
+    "role": "Элита Синдиката",
+    "badge": "STAFF",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Добрый и весёлый парень. Любит футбол, работает фельдшером и иногда поддаётся на уговоры Paris Hilton выпить."
+    ],
+    "art": "art/000007.png",
+    "legacySource": "../input/7 Mr Oniwa.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000008",
+    "name": "KRISSA",
+    "role": "Мафиози",
+    "badge": "STAFF",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Спокойная, иногда суровая и может наорать. Играет в странные игры, о которых почти никто не слышал. Может призвать двух фамильяров, которые появятся из ниоткуда и будут следовать за ней."
+    ],
+    "art": "art/000008.png",
+    "legacySource": "../input/8 #U043a#U0440#U0438#U0441#U0441#U0430.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000009",
+    "name": "Pupochek",
+    "role": "Мафиози",
+    "badge": "STAFF",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Приятная, весёлая и эмоциональная. Не любит проигрывать, на неё можно положиться, а ещё у неё есть задатки лидера."
+    ],
+    "art": "art/000009.png",
+    "legacySource": "../input/9 #U043f#U0443#U043f#U043e#U043a.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000010",
+    "name": "CreeLess",
+    "role": "Мафиози",
+    "badge": "MEMBER",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Круто рисует, отлично играет в игры и обладает брутальностью в хорошем смысле. Весёлая, сильная и сестра Сварщика."
+    ],
+    "art": "art/000010.png"
+  },
+  {
+    "id": "000011",
+    "name": "Done",
+    "role": "Мафиози",
+    "badge": "STAFF",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Очень хорошо играет во все игры. Задрот до мозга костей, резко появляется в играх с приходом KRISSA. Фамильяр участника KRISSA."
+    ],
+    "art": "art/000011.png",
+    "legacySource": "../input/11 #U0434#U043e#U043d.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000012",
+    "name": "CHORUS",
+    "role": "Мафиози",
+    "badge": "STAFF",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Спокойный, холодный и надёжный. Не самый общительный, но один из нас. Фамильяр участника KRISSA."
+    ],
+    "art": "art/000012.png",
+    "legacySource": "../input/12 #U0447#U043e#U0440#U0443#U0441.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000013",
+    "name": "13",
+    "role": "Мафиози",
+    "badge": "MEMBER",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Самый молодой в Синдикате, но уже свой среди своих. Весёлый, дружелюбный, много играет в игры и любит плов."
+    ],
+    "art": "art/000013.png",
+    "legacySource": "../input/13.jpg",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000014",
+    "name": "Теневая сеть",
+    "role": "Discord Bot",
+    "badge": "MEMBER",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Роль дискорд-бота Game Syndicate. Невидимая система, которая управляет данными, автоматизирует процессы и поддерживает стабильность сообщества."
+    ],
+    "art": "art/000014.png",
+    "legacySource": "../input/14 #U0422#U0435#U043d#U0435#U0432#U0430#U044f #U0441#U0435#U0442#U044c.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000015",
+    "name": "Шеф Синдиката",
+    "role": "Founder",
+    "badge": "MEMBER",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Глава, лидер и создатель движения. Определяет курс, принимает ключевые решения и ведёт сообщество к новым вершинам."
+    ],
+    "art": "art/000015.png",
+    "legacySource": "../input/15 #U0448#U0435#U0444 #U0441#U0438#U043d#U0434#U0438#U043a#U0430#U0442#U0430.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000016",
+    "name": "Администратор",
+    "role": "Staff",
+    "badge": "MEMBER",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Роль порядка, контроля и защиты сообщества. Следит за правилами, решает конфликты и поддерживает комфортную атмосферу."
+    ],
+    "art": "art/000016.png",
+    "legacySource": "../input/16 #U0430#U0434#U043c#U0438#U043d.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000017",
+    "name": "Элита Синдиката",
+    "role": "Elite",
+    "badge": "MEMBER",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Проверенные временем участники, составляющие костяк Game Syndicate. Обладают высоким уровнем доверия и вносят вклад в развитие сообщества."
+    ],
+    "art": "art/000017.png",
+    "legacySource": "../input/17 #U044d#U043b#U0438#U0442#U0430.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000018",
+    "name": "Мафиози",
+    "role": "Mafia",
+    "badge": "MEMBER",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Опытные участники Синдиката, которые действуют решительно и стратегически. Поддерживают сообщество как на фронте, так и в тени."
+    ],
+    "art": "art/000018.png",
+    "legacySource": "../input/18 #U043c#U0430#U0444#U0438#U043e#U0437#U0438.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  },
+  {
+    "id": "000019",
+    "name": "Агент",
+    "role": "Member",
+    "badge": "MEMBER",
+    "specialization": "",
+    "ability": "",
+    "abilityDescription": "",
+    "description": [
+      "Базовая роль обычных и новых участников. Каждый агент — важная часть Синдиката и будущая легенда сообщества."
+    ],
+    "art": "art/000019.png",
+    "legacySource": "../input/19 #U0430#U0433#U0435#U043d#U0442.png",
+    "legacyCrop": {
+      "x": 45,
+      "y": 150,
+      "width": 964,
+      "height": 720
+    }
+  }
+]

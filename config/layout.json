@@ -1,0 +1,145 @@
+{
+  "width": 1054,
+  "height": 1492,
+  "rarities": {
+    "common": {
+      "label": "COMMON",
+      "stars": 1,
+      "color": "#B9BDC5",
+      "serial": "#A855F7"
+    },
+    "rare": {
+      "label": "RARE",
+      "stars": 2,
+      "color": "#006BFF",
+      "serial": "#006BFF"
+    },
+    "epic": {
+      "label": "EPIC",
+      "stars": 3,
+      "color": "#A855F7",
+      "serial": "#A855F7"
+    },
+    "legendary": {
+      "label": "LEGENDARY",
+      "stars": 4,
+      "color": "#F5B800",
+      "serial": "#F5B800"
+    },
+    "mythic": {
+      "label": "MYTHIC",
+      "stars": 5,
+      "color": "#EF2B2B",
+      "serial": "#EF2B2B"
+    }
+  },
+  "regions": [
+    {
+      "name": "outer_frame",
+      "x": 0,
+      "y": 0,
+      "width": 1054,
+      "height": 90
+    },
+    {
+      "name": "left_frame",
+      "x": 0,
+      "y": 0,
+      "width": 55,
+      "height": 1492
+    },
+    {
+      "name": "right_frame",
+      "x": 999,
+      "y": 0,
+      "width": 55,
+      "height": 1492
+    },
+    {
+      "name": "art_bottom_frame",
+      "x": 0,
+      "y": 870,
+      "width": 1054,
+      "height": 60
+    },
+    {
+      "name": "name_panel",
+      "x": 0,
+      "y": 900,
+      "width": 1054,
+      "height": 175
+    },
+    {
+      "name": "info_separator",
+      "x": 0,
+      "y": 1030,
+      "width": 1054,
+      "height": 35
+    },
+    {
+      "name": "bottom_frame",
+      "x": 0,
+      "y": 1360,
+      "width": 1054,
+      "height": 132
+    },
+    {
+      "name": "top_left_rarity",
+      "x": 45,
+      "y": 45,
+      "width": 310,
+      "height": 190
+    },
+    {
+      "name": "top_center",
+      "x": 310,
+      "y": 0,
+      "width": 440,
+      "height": 160
+    },
+    {
+      "name": "top_right_number",
+      "x": 760,
+      "y": 45,
+      "width": 250,
+      "height": 110
+    }
+  ],
+  "protectedRegions": [
+    {
+      "name": "main_art",
+      "x": 55,
+      "y": 140,
+      "width": 944,
+      "height": 730
+    },
+    {
+      "name": "information_panel",
+      "x": 55,
+      "y": 1045,
+      "width": 944,
+      "height": 315
+    }
+  ],
+  "topLabel": {
+    "x": 527,
+    "y": 42,
+    "fontSize": 31
+  },
+  "leftLabel": {
+    "x": 125,
+    "y": 100,
+    "fontSize": 36
+  },
+  "stars": {
+    "x": 66,
+    "y": 145,
+    "fontSize": 34,
+    "gap": 40
+  },
+  "serial": {
+    "x": 835,
+    "y": 1438,
+    "fontSize": 34
+  }
+}

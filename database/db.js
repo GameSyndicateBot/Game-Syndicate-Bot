@@ -1,0 +1,610 @@
+const Database = require('better-sqlite3');
+
+const db = new Database('./database/database.sqlite');
+
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS players (
+        user_id TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        xp INTEGER DEFAULT 0,
+        level INTEGER DEFAULT 1,
+        messages INTEGER DEFAULT 0,
+        achievements INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+`).run();
+
+const migrations = [
+    `ALTER TABLE players ADD COLUMN voice_seconds INTEGER DEFAULT 0`,
+    `ALTER TABLE players ADD COLUMN given_reactions INTEGER DEFAULT 0`,
+    `ALTER TABLE players ADD COLUMN received_reactions INTEGER DEFAULT 0`,
+    `ALTER TABLE players ADD COLUMN events_count INTEGER DEFAULT 0`,
+    `ALTER TABLE players ADD COLUMN achievement_points INTEGER DEFAULT 0`,
+    `ALTER TABLE players ADD COLUMN card_dust INTEGER DEFAULT 0`,
+    `ALTER TABLE daily_player_quests ADD COLUMN reward_dust INTEGER DEFAULT 0`,
+    `ALTER TABLE daily_history ADD COLUMN dust_earned INTEGER DEFAULT 0`,
+];
+
+for (const migration of migrations) {
+    try {
+        db.prepare(migration).run();
+    } catch (_) {}
+}
+
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS player_achievements (
+        user_id TEXT NOT NULL,
+        achievement_id TEXT NOT NULL,
+        unlocked_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, achievement_id)
+    )
+`).run();
+
+db.exec(`
+    CREATE TABLE IF NOT EXISTS game_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        game_name TEXT NOT NULL,
+        voice_channel_id TEXT NOT NULL,
+        min_minutes INTEGER DEFAULT 30,
+        status TEXT DEFAULT 'created',
+        created_by TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        started_at TEXT,
+        finished_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS game_event_participants (
+        event_id INTEGER NOT NULL,
+        user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        total_seconds INTEGER DEFAULT 0,
+        joined_at INTEGER,
+        counted INTEGER DEFAULT 0,
+        PRIMARY KEY(event_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS daily_progress (
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        messages INTEGER DEFAULT 0,
+        voice_seconds INTEGER DEFAULT 0,
+        given_reactions INTEGER DEFAULT 0,
+        received_reactions INTEGER DEFAULT 0,
+        claimed INTEGER DEFAULT 0,
+        PRIMARY KEY(user_id, date)
+    );
+
+    CREATE TABLE IF NOT EXISTS daily_player_quests (
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        slot INTEGER NOT NULL,
+        quest_key TEXT NOT NULL,
+        title TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        field TEXT NOT NULL,
+        target INTEGER NOT NULL,
+        unit TEXT DEFAULT 'count',
+        reward_xp INTEGER DEFAULT 0,
+        claimed INTEGER DEFAULT 0,
+        PRIMARY KEY(user_id, date, slot)
+    );
+
+    CREATE TABLE IF NOT EXISTS daily_history (
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        total_quests INTEGER DEFAULT 0,
+        completed_quests INTEGER DEFAULT 0,
+        claimed_quests INTEGER DEFAULT 0,
+        bonus_claimed INTEGER DEFAULT 0,
+        xp_earned INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, date)
+    );
+
+    CREATE TABLE IF NOT EXISTS streaks (
+        user_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        current INTEGER DEFAULT 0,
+        best INTEGER DEFAULT 0,
+        last_date TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, type)
+    );
+
+    CREATE TABLE IF NOT EXISTS streak_dust_rewards (
+        user_id TEXT NOT NULL,
+        streak_type TEXT NOT NULL,
+        milestone INTEGER NOT NULL,
+        dust INTEGER NOT NULL,
+        claimed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, streak_type, milestone)
+    );
+
+    CREATE TABLE IF NOT EXISTS achievement_dust_rewards (
+        user_id TEXT NOT NULL,
+        achievement_id TEXT NOT NULL,
+        dust INTEGER NOT NULL,
+        claimed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, achievement_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS category_dust_rewards (
+        user_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        role_id TEXT NOT NULL,
+        dust INTEGER NOT NULL,
+        claimed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, category, role_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS weekly_activity_rewards (
+        user_id TEXT NOT NULL,
+        week_key TEXT NOT NULL,
+        dust INTEGER NOT NULL DEFAULT 300,
+        inventory_id INTEGER,
+        claimed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, week_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS daily_forecasts (
+        user_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        rarity TEXT NOT NULL,
+        day_type TEXT NOT NULL,
+        prediction_title TEXT NOT NULL,
+        prediction_text TEXT NOT NULL,
+        prediction_icon TEXT NOT NULL,
+        luck INTEGER DEFAULT 0,
+        energy INTEGER DEFAULT 0,
+        social INTEGER DEFAULT 0,
+        gaming INTEGER DEFAULT 0,
+        focus INTEGER DEFAULT 0,
+        achievement_chance TEXT DEFAULT 'Средний',
+        blessing_id TEXT DEFAULT 'none',
+        blessing_title TEXT DEFAULT 'Без благословения',
+        blessing_text TEXT DEFAULT 'Сегодня звёзды наблюдают без вмешательства.',
+        lucky_number INTEGER DEFAULT 1,
+        color TEXT DEFAULT 'Фиолетовый',
+        best_time TEXT DEFAULT '20:00 — 22:00',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, date)
+    );
+
+    CREATE TABLE IF NOT EXISTS cards (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        series TEXT NOT NULL,
+        base_rarity TEXT NOT NULL,
+        image TEXT DEFAULT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS player_cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        card_id INTEGER NOT NULL,
+        rarity TEXT NOT NULL,
+        edition TEXT NOT NULL,
+        copy_number INTEGER NOT NULL,
+        obtained_from TEXT NOT NULL,
+        obtained_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+`);
+
+for (const migration of [
+    `ALTER TABLE daily_player_quests ADD COLUMN reward_dust INTEGER DEFAULT 0`,
+    `ALTER TABLE daily_history ADD COLUMN dust_earned INTEGER DEFAULT 0`,
+]) {
+    try { db.prepare(migration).run(); } catch (_) {}
+}
+
+console.log('✅ Таблицы базы проверены/созданы');
+
+db.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_player_cards_user
+    ON player_cards(user_id)
+`).run();
+
+db.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_player_cards_card
+    ON player_cards(card_id)
+`).run();
+
+db.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_player_cards_unique_variant
+    ON player_cards(user_id, card_id, rarity, edition)
+`).run();
+
+function getTodayDate() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+function getYesterdayDate() {
+    const date = new Date();
+    date.setDate(date.getDate() - 1);
+    return date.toISOString().slice(0, 10);
+}
+
+function updateDailyHistory(userId, data = {}) {
+    const date = data.date ?? getTodayDate();
+
+    db.prepare(`
+        INSERT INTO daily_history (
+            user_id,
+            date,
+            total_quests,
+            completed_quests,
+            claimed_quests,
+            bonus_claimed,
+            xp_earned,
+            dust_earned
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, date) DO UPDATE SET
+            total_quests = excluded.total_quests,
+            completed_quests = excluded.completed_quests,
+            claimed_quests = excluded.claimed_quests,
+            bonus_claimed = excluded.bonus_claimed,
+            xp_earned = daily_history.xp_earned + excluded.xp_earned,
+            dust_earned = daily_history.dust_earned + excluded.dust_earned,
+            updated_at = CURRENT_TIMESTAMP
+    `).run(
+        userId,
+        date,
+        data.total_quests ?? 0,
+        data.completed_quests ?? 0,
+        data.claimed_quests ?? 0,
+        data.bonus_claimed ? 1 : 0,
+        data.xp_earned ?? 0,
+        data.dust_earned ?? 0
+    );
+}
+
+function getDailyHistory(userId, limit = 30) {
+    return db.prepare(`
+        SELECT *
+        FROM daily_history
+        WHERE user_id = ?
+        ORDER BY date DESC
+        LIMIT ?
+    `).all(userId, limit);
+}
+
+const DAILY_STREAK_DUST = new Map([
+    [3, 40], [7, 100], [14, 250], [30, 600], [60, 1500], [100, 3500],
+]);
+
+function grantStreakMilestoneDust(userId, type, current) {
+    if (type !== 'daily_claim') return 0;
+    const dust = DAILY_STREAK_DUST.get(Number(current)) ?? 0;
+    if (!dust) return 0;
+    const result = db.prepare(`
+        INSERT OR IGNORE INTO streak_dust_rewards(user_id, streak_type, milestone, dust)
+        VALUES (?, ?, ?, ?)
+    `).run(userId, type, current, dust);
+    if (!result.changes) return 0;
+    addCardDust(userId, dust);
+    return dust;
+}
+
+function updateStreak(userId, type) {
+    const today = getTodayDate();
+    const yesterday = getYesterdayDate();
+
+    let streak = db.prepare(`
+        SELECT *
+        FROM streaks
+        WHERE user_id = ? AND type = ?
+    `).get(userId, type);
+
+    if (!streak) {
+        db.prepare(`
+            INSERT INTO streaks (user_id, type, current, best, last_date)
+            VALUES (?, ?, 1, 1, ?)
+        `).run(userId, type, today);
+
+        return {
+            user_id: userId, type, current: 1, best: 1, last_date: today,
+            increased: true, dustReward: grantStreakMilestoneDust(userId, type, 1),
+        };
+    }
+
+    if (streak.last_date === today) {
+        return {
+            ...streak,
+            increased: false,
+        };
+    }
+
+    const nextCurrent = streak.last_date === yesterday
+        ? streak.current + 1
+        : 1;
+
+    const nextBest = Math.max(streak.best ?? 0, nextCurrent);
+
+    db.prepare(`
+        UPDATE streaks
+        SET current = ?,
+            best = ?,
+            last_date = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND type = ?
+    `).run(nextCurrent, nextBest, today, userId, type);
+
+    return {
+        user_id: userId, type, current: nextCurrent, best: nextBest, last_date: today,
+        increased: true, dustReward: grantStreakMilestoneDust(userId, type, nextCurrent),
+    };
+}
+
+function getUserStreaks(userId) {
+    return db.prepare(`
+        SELECT *
+        FROM streaks
+        WHERE user_id = ?
+        ORDER BY type ASC
+    `).all(userId);
+}
+
+function getUserStreak(userId, type) {
+    return db.prepare(`
+        SELECT *
+        FROM streaks
+        WHERE user_id = ? AND type = ?
+    `).get(userId, type);
+}
+
+function getOrCreateDailyProgress(userId) {
+    const date = getTodayDate();
+
+    db.prepare(`
+        INSERT OR IGNORE INTO daily_progress (user_id, date)
+        VALUES (?, ?)
+    `).run(userId, date);
+
+    return db.prepare(`
+        SELECT *
+        FROM daily_progress
+        WHERE user_id = ? AND date = ?
+    `).get(userId, date);
+}
+
+function updateDailyProgress(userId, field, amount) {
+    const allowedFields = [
+        'messages',
+        'voice_seconds',
+        'given_reactions',
+        'received_reactions',
+    ];
+
+    if (!allowedFields.includes(field)) return;
+
+    const date = getTodayDate();
+
+    db.prepare(`
+        INSERT OR IGNORE INTO daily_progress (user_id, date)
+        VALUES (?, ?)
+    `).run(userId, date);
+
+    db.prepare(`
+        UPDATE daily_progress
+        SET ${field} = ${field} + ?
+        WHERE user_id = ? AND date = ?
+    `).run(amount, userId, date);
+}
+
+function markDailyClaimed(userId) {
+    const date = getTodayDate();
+
+    db.prepare(`
+        UPDATE daily_progress
+        SET claimed = 1
+        WHERE user_id = ? AND date = ?
+    `).run(userId, date);
+
+    return updateStreak(userId, 'daily_claim');
+}
+
+function getAchievementCount(userId) {
+    const row = db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM player_achievements
+        WHERE user_id = ?
+    `).get(userId);
+
+    return row?.count ?? 0;
+}
+
+function getPlayerAchievementIds(userId) {
+    return db.prepare(`
+        SELECT achievement_id
+        FROM player_achievements
+        WHERE user_id = ?
+    `).all(userId).map(row => row.achievement_id);
+}
+
+function getOrCreatePlayer(user) {
+    const { getDisplayName } = require('../utils/displayName');
+    const displayName = getDisplayName(user);
+
+    let player = db.prepare(
+        'SELECT * FROM players WHERE user_id = ?'
+    ).get(user.id);
+
+    if (!player) {
+        db.prepare(`
+            INSERT INTO players (user_id, username)
+            VALUES (?, ?)
+        `).run(user.id, displayName);
+
+        player = db.prepare(
+            'SELECT * FROM players WHERE user_id = ?'
+        ).get(user.id);
+    } else if (player.username !== displayName) {
+        db.prepare('UPDATE players SET username = ? WHERE user_id = ?')
+            .run(displayName, user.id);
+        player.username = displayName;
+    }
+
+    player.achievements = getAchievementCount(user.id);
+
+    return player;
+}
+
+function updatePlayer(player) {
+    const realAchievementCount = getAchievementCount(player.user_id);
+
+    db.prepare(`
+        UPDATE players
+        SET
+            username = ?,
+            xp = ?,
+            level = ?,
+            messages = ?,
+            achievements = ?,
+            voice_seconds = ?,
+            given_reactions = ?,
+            received_reactions = ?,
+            events_count = ?,
+            achievement_points = ?,
+            card_dust = ?
+        WHERE user_id = ?
+    `).run(
+        player.username,
+        player.xp,
+        player.level,
+        player.messages,
+        realAchievementCount,
+        player.voice_seconds ?? 0,
+        player.given_reactions ?? 0,
+        player.received_reactions ?? 0,
+        player.events_count ?? 0,
+        player.achievement_points ?? 0,
+        player.card_dust ?? 0,
+        player.user_id
+    );
+
+    player.achievements = realAchievementCount;
+
+    return player;
+}
+
+function hasAchievement(userId, achievementId) {
+    return !!db.prepare(`
+        SELECT 1
+        FROM player_achievements
+        WHERE user_id = ?
+        AND achievement_id = ?
+    `).get(userId, achievementId);
+}
+
+function unlockAchievement(userId, achievementId) {
+    const result = db.prepare(`
+        INSERT OR IGNORE INTO player_achievements
+        (user_id, achievement_id)
+        VALUES (?, ?)
+    `).run(userId, achievementId);
+
+    const unlocked = result.changes > 0;
+
+    if (unlocked) {
+        db.prepare(`
+            UPDATE players
+            SET achievements = (
+                SELECT COUNT(*)
+                FROM player_achievements
+                WHERE user_id = ?
+            )
+            WHERE user_id = ?
+        `).run(userId, userId);
+
+        updateStreak(userId, 'achievement');
+    }
+
+    return unlocked;
+}
+
+function getCardDust(userId) {
+    const row = db.prepare(`
+        SELECT card_dust
+        FROM players
+        WHERE user_id = ?
+    `).get(userId);
+
+    return row?.card_dust ?? 0;
+}
+
+function addCardDust(userId, amount) {
+    const safeAmount = Math.max(0, Number(amount) || 0);
+
+    db.prepare(`
+        UPDATE players
+        SET card_dust = COALESCE(card_dust, 0) + ?
+        WHERE user_id = ?
+    `).run(safeAmount, userId);
+
+    return getCardDust(userId);
+}
+
+function removeCardDust(userId, amount) {
+    const safeAmount = Math.max(0, Number(amount) || 0);
+    const currentDust = getCardDust(userId);
+
+    if (currentDust < safeAmount) {
+        return {
+            ok: false,
+            balance: currentDust,
+        };
+    }
+
+    db.prepare(`
+        UPDATE players
+        SET card_dust = COALESCE(card_dust, 0) - ?
+        WHERE user_id = ?
+    `).run(safeAmount, userId);
+
+    return {
+        ok: true,
+        balance: currentDust - safeAmount,
+    };
+}
+
+
+function resetPlayer(userId) {
+    db.prepare(`DELETE FROM player_achievements WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM daily_progress WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM daily_player_quests WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM daily_history WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM daily_forecasts WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM player_cards WHERE user_id = ?`).run(userId);
+    try {
+        db.prepare(`DELETE FROM daily_card_packs WHERE user_id = ?`).run(userId);
+    } catch (_) {}
+    db.prepare(`DELETE FROM streaks WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM players WHERE user_id = ?`).run(userId);
+}
+
+module.exports = {
+    db,
+    getOrCreatePlayer,
+    hasAchievement,
+    unlockAchievement,
+    resetPlayer,
+    updatePlayer,
+    getAchievementCount,
+    getPlayerAchievementIds,
+    getTodayDate,
+    getYesterdayDate,
+    getOrCreateDailyProgress,
+    updateDailyProgress,
+    markDailyClaimed,
+    updateDailyHistory,
+    getDailyHistory,
+    getCardDust,
+    addCardDust,
+    removeCardDust,
+    updateStreak,
+    getUserStreak,
+    getUserStreaks,
+};

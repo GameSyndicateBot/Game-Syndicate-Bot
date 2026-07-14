@@ -1,0 +1,42 @@
+{
+    "common": {
+        "label": "COMMON",
+        "stars": 1,
+        "template": "common",
+        "mainColor": "#B8B8B8",
+        "nameColor": "#D8D8D8",
+        "serialColor": "#A855F7"
+    },
+    "rare": {
+        "label": "RARE",
+        "stars": 2,
+        "template": "rare",
+        "mainColor": "#006BFF",
+        "nameColor": "#006BFF",
+        "serialColor": "#A855F7"
+    },
+    "epic": {
+        "label": "EPIC",
+        "stars": 3,
+        "template": "epic",
+        "mainColor": "#A855F7",
+        "nameColor": "#A855F7",
+        "serialColor": "#A855F7"
+    },
+    "legendary": {
+        "label": "LEGENDARY",
+        "stars": 4,
+        "template": "legendary",
+        "mainColor": "#F5B800",
+        "nameColor": "#F5B800",
+        "serialColor": "#F5B800"
+    },
+    "mythic": {
+        "label": "MYTHIC",
+        "stars": 5,
+        "template": "mythic",
+        "mainColor": "#EF2B2B",
+        "nameColor": "#EF2B2B",
+        "serialColor": "#EF2B2B"
+    }
+}

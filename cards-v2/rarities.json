@@ -1,0 +1,22 @@
+{
+  "common": {
+    "accent": "#C8CDD5",
+    "secondary": "#8E939B"
+  },
+  "rare": {
+    "accent": "#1488FF",
+    "secondary": "#86C7FF"
+  },
+  "epic": {
+    "accent": "#B04CFF",
+    "secondary": "#D8A5FF"
+  },
+  "legendary": {
+    "accent": "#FFC21A",
+    "secondary": "#FFE28A"
+  },
+  "mythic": {
+    "accent": "#FF3A3A",
+    "secondary": "#FF9A9A"
+  }
+}

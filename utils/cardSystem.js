@@ -1,0 +1,219 @@
+const cards = require('../data/cards.json');
+const {
+    db,
+    getTodayDate,
+    getCardDust,
+    addCardDust,
+    removeCardDust,
+} = require('../database/db');
+
+const RARITY_CHANCES = [
+    { value: 'common', weight: 50 },
+    { value: 'rare', weight: 27 },
+    { value: 'epic', weight: 14 },
+    { value: 'legendary', weight: 5 },
+    { value: 'mythic', weight: 2 },
+    { value: 'exclusive', weight: 1.2 },
+    { value: 'holographic', weight: 0.8 },
+];
+
+const TREASURE_CHANCE = 0.0002; // 0.02%: примерно 1 раз на 5000 открытий
+const EDITION_CHANCES = [{ value: 'standard', weight: 100 }];
+
+const RARITY_NAMES = {
+    common: 'Common', rare: 'Rare', epic: 'Epic', legendary: 'Legendary',
+    mythic: 'Mithic', exclusive: 'Exclusive', holographic: 'Holographic', treasure: 'Treasure',
+};
+const EDITION_NAMES = { standard: 'Standard' };
+const DISMANTLE_DUST = {
+    common: 20, rare: 50, epic: 120, legendary: 300, mythic: 700,
+    exclusive: 1500, holographic: 2500, treasure: 0,
+};
+const COLLECTION_SCORE = {
+    common: 10, rare: 25, epic: 60, legendary: 150, mythic: 400,
+    exclusive: 1000, holographic: 700, treasure: 5000,
+};
+const PACK_TYPES = {
+    base: {
+        id: 'base', name: 'Base Pack', cost: 200,
+        chances: RARITY_CHANCES,
+    },
+    premium: {
+        id: 'premium', name: 'Premium Pack', cost: 700,
+        chances: [
+            { value: 'rare', weight: 45 },
+            { value: 'epic', weight: 30 },
+            { value: 'legendary', weight: 15 },
+            { value: 'mythic', weight: 6 },
+            { value: 'exclusive', weight: 2.5 },
+            { value: 'holographic', weight: 1.5 },
+        ],
+    },
+    elite: {
+        id: 'elite', name: 'Elite Pack', cost: 1600,
+        chances: [
+            { value: 'epic', weight: 45 },
+            { value: 'legendary', weight: 30 },
+            { value: 'mythic', weight: 15 },
+            { value: 'exclusive', weight: 7 },
+            { value: 'holographic', weight: 3 },
+        ],
+    },
+};
+const RANDOM_CARD_DUST_COST = PACK_TYPES.base.cost;
+
+db.exec(`
+    CREATE TABLE IF NOT EXISTS daily_card_packs (
+        user_id TEXT NOT NULL, date TEXT NOT NULL, opened INTEGER DEFAULT 0,
+        opened_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, date)
+    );
+    CREATE TABLE IF NOT EXISTS monthly_treasure_claims (
+        month TEXT PRIMARY KEY, user_id TEXT NOT NULL, card_id INTEGER NOT NULL,
+        inventory_id INTEGER, claimed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        reward_status TEXT DEFAULT 'pending'
+    );
+`);
+
+function normalizeRarity(value) { return String(value ?? 'common').toLowerCase(); }
+function normalizeEdition(value) { return String(value ?? 'standard').toLowerCase(); }
+function currentMonth() { return new Date().toISOString().slice(0, 7); }
+function weightedRandom(items) {
+    const total = items.reduce((s, i) => s + i.weight, 0);
+    let roll = Math.random() * total;
+    for (const item of items) { roll -= item.weight; if (roll <= 0) return item.value; }
+    return items.at(-1).value;
+}
+function getAllCards() { return cards; }
+function getCardById(cardId) { return cards.find(c => Number(c.id) === Number(cardId)) ?? null; }
+function getCardsByRarity(rarity) {
+    const r = normalizeRarity(rarity);
+    return cards.filter(c => (c.drop_rarities ?? [c.base_rarity]).includes(r));
+}
+function getCardImage(card, rarity) {
+    const r = normalizeRarity(rarity ?? card.base_rarity);
+    return card.images?.[r] ?? card.image ?? null;
+}
+function isTreasureAvailable() {
+    return !db.prepare('SELECT 1 FROM monthly_treasure_claims WHERE month = ?').get(currentMonth());
+}
+function getRandomCard(options = {}) {
+    let pool = cards;
+    if (options.series) pool = pool.filter(c => c.series === options.series);
+    if (options.type) pool = pool.filter(c => c.type === options.type);
+    if (options.collection) pool = pool.filter(c => c.collection === options.collection);
+    if (options.rarity) pool = pool.filter(c => (c.drop_rarities ?? [c.base_rarity]).includes(normalizeRarity(options.rarity)));
+    if (!pool.length) throw new Error('Нет доступных карточек для выпадения.');
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+function chooseDropRarity(options = {}) {
+    if (options.rarity) return normalizeRarity(options.rarity);
+    if (options.allowTreasure !== false && isTreasureAvailable() && Math.random() < TREASURE_CHANCE) return 'treasure';
+    return weightedRandom(options.rarityChances ?? RARITY_CHANCES);
+}
+function getNextCopyNumber(cardId, rarity, edition = 'standard') {
+    const row = db.prepare(`SELECT COALESCE(MAX(copy_number),0) max_copy FROM player_cards WHERE card_id=? AND rarity=? AND edition=?`).get(cardId, rarity, edition);
+    return (row?.max_copy ?? 0) + 1;
+}
+function giveCardToUser(userId, card, options = {}) {
+    const rarity = normalizeRarity(options.rarity ?? card.base_rarity);
+    if (!(card.drop_rarities ?? [card.base_rarity]).includes(rarity)) throw new Error(`${card.name} не существует в редкости ${rarity}.`);
+    const edition = normalizeEdition(options.edition ?? 'standard');
+    const source = options.source ?? 'unknown';
+    const copyNumber = getNextCopyNumber(card.id, rarity, edition);
+    const transaction = db.transaction(() => {
+        const result = db.prepare(`INSERT INTO player_cards(user_id,card_id,rarity,edition,copy_number,obtained_from) VALUES(?,?,?,?,?,?)`)
+            .run(userId, card.id, rarity, edition, copyNumber, source);
+        if (rarity === 'treasure') {
+            db.prepare(`INSERT INTO monthly_treasure_claims(month,user_id,card_id,inventory_id) VALUES(?,?,?,?)`)
+                .run(currentMonth(), userId, card.id, result.lastInsertRowid);
+        }
+        return result;
+    });
+    const result = transaction();
+    return { inventoryId: result.lastInsertRowid, card: { ...card, image: getCardImage(card, rarity) }, rarity,
+        rarityName: RARITY_NAMES[rarity] ?? rarity, edition, editionName: EDITION_NAMES[edition] ?? edition,
+        copyNumber, source, isTreasure: rarity === 'treasure' };
+}
+function openRandomCard(userId, options = {}) {
+    const rarity = chooseDropRarity(options);
+    const pool = options.cardId ? [getCardById(options.cardId)] : getCardsByRarity(rarity).filter(Boolean);
+    let filtered = pool;
+    if (options.series) filtered = filtered.filter(c => c.series === options.series);
+    if (options.type) filtered = filtered.filter(c => c.type === options.type);
+    if (!filtered.length) throw new Error(`Нет карточек редкости ${rarity}.`);
+    const card = filtered[Math.floor(Math.random() * filtered.length)];
+    return giveCardToUser(userId, card, { rarity, edition: options.edition, source: options.source ?? 'pack' });
+}
+function hasOpenedDailyPack(userId) {
+    return Boolean(db.prepare('SELECT opened FROM daily_card_packs WHERE user_id=? AND date=?').get(userId, getTodayDate())?.opened);
+}
+function markDailyPackOpened(userId) {
+    db.prepare(`INSERT INTO daily_card_packs(user_id,date,opened,opened_at) VALUES(?,?,1,CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id,date) DO UPDATE SET opened=1, opened_at=CURRENT_TIMESTAMP`).run(userId, getTodayDate());
+}
+function openDailyPack(userId) {
+    if (hasOpenedDailyPack(userId)) return { ok:false, reason:'daily_already_opened', message:'Ты уже открывал ежедневный пак сегодня.' };
+    const drop = openRandomCard(userId, { source:'daily_pack' });
+    markDailyPackOpened(userId);
+    return { ok:true, drop };
+}
+function hydrate(row) {
+    const card = getCardById(row.card_id);
+    return { ...row, card, name: card?.name ?? `Карточка #${row.card_id}`, type: card?.type ?? 'unknown',
+        collection: card?.collection ?? 'unknown', series: card?.series ?? 'UNKNOWN', base_rarity: card?.base_rarity ?? 'common',
+        image: card ? getCardImage(card, row.rarity) : null, description: card?.description ?? '', code: card?.code ?? String(row.card_id).padStart(3,'0') };
+}
+function getUserCards(userId) { return db.prepare('SELECT * FROM player_cards WHERE user_id=? ORDER BY obtained_at DESC,id DESC').all(userId).map(hydrate); }
+function getAvailableVariantCount() { return cards.reduce((n,c) => n + (c.drop_rarities ?? [c.base_rarity]).length, 0); }
+function getUserCardStats(userId) {
+    const rows = db.prepare('SELECT card_id,rarity FROM player_cards WHERE user_id=?').all(userId);
+    const unique = new Set(rows.map(r => `${r.card_id}:${r.rarity}`)).size;
+    const score = rows.reduce((sum,r) => sum + (COLLECTION_SCORE[r.rarity] ?? 0), 0);
+    return { unique, total: rows.length, available: getAvailableVariantCount(), score, duplicates: Math.max(0, rows.length - unique) };
+}
+function getUserCardByInventoryId(userId, inventoryId) { const r=db.prepare('SELECT * FROM player_cards WHERE id=? AND user_id=?').get(inventoryId,userId); return r?hydrate(r):null; }
+function getDuplicateGroups(userId) {
+    const groups=new Map();
+    for(const owned of getUserCards(userId)){ const k=`${owned.card_id}:${owned.rarity}`; if(!groups.has(k))groups.set(k,[]); groups.get(k).push(owned); }
+    return [...groups.values()].map(a=>({card:a[0].card,ownedCards:a,total:a.length,duplicates:a.length-1,rarity:a[0].rarity})).filter(g=>g.card&&g.duplicates>0).sort((a,b)=>b.duplicates-a.duplicates);
+}
+function getDismantleDustForRarity(rarity){return DISMANTLE_DUST[normalizeRarity(rarity)]??0;}
+function canDismantleCard(userId,inventoryId){
+    const owned=getUserCardByInventoryId(userId,inventoryId); if(!owned)return{ok:false,reason:'not_found',message:'Карточка не найдена.'};
+    if(owned.rarity==='treasure')return{ok:false,reason:'protected',message:'TREASURE нельзя распылять.',owned};
+    const count=db.prepare('SELECT COUNT(*) count FROM player_cards WHERE user_id=? AND card_id=? AND rarity=?').get(userId,owned.card_id,owned.rarity)?.count??0;
+    if(count<=1)return{ok:false,reason:'last_copy',message:'Нельзя распылить последнюю копию этого варианта.',owned}; return{ok:true,owned};
+}
+function dismantleCard(userId,inventoryId){const c=canDismantleCard(userId,inventoryId);if(!c.ok)return c;const dust=getDismantleDustForRarity(c.owned.rarity);db.transaction(()=>{db.prepare('DELETE FROM player_cards WHERE id=? AND user_id=?').run(inventoryId,userId);addCardDust(userId,dust);})();return{ok:true,card:c.owned.card,owned:c.owned,dust,balance:getCardDust(userId)};}
+function buyRandomCardWithDust(userId, options = {}) {
+    const packId = String(options.packId ?? 'base').toLowerCase();
+    const pack = PACK_TYPES[packId] ?? PACK_TYPES.base;
+    const cost = options.cost ?? pack.cost;
+    const balance = getCardDust(userId);
+    if (balance < cost) {
+        return { ok:false, reason:'not_enough_dust', balance, cost, pack,
+            message:`Недостаточно GS Dust. Нужно ${cost}, у тебя ${balance}.` };
+    }
+    const drop = db.transaction(() => {
+        const payment = removeCardDust(userId, cost);
+        if (!payment.ok) throw new Error('Недостаточно GS Dust.');
+        return openRandomCard(userId, {
+            source: options.source ?? `dust_shop_${pack.id}`,
+            allowTreasure: options.allowTreasure !== false,
+            rarityChances: pack.chances,
+        });
+    })();
+    return { ok:true, cost, pack, balance:getCardDust(userId), drop };
+}
+function syncCardsCatalog(){
+    const insert=db.prepare(`INSERT INTO cards(id,name,type,series,base_rarity,image) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,type=excluded.type,series=excluded.series,base_rarity=excluded.base_rarity,image=excluded.image`);
+    db.transaction(()=>cards.forEach(c=>insert.run(c.id,c.name,c.type,c.series,c.base_rarity,c.image??null)))(); return cards.length;
+}
+function getCollectionLeaderboard(limit=10){return db.prepare(`SELECT user_id,COUNT(*) total,COUNT(DISTINCT card_id||':'||rarity) unique_variants,
+SUM(CASE rarity WHEN 'common' THEN 10 WHEN 'rare' THEN 25 WHEN 'epic' THEN 60 WHEN 'legendary' THEN 150 WHEN 'mythic' THEN 400 WHEN 'exclusive' THEN 1000 WHEN 'holographic' THEN 700 WHEN 'treasure' THEN 5000 ELSE 0 END) score
+FROM player_cards GROUP BY user_id ORDER BY score DESC,unique_variants DESC LIMIT ?`).all(limit);}
+
+module.exports={RARITY_CHANCES,TREASURE_CHANCE,EDITION_CHANCES,RARITY_NAMES,EDITION_NAMES,DISMANTLE_DUST,COLLECTION_SCORE,RANDOM_CARD_DUST_COST,PACK_TYPES,
+getAllCards,getCardById,getCardsByRarity,getCardImage,getRandomCard,getNextCopyNumber,giveCardToUser,openRandomCard,hasOpenedDailyPack,markDailyPackOpened,openDailyPack,
+getUserCards,getUserCardStats,getUserCardByInventoryId,getDuplicateGroups,getDismantleDustForRarity,canDismantleCard,dismantleCard,buyRandomCardWithDust,syncCardsCatalog,
+isTreasureAvailable,getCollectionLeaderboard,getAvailableVariantCount};

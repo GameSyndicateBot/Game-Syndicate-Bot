@@ -1,0 +1,113 @@
+{
+    "size": {
+        "width": 1024,
+        "height": 1536
+    },
+    "art": {
+        "x": 55,
+        "y": 120,
+        "width": 914,
+        "height": 720
+    },
+    "template": {
+        "background": "background.png",
+        "overlay": "overlay.png"
+    },
+    "text": {
+        "rarityTop": {
+            "x": 512,
+            "y": 60,
+            "size": 34,
+            "align": "center"
+        },
+        "gameSyndicate": {
+            "x": 512,
+            "y": 120,
+            "size": 28,
+            "align": "center"
+        },
+        "cardNumber": {
+            "x": 910,
+            "y": 140,
+            "size": 44,
+            "align": "right"
+        },
+        "stars": {
+            "x": 80,
+            "y": 188,
+            "size": 38
+        },
+        "name": {
+            "x": 210,
+            "y": 925,
+            "size": 58
+        },
+        "subtitle": {
+            "x": 215,
+            "y": 965,
+            "size": 26,
+            "color": "#A855F7"
+        },
+        "description": {
+            "x": 150,
+            "y": 1060,
+            "size": 25,
+            "lineHeight": 42,
+            "color": "#B8B8B8"
+        },
+        "specTitle": {
+            "x": 645,
+            "y": 1080,
+            "size": 27,
+            "color": "#A855F7"
+        },
+        "specialization": {
+            "x": 645,
+            "y": 1122,
+            "size": 30,
+            "color": "#D0D0D0"
+        },
+        "abilityTitle": {
+            "x": 645,
+            "y": 1210,
+            "size": 27,
+            "color": "#A855F7"
+        },
+        "ability": {
+            "x": 645,
+            "y": 1252,
+            "size": 36,
+            "color": "#D0D0D0"
+        },
+        "abilityDescription": {
+            "x": 645,
+            "y": 1295,
+            "size": 22,
+            "color": "#B8B8B8"
+        },
+        "badge": {
+            "x": 185,
+            "y": 1452,
+            "size": 28,
+            "align": "center"
+        },
+        "bottomGs": {
+            "x": 512,
+            "y": 1450,
+            "size": 56,
+            "align": "center"
+        },
+        "instanceLabel": {
+            "x": 835,
+            "y": 1433,
+            "size": 24,
+            "align": "center"
+        },
+        "instanceNumber": {
+            "x": 835,
+            "y": 1475,
+            "size": 40,
+            "align": "center"
+        }
+    }
+}

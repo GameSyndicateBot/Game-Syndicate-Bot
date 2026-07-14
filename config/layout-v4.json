@@ -1,0 +1,146 @@
+{
+  "width": 1054,
+  "height": 1492,
+  "rarities": {
+    "common": {
+      "label": "COMMON",
+      "stars": 1,
+      "color": "#B9BDC5"
+    },
+    "rare": {
+      "label": "RARE",
+      "stars": 2,
+      "color": "#006BFF"
+    },
+    "epic": {
+      "label": "EPIC",
+      "stars": 3,
+      "color": "#A855F7"
+    },
+    "legendary": {
+      "label": "LEGENDARY",
+      "stars": 4,
+      "color": "#F5B800"
+    },
+    "mythic": {
+      "label": "MYTHIC",
+      "stars": 5,
+      "color": "#EF2B2B"
+    }
+  },
+  "zones": [
+    {
+      "name": "outer-top",
+      "x": 0,
+      "y": 0,
+      "width": 1054,
+      "height": 90,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "left-frame",
+      "x": 0,
+      "y": 0,
+      "width": 55,
+      "height": 1492,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "right-frame",
+      "x": 999,
+      "y": 0,
+      "width": 55,
+      "height": 1492,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "art-divider",
+      "x": 0,
+      "y": 860,
+      "width": 1054,
+      "height": 70,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "name-title",
+      "x": 55,
+      "y": 890,
+      "width": 650,
+      "height": 95,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "name-stripes",
+      "x": 690,
+      "y": 880,
+      "width": 309,
+      "height": 135,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "bottom-left-badge",
+      "x": 40,
+      "y": 1355,
+      "width": 310,
+      "height": 137,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "bottom-gs",
+      "x": 350,
+      "y": 1355,
+      "width": 350,
+      "height": 137,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "bottom-serial",
+      "x": 700,
+      "y": 1355,
+      "width": 354,
+      "height": 137,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "top-left",
+      "x": 45,
+      "y": 45,
+      "width": 310,
+      "height": 190,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "top-center",
+      "x": 310,
+      "y": 0,
+      "width": 440,
+      "height": 160,
+      "mode": "accent-and-metal"
+    },
+    {
+      "name": "top-right",
+      "x": 760,
+      "y": 45,
+      "width": 250,
+      "height": 110,
+      "mode": "accent-and-metal"
+    }
+  ],
+  "labels": {
+    "top": {
+      "x": 527,
+      "y": 42,
+      "fontSize": 31
+    },
+    "left": {
+      "x": 125,
+      "y": 100,
+      "fontSize": 36
+    },
+    "stars": {
+      "x": 66,
+      "y": 145,
+      "fontSize": 34
+    }
+  }
+}

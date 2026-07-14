@@ -1,0 +1,3 @@
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { setSetting } = require('../telegram/ecosystemDb');
+module.exports={data:new SlashCommandBuilder().setName('setgatherchannel').setDescription('Назначить этот канал для общих сборов Telegram + Discord').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),async execute(interaction){setSetting('discord_gatherings_channel_id',interaction.channelId);await interaction.reply({content:'✅ Этот канал назначен для общих сборов Telegram + Discord.',ephemeral:true});}};

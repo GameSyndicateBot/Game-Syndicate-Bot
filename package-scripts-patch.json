@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "cards:v2:one": "node scripts/cards-v2-build-one.js",
+    "cards:v2:all": "node scripts/cards-v2-build-all.js"
+  }
+}
