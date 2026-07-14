@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log*
+.env
+.git
+.gitignore
+backups
+output
+output-reference
+reference
+*.zip
+*.log
+database.sqlite
+database/*.sqlite
