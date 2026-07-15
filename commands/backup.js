@@ -8,13 +8,15 @@ module.exports = {
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     async execute(interaction) {
-        const backupPath = backupDatabase();
+        await interaction.deferReply({ ephemeral: true });
+
+        const backupPath = await backupDatabase({ reason: `manual:${interaction.user.id}` });
 
         const attachment = new AttachmentBuilder(backupPath, {
             name: 'database-backup.sqlite',
         });
 
-        await interaction.reply({
+        await interaction.editReply({
             content: '✅ Бэкап базы данных создан.',
             files: [attachment],
             ephemeral: true,

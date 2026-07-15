@@ -1,5 +1,6 @@
 const { startQuickEventScheduler } = require('../systems/quickEventSystem');
 const { startLuckyDayScheduler } = require('../services/luckyDay');
+const { startAutomaticBackups } = require('../services/automaticBackups');
 const { db, getOrCreatePlayer } = require('../database/db');
 const {
     isExcludedVoiceChannel,
@@ -35,6 +36,7 @@ module.exports = {
         startVoiceTrackingTicker(client);
         startQuickEventScheduler(client);
         startLuckyDayScheduler(client);
+        startAutomaticBackups(client);
 
         console.log('✅ Участники синхронизированы, голосовые сессии восстановлены');
     },
