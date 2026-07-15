@@ -496,7 +496,7 @@ async function handleQuickEventComponent(interaction){
   markParticipation(round.id,interaction.user.id);
   const event=JSON.parse(round.payload_json||'{}');
   const card=await createQuickEventCard(event,'show');
-  const seconds=round.difficulty==='hard'?11:round.difficulty==='medium'?9:7;
+  const seconds=round.difficulty==='hard'?16:round.difficulty==='medium'?13:10;
   await interaction.reply({content:`🧠 Запоминай. Последовательность исчезнет через **${seconds} сек.**`,files:[new AttachmentBuilder(card,{name:'gs-memory-sequence.png'})],ephemeral:true});
   setTimeout(()=>interaction.editReply({content:'⌛ Время закончилось. Теперь отправь последовательность в чат.',attachments:[]}).catch(()=>{}),seconds*1000);
   return true;

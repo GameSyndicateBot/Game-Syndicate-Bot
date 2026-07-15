@@ -69,6 +69,11 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
+            if (interaction.customId.startsWith('quickevent_')) {
+                const { handleQuickEventComponent } = require('./systems/quickEventSystem');
+                return await handleQuickEventComponent(interaction);
+            }
+
             if (interaction.customId.startsWith('achievements_')) {
                 const command = client.commands.get('achievements');
                 if (command?.handleComponent) {

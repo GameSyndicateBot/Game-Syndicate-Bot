@@ -191,19 +191,30 @@ function buildHubButtons(userId) {
             button(`gs_hint_${userId}_trade`, 'Обмен', ButtonStyle.Primary),
             button(`gs_hint_${userId}_auction`, 'Аукцион', ButtonStyle.Primary),
             button(`gs_hint_${userId}_streak`, 'Серии'),
-            button(`gs_hint_${userId}_forecast`, 'Прогноз')
+            button(`gs_hint_${userId}_forecast`, 'Прогноз'),
+            button(`gs_refresh_${userId}_home`, 'Обновить')
         ),
         buildTopSelect(userId, 'xp', 0),
     ];
 }
 
-function buildBackButton(userId) {
+function buildNavigationRow(userId, target = 'home') {
     return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`gs_refresh_${userId}_${target}`)
+            .setLabel('Обновить')
+            .setEmoji('🔄')
+            .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId(`gs_home_${userId}`)
             .setLabel('Назад в GS Hub')
+            .setEmoji('🏠')
             .setStyle(ButtonStyle.Primary)
     );
+}
+
+function buildBackButton(userId) {
+    return buildNavigationRow(userId, 'home');
 }
 
 function buildTopButtons(userId, type, page, totalPages) {
@@ -214,6 +225,12 @@ function buildTopButtons(userId, type, page, totalPages) {
                 .setLabel('Назад')
                 .setStyle(ButtonStyle.Secondary)
                 .setDisabled(page <= 0),
+
+            new ButtonBuilder()
+                .setCustomId(`gs_refresh_${userId}_top_${type}_${page}`)
+                .setLabel('Обновить')
+                .setEmoji('🔄')
+                .setStyle(ButtonStyle.Secondary),
 
             new ButtonBuilder()
                 .setCustomId(`gs_home_${userId}`)
@@ -292,7 +309,7 @@ async function buildProfileReply(user, guild) {
                 name: 'gs-profile.png',
             }),
         ],
-        components: [buildBackButton(user.id)],
+        components: [buildNavigationRow(user.id, 'profile')],
     };
 }
 
@@ -327,89 +344,104 @@ async function buildTopReply(user, type = 'xp', page = 0) {
     };
 }
 
-function withGsBackButton(reply, userId) {
-    const backRow = buildBackButton(userId);
+function withGsNavigation(reply, userId, target = 'home') {
+    const navigationRow = buildNavigationRow(userId, target);
     const components = [...(reply.components ?? [])];
 
-    const hasBackButton = components.some(row =>
+    const hasGsNavigation = components.some(row =>
         row.components?.some(component =>
-            component.data?.custom_id === `gs_home_${userId}`
+            String(component.data?.custom_id ?? '').startsWith(`gs_home_${userId}`)
+            || String(component.data?.custom_id ?? '').startsWith(`gs_refresh_${userId}_`)
         )
     );
 
-    if (!hasBackButton) {
-        if (components.length >= 5) {
-            components[components.length - 1] = backRow;
-        } else {
-            components.push(backRow);
-        }
+    if (hasGsNavigation) {
+        return { ...reply, components };
     }
 
-    return {
-        ...reply,
-        components,
-    };
+    // Discord допускает максимум 5 рядов. Если ряды уже заняты,
+    // добавляем кнопки навигации в существующий ряд кнопок, где есть место.
+    if (components.length >= 5) {
+        const rowIndex = components.findIndex(row => {
+            const rowComponents = row.components ?? [];
+            const isButtonRow = rowComponents.length > 0
+                && rowComponents.every(component => component.data?.type === 2);
+            return isButtonRow && rowComponents.length <= 3;
+        });
+
+        if (rowIndex >= 0) {
+            const row = ActionRowBuilder.from(components[rowIndex]);
+            row.addComponents(...navigationRow.components);
+            components[rowIndex] = row;
+        } else {
+            components[components.length - 1] = navigationRow;
+        }
+    } else {
+        components.push(navigationRow);
+    }
+
+    return { ...reply, components };
 }
 
 async function buildSectionReply(user, target) {
     if (target === 'cards' && cardsCommand.buildCardsReply) {
         const reply = await cardsCommand.buildCardsReply(user, 'all', 1);
-        return withGsBackButton(reply, user.id);
+        return withGsNavigation(reply, user.id, 'cards');
     }
 
     if (target === 'achievements' && achievementsCommand.buildAchievementsReply) {
         const reply = await achievementsCommand.buildAchievementsReply(user, 'overview', 1);
 
-        return withGsBackButton({
+        return withGsNavigation({
             content: '# 🏅 GS Achievements',
             ...reply,
-        }, user.id);
+        }, user.id, 'achievements');
     }
 
     if (target === 'pack' && packCommand.buildPackReply) {
         const reply = await packCommand.buildPackReply(user);
-        return withGsBackButton(reply, user.id);
+        return withGsNavigation(reply, user.id, 'pack');
     }
 
     if (target === 'dust' && dustCommand.buildDustReply) {
         const reply = await dustCommand.buildDustReply(user, 1);
-        return withGsBackButton(reply, user.id);
+        return withGsNavigation(reply, user.id, 'dust');
     }
 
     if (target === 'shop' && cardshopCommand.buildShopReply) {
         const reply = await cardshopCommand.buildShopReply(user);
-        return withGsBackButton(reply, user.id);
+        return withGsNavigation(reply, user.id, 'shop');
     }
 
     if (target === 'daily' && dailyCommand.buildDailyReply) {
         const reply = await dailyCommand.buildDailyReply(user);
-        return withGsBackButton({
+        return withGsNavigation({
             content: '# 🎯 Ежедневные задания',
             ...reply,
-        }, user.id);
+        }, user.id, 'daily');
     }
 
     if (target === 'streak' && streakCommand.buildStreakReply) {
         const reply = await streakCommand.buildStreakReply(user);
-        return withGsBackButton({
+        return withGsNavigation({
             content: '# 🔥 Серии активности',
             ...reply,
-        }, user.id);
+        }, user.id, 'streak');
     }
 
     if (target === 'forecast' && forecastCommand.buildForecastReply) {
         const reply = await forecastCommand.buildForecastReply(user);
-        return withGsBackButton({
+        return withGsNavigation({
             content: '# 🔮 Предсказание дня',
             ...reply,
-        }, user.id);
+        }, user.id, 'forecast');
     }
 
     if (target === 'trade') {
         return {
             content: '# Обмен карточками\n\nИспользуй `/trade start`, `/trade list` или `/trade history`.',
             files: [],
-            components: [buildBackButton(user.id)],
+            components: [buildNavigationRow(user.id, 'trade')],
         };
     }
 
@@ -417,14 +449,14 @@ async function buildSectionReply(user, target) {
         return {
             content: '# Аукцион карточек\n\nИспользуй `/auction browse`, `/auction sell`, `/auction my` или `/auction history`.',
             files: [],
-            components: [buildBackButton(user.id)],
+            components: [buildNavigationRow(user.id, 'auction')],
         };
     }
 
     return {
         content: '# ⚠️ Раздел пока недоступен\n\nЭтот раздел ещё не подключён к GS Hub.',
         files: [],
-        components: [buildBackButton(user.id)],
+        components: [buildNavigationRow(user.id, 'home')],
     };
 }
 
@@ -480,6 +512,34 @@ module.exports = {
         if (action === 'topselect') {
             const selectedType = interaction.values?.[0] ?? 'xp';
             const reply = await buildTopReply(interaction.user, selectedType, 0);
+            await interaction.update(reply);
+            return true;
+        }
+
+        if (action === 'refresh') {
+            const target = parts[3] ?? 'home';
+
+            if (target === 'home') {
+                const reply = await buildHubReply(interaction.user);
+                await interaction.update(reply);
+                return true;
+            }
+
+            if (target === 'profile') {
+                const reply = await buildProfileReply(interaction.user, interaction.guild);
+                await interaction.update(reply);
+                return true;
+            }
+
+            if (target === 'top') {
+                const type = parts[4] ?? 'xp';
+                const page = Number(parts[5] ?? 0);
+                const reply = await buildTopReply(interaction.user, type, page);
+                await interaction.update(reply);
+                return true;
+            }
+
+            const reply = await buildSectionReply(interaction.user, target);
             await interaction.update(reply);
             return true;
         }
