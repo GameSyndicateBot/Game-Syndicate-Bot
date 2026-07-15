@@ -11,6 +11,7 @@ const {
 } = require('../utils/cardSystem');
 
 const { checkDeveloper } = require('../utils/devOnly');
+const { backupCriticalChange } = require('../services/automaticBackups');
 
 const MAX_AMOUNT = 25;
 
@@ -326,6 +327,7 @@ module.exports = {
                 });
 
                 transaction();
+                await backupCriticalChange(interaction.client, 'cardadmin-give');
             } catch (error) {
                 console.error('[cardadmin give]', error);
 
@@ -376,6 +378,8 @@ module.exports = {
 **Нужно забрать:** ${result.requested}`,
                     });
                 }
+
+                await backupCriticalChange(interaction.client, 'cardadmin-take');
 
                 return interaction.editReply({
                     content: [

@@ -10,6 +10,7 @@ const { buyRandomCardWithDust, PACK_TYPES, syncCardsCatalog } = require('../util
 const { getCardDust } = require('../database/db');
 const { createCardShopPanel } = require('../images/shop/createCardShopPanel');
 const { createRevealPanel } = require('../images/reveal/createRevealPanel');
+const { backupCriticalChange } = require('../services/automaticBackups');
 
 const BUTTON_PREFIX = 'cardshop_buy_';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -61,6 +62,8 @@ async function playBuyAnimation(interaction, user, packId) {
         const reply = await buildShopReply(user);
         return interaction.editReply({ ...reply, content: `Недостаточно GS Dust. Нужно **${result.cost}**, у тебя **${result.balance}**.` });
     }
+
+    await backupCriticalChange(interaction.client, `cardshop-${pack.id}-opened`);
 
     const burst = await createRevealPanel(user, { phase: 'burst', source: pack.name.toUpperCase(), drop: result.drop });
     await editPanel(interaction, 'Пак открыт...', burst, 'shop-burst.png');

@@ -15,6 +15,7 @@ const {
 const { createPackPanel } = require('../images/pack/createPackPanel');
 const { createPackOpeningPanel } = require('../images/pack/createPackOpeningPanel');
 const { createPackOpeningGif } = require('../images/pack/createPackOpeningGif');
+const { backupCriticalChange } = require('../services/automaticBackups');
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -93,6 +94,8 @@ async function playPackOpening(interaction, user) {
         const reply = await buildPackReply(user);
         return interaction.editReply(reply);
     }
+
+    await backupCriticalChange(interaction.client, 'daily-pack-opened');
 
     const gif = await createPackOpeningGif(
         user,

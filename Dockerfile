@@ -51,4 +51,4 @@ RUN mkdir -p /opt/gs-data \
 #
 # database/db.js сам скопирует старую /app/database/database.sqlite
 # в /app/shared/database.sqlite, если постоянной базы ещё нет.
-CMD ["sh", "-c", "mkdir -p /app/data /app/shared/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/shared /app/data && echo '✅ Data-файлы восстановлены' && echo \"📁 DATABASE_PATH=$DATABASE_PATH\" && echo \"📁 BACKUP_DIR=$BACKUP_DIR\" && ls -la /app/shared && exec node index.js"]
+CMD ["sh", "-c", "mkdir -p /app/data /app/shared/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/shared /app/data && echo '✅ Data-файлы восстановлены' && echo \"📁 DATABASE_PATH=$DATABASE_PATH\" && echo \"📁 BACKUP_DIR=$BACKUP_DIR\" && ls -la /app/shared && node scripts/restoreDatabaseFromDiscord.js && exec node index.js"]
