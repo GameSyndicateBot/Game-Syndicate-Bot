@@ -13,35 +13,33 @@ const {
 } = require('../utils/cardSystem');
 
 const { checkDeveloper } = require('../utils/devOnly');
-const { checkAchievementsForInteraction } = require('../utils/checkAchievements');
 
 const MAX_GIVE_AMOUNT = 25;
 
 function findCard(query) {
     const normalized = String(query ?? '').trim().toLowerCase();
 
-    return getAllCards().find(card => {
-        return (
-            String(card.id) === normalized ||
-            String(card.code).toLowerCase() === normalized ||
-            String(card.name).toLowerCase() === normalized ||
-            String(card.name).toLowerCase().includes(normalized)
-        );
-    }) ?? null;
+    if (!normalized) return null;
+
+    const cards = getAllCards();
+
+    // Сначала точное совпадение по ID, коду или названию.
+    const exact = cards.find(card =>
+        String(card.id) === normalized ||
+        String(card.code ?? '').toLowerCase() === normalized ||
+        String(card.name ?? '').toLowerCase() === normalized
+    );
+
+    if (exact) return exact;
+
+    // Затем частичное совпадение по названию.
+    return cards.find(card =>
+        String(card.name ?? '').toLowerCase().includes(normalized)
+    ) ?? null;
 }
 
 function formatCopyNumber(number) {
     return `#${String(number).padStart(6, '0')}`;
-}
-
-function normalizeRarity(value) {
-    if (!value) return null;
-    return String(value).toLowerCase();
-}
-
-function normalizeEdition(value) {
-    if (!value) return null;
-    return String(value).toLowerCase();
 }
 
 function resetDailyPack(userId) {
@@ -61,21 +59,27 @@ function resetDailyPack(userId) {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('cardadmin')
-        .setDescription('Админ-команды для тестирования карточек')
+        .setDescription('Команды владельца для управления карточками')
         .addSubcommand(subcommand =>
             subcommand
                 .setName('give')
-                .setDescription('Выдать себе карточку для теста')
+                .setDescription('Выдать выбранному участнику карточку')
+                .addUserOption(option =>
+                    option
+                        .setName('user')
+                        .setDescription('Участник, которому нужно выдать карточку')
+                        .setRequired(true)
+                )
                 .addStringOption(option =>
                     option
                         .setName('card')
-                        .setDescription('ID, номер или имя карточки. Например: 010 или CreeLess')
+                        .setDescription('ID, номер или название карточки, например: 33 или Лудомания')
                         .setRequired(true)
                 )
                 .addIntegerOption(option =>
                     option
                         .setName('amount')
-                        .setDescription('Количество копий')
+                        .setDescription('Количество экземпляров')
                         .setRequired(false)
                         .setMinValue(1)
                         .setMaxValue(MAX_GIVE_AMOUNT)
@@ -83,7 +87,7 @@ module.exports = {
                 .addStringOption(option =>
                     option
                         .setName('rarity')
-                        .setDescription('Редкость')
+                        .setDescription('Редкость карточки; если не указана — базовая')
                         .setRequired(false)
                         .addChoices(
                             { name: 'Common', value: 'common' },
@@ -99,7 +103,7 @@ module.exports = {
                 .addStringOption(option =>
                     option
                         .setName('edition')
-                        .setDescription('Издание')
+                        .setDescription('Издание; обычно Standard')
                         .setRequired(false)
                         .addChoices(
                             { name: 'Standard', value: 'standard' },
@@ -115,7 +119,13 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('resetdaily')
-                .setDescription('Сбросить себе кулдаун ежедневного пака для тестов')
+                .setDescription('Сбросить участнику ежедневный пак')
+                .addUserOption(option =>
+                    option
+                        .setName('user')
+                        .setDescription('Участник; если не указан — ты')
+                        .setRequired(false)
+                )
         ),
 
     async execute(interaction) {
@@ -132,17 +142,17 @@ module.exports = {
         const subcommand = interaction.options.getSubcommand();
 
         if (subcommand === 'resetdaily') {
-            const changes = resetDailyPack(interaction.user.id);
+            const target = interaction.options.getUser('user') ?? interaction.user;
+            const changes = resetDailyPack(target.id);
 
             return interaction.editReply({
                 content:
 `# ✅ Daily Pack сброшен
 
-Теперь можешь снова использовать:
+**Участник:** ${target}
+Удалено записей кулдауна: **${changes}**
 
-\`/pack daily\`
-
-Удалено записей кулдауна: **${changes}**`,
+Теперь участник снова может использовать \`/pack daily\`.`,
             });
         }
 
@@ -152,52 +162,57 @@ module.exports = {
             });
         }
 
-        const query = interaction.options.getString('card');
+        const target = interaction.options.getUser('user');
+        const query = interaction.options.getString('card', true);
         const amount = interaction.options.getInteger('amount') ?? 1;
-        const rarity = normalizeRarity(interaction.options.getString('rarity'));
-        const edition = normalizeEdition(interaction.options.getString('edition'));
+        const rarity = interaction.options.getString('rarity') ?? undefined;
+        const edition = interaction.options.getString('edition') ?? 'standard';
 
         const card = findCard(query);
 
         if (!card) {
             return interaction.editReply({
-                content: `❌ Карточка **${query}** не найдена.`,
+                content: `❌ Карточка **${query}** не найдена. Проверь ID или название.`,
             });
         }
 
         const drops = [];
 
-        for (let i = 0; i < amount; i++) {
-            const drop = giveCardToUser(interaction.user.id, card, {
-                rarity,
-                edition,
-                source: 'admin_give',
+        try {
+            for (let i = 0; i < amount; i++) {
+                const drop = giveCardToUser(target.id, card, {
+                    rarity: rarity ?? card.base_rarity,
+                    edition,
+                    source: `admin_give_by_${interaction.user.id}`,
+                });
+
+                drops.push(drop);
+            }
+        } catch (error) {
+            console.error('[cardadmin give]', error);
+
+            return interaction.editReply({
+                content:
+`❌ Не удалось выдать карточку.
+
+**Карта:** ${card.code ?? card.id} • ${card.name}
+**Редкость:** ${rarity ?? card.base_rarity}
+**Причина:** ${error.message}`,
             });
-
-            drops.push(drop);
         }
 
-        await checkAchievementsForInteraction(interaction);
-
-        const lines = [];
-
-        lines.push('# ✅ Карточка выдана');
-        lines.push('');
-        lines.push(`**Карта:** ${card.code} • ${card.name}`);
-        lines.push(`**Количество:** ${amount}`);
-        lines.push('');
-        lines.push('## Экземпляры');
-
-        for (const drop of drops) {
-            lines.push(
+        const lines = [
+            '# ✅ Карточка выдана',
+            '',
+            `**Получатель:** ${target}`,
+            `**Карта:** ${card.code ?? card.id} • ${card.name}`,
+            `**Количество:** ${amount}`,
+            '',
+            '## Экземпляры',
+            ...drops.map(drop =>
                 `• **${drop.rarityName}** • **${drop.editionName}** • ${formatCopyNumber(drop.copyNumber)}`
-            );
-        }
-
-        lines.push('');
-        lines.push('Теперь можешь проверить:');
-        lines.push('`/cards`');
-        lines.push('`/dust`');
+            ),
+        ];
 
         return interaction.editReply({
             content: lines.join('\n'),
