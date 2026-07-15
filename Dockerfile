@@ -7,6 +7,11 @@ ENV NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000
 ENV NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
 ENV NPM_CONFIG_FETCH_TIMEOUT=300000
 
+# Постоянное хранилище Bothost.
+# Значения из панели переменных окружения смогут переопределить эти пути.
+ENV DATABASE_PATH=/app/shared/database.sqlite
+ENV BACKUP_DIR=/app/shared/backups
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     python3 \
@@ -30,14 +35,20 @@ RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY . .
 
+# Сохраняем обязательные JSON-файлы вне /app/data,
+# потому что Bothost может перекрывать эту папку при запуске.
 RUN mkdir -p /opt/gs-data \
     && cp /app/data/achievements.json /opt/gs-data/achievements.json \
     && cp /app/data/cards.json /opt/gs-data/cards.json \
     && test -f /opt/gs-data/achievements.json \
-    && test -f /opt/gs-data/cards.json
+    && test -f /opt/gs-data/cards.json \
+    && chmod -R 755 /opt/gs-data
 
-RUN mkdir -p /app/data /app/database/backups /data/backups \
-    && touch /app/database/database.sqlite \
-    && chmod -R 777 /app/database /data /opt/gs-data
-
-CMD ["sh", "-c", "mkdir -p /app/data /app/database/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/database && echo '✅ Data-файлы восстановлены' && ls -la /app/data && exec node index.js"]
+# На старте:
+# 1. восстанавливаем JSON-файлы;
+# 2. создаём папки постоянного хранилища;
+# 3. запускаем бота.
+#
+# database/db.js сам скопирует старую /app/database/database.sqlite
+# в /app/shared/database.sqlite, если постоянной базы ещё нет.
+CMD ["sh", "-c", "mkdir -p /app/data /app/shared/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/shared /app/data && echo '✅ Data-файлы восстановлены' && echo \"📁 DATABASE_PATH=$DATABASE_PATH\" && echo \"📁 BACKUP_DIR=$BACKUP_DIR\" && ls -la /app/shared && exec node index.js"]
