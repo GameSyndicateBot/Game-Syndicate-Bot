@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { db, databasePath } = require('../database/db');
 
-const DEFAULT_RETENTION = 30;
+const DEFAULT_RETENTION = 10;
 
 function getBackupDir() {
     return process.env.BACKUP_DIR

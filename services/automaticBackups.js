@@ -5,20 +5,42 @@ const { db, databasePath } = require('../database/db');
 const { backupDatabase } = require('../utils/backupDatabase');
 
 const DEFAULT_INTERVAL_MINUTES = 360;
-const CRITICAL_POLL_MS = 10_000;
+const DEFAULT_CRITICAL_DEBOUNCE_MINUTES = 10;
+const DEFAULT_DISCORD_RETENTION = 30;
+const CRITICAL_POLL_MS = 30_000;
 
 let intervalHandle = null;
 let criticalPollHandle = null;
 let backupInProgress = false;
 let pendingCriticalReason = null;
 
-function getIntervalMs() {
-    const minutes = Number(process.env.BACKUP_INTERVAL_MINUTES);
-    const safeMinutes = Number.isFinite(minutes) && minutes >= 15
-        ? minutes
-        : DEFAULT_INTERVAL_MINUTES;
+function readPositiveInteger(name, fallback, minimum = 1) {
+    const value = Number(process.env[name]);
+    return Number.isInteger(value) && value >= minimum ? value : fallback;
+}
 
-    return safeMinutes * 60 * 1000;
+function getIntervalMs() {
+    return readPositiveInteger(
+        'BACKUP_INTERVAL_MINUTES',
+        DEFAULT_INTERVAL_MINUTES,
+        15
+    ) * 60 * 1000;
+}
+
+function getCriticalDebounceSeconds() {
+    return readPositiveInteger(
+        'CRITICAL_BACKUP_DEBOUNCE_MINUTES',
+        DEFAULT_CRITICAL_DEBOUNCE_MINUTES,
+        1
+    ) * 60;
+}
+
+function getDiscordRetention() {
+    return readPositiveInteger(
+        'DISCORD_BACKUP_RETENTION',
+        DEFAULT_DISCORD_RETENTION,
+        1
+    );
 }
 
 function installCriticalBackupTracking() {
@@ -27,12 +49,25 @@ function installCriticalBackupTracking() {
             id INTEGER PRIMARY KEY CHECK(id = 1),
             dirty INTEGER NOT NULL DEFAULT 0,
             reason TEXT,
-            updated_at INTEGER NOT NULL DEFAULT 0
+            updated_at INTEGER NOT NULL DEFAULT 0,
+            last_backup_at INTEGER NOT NULL DEFAULT 0
         );
 
-        INSERT OR IGNORE INTO persistence_backup_state(id, dirty, reason, updated_at)
-        VALUES(1, 0, NULL, 0);
+        INSERT OR IGNORE INTO persistence_backup_state(
+            id, dirty, reason, updated_at, last_backup_at
+        )
+        VALUES(1, 0, NULL, 0, 0);
+    `);
 
+    // Миграция для баз, где таблица была создана старой версией.
+    try {
+        db.prepare(`
+            ALTER TABLE persistence_backup_state
+            ADD COLUMN last_backup_at INTEGER NOT NULL DEFAULT 0
+        `).run();
+    } catch (_) {}
+
+    db.exec(`
         CREATE TRIGGER IF NOT EXISTS trg_backup_player_cards_insert
         AFTER INSERT ON player_cards
         BEGIN
@@ -83,7 +118,6 @@ function installCriticalBackupTracking() {
         END;
     `);
 
-    // Таблица паков появляется лениво. Если она уже существует — добавляем триггеры.
     const packTableExists = db.prepare(`
         SELECT 1
         FROM sqlite_master
@@ -121,24 +155,73 @@ function installCriticalBackupTracking() {
 
 function getCriticalState() {
     return db.prepare(`
-        SELECT dirty, reason, updated_at
+        SELECT dirty, reason, updated_at, last_backup_at
         FROM persistence_backup_state
         WHERE id = 1
     `).get();
 }
 
+function markCriticalState(reason) {
+    db.prepare(`
+        UPDATE persistence_backup_state
+        SET dirty = 1,
+            reason = ?,
+            updated_at = unixepoch('now')
+        WHERE id = 1
+    `).run(reason);
+}
+
 function clearCriticalState() {
     db.prepare(`
         UPDATE persistence_backup_state
-        SET dirty = 0, reason = NULL
+        SET dirty = 0,
+            reason = NULL,
+            last_backup_at = unixepoch('now')
         WHERE id = 1
     `).run();
+}
+
+async function cleanupDiscordBackups(channel) {
+    const keep = getDiscordRetention();
+
+    try {
+        const messages = await channel.messages.fetch({ limit: 100 });
+        const backupMessages = [...messages.values()]
+            .filter(message => {
+                if (message.author.id !== channel.client.user.id) return false;
+
+                return [...message.attachments.values()].some(attachment =>
+                    /^database-backup-.*\.sqlite$/i.test(attachment.name || '')
+                );
+            })
+            .sort((a, b) => b.createdTimestamp - a.createdTimestamp);
+
+        const obsolete = backupMessages.slice(keep);
+
+        for (const message of obsolete) {
+            await message.delete().catch(error => {
+                console.warn(
+                    `⚠️ Не удалось удалить старый Discord-бэкап ${message.id}:`,
+                    error.message
+                );
+            });
+        }
+
+        if (obsolete.length > 0) {
+            console.log(
+                `🧹 Удалено старых Discord-бэкапов: ${obsolete.length}. ` +
+                `Оставлено последних: ${keep}.`
+            );
+        }
+    } catch (error) {
+        console.warn('⚠️ Очистка Discord-бэкапов не выполнена:', error.message);
+    }
 }
 
 async function uploadBackupToDiscord(client, backupPath, reason) {
     const channelId = String(process.env.BACKUP_CHANNEL_ID ?? '').trim();
     if (!channelId) {
-        console.warn('⚠️ BACKUP_CHANNEL_ID is not configured; backup is stored only on disk.');
+        console.warn('⚠️ BACKUP_CHANNEL_ID не настроен; бэкап сохранён только локально.');
         return false;
     }
 
@@ -156,12 +239,13 @@ async function uploadBackupToDiscord(client, backupPath, reason) {
             `Причина: **${reason}**`,
             `Источник: \`${databasePath}\``,
             `Время: <t:${Math.floor(Date.now() / 1000)}:F>`,
-            'Этот файл используется для автоматического восстановления после перезапуска Bothost.',
+            'Файл используется для автоматического восстановления после перезапуска Bothost.',
         ].join('\n'),
         files: [attachment],
     });
 
     console.log(`✅ Backup uploaded to Discord channel ${channelId}`);
+    await cleanupDiscordBackups(channel);
     return true;
 }
 
@@ -178,8 +262,13 @@ async function runAutomaticBackup(client, reason = 'scheduled') {
         const backupPath = await backupDatabase({ reason });
         const uploaded = await uploadBackupToDiscord(client, backupPath, reason);
 
-        // Dirty-флаг очищаем только после успешной отправки во внешнее хранилище.
-        if (uploaded) clearCriticalState();
+        // Локальный бэкап уже создан, поэтому dirty можно очистить даже при
+        // временной ошибке Discord. Следующий плановый бэкап всё равно повторит загрузку.
+        clearCriticalState();
+
+        if (!uploaded) {
+            console.warn('⚠️ Бэкап не отправлен в Discord, но сохранён локально.');
+        }
 
         return backupPath;
     } catch (error) {
@@ -191,21 +280,20 @@ async function runAutomaticBackup(client, reason = 'scheduled') {
         if (pendingCriticalReason) {
             const queuedReason = pendingCriticalReason;
             pendingCriticalReason = null;
-            setTimeout(() => {
-                runAutomaticBackup(client, queuedReason).catch(console.error);
-            }, 1000).unref?.();
+
+            // Не запускаем второй бэкап сразу. Просто оставляем dirty-флаг,
+            // и монитор обработает его после debounce-интервала.
+            markCriticalState(queuedReason);
         }
     }
 }
 
-async function backupCriticalChange(client, reason = 'critical-change') {
-    db.prepare(`
-        UPDATE persistence_backup_state
-        SET dirty = 1, reason = ?, updated_at = unixepoch('now')
-        WHERE id = 1
-    `).run(reason);
-
-    return runAutomaticBackup(client, reason);
+async function backupCriticalChange(_client, reason = 'critical-change') {
+    // Раньше здесь создавался отдельный бэкап после каждой покупки/карты.
+    // Теперь только отмечаем базу изменённой. Монитор объединит все изменения
+    // и создаст максимум один бэкап за debounce-интервал.
+    markCriticalState(reason);
+    return null;
 }
 
 function startAutomaticBackups(client) {
@@ -215,10 +303,21 @@ function startAutomaticBackups(client) {
     installCriticalBackupTracking();
 
     const intervalMs = getIntervalMs();
-    console.log(`🛡️ Automatic backups enabled every ${Math.round(intervalMs / 60000)} minutes.`);
-    console.log(`🛡️ Critical economy backup monitor enabled every ${CRITICAL_POLL_MS / 1000} seconds.`);
+    const debounceSeconds = getCriticalDebounceSeconds();
 
-    // Бэкап после запуска. К этому моменту prestart-скрипт уже восстановил последнюю базу из Discord.
+    console.log(
+        `🛡️ Automatic backups enabled every ${Math.round(intervalMs / 60000)} minutes.`
+    );
+    console.log(
+        `🛡️ Critical changes are grouped into one backup every ` +
+        `${Math.round(debounceSeconds / 60)} minutes.`
+    );
+    console.log(
+        `🧹 Retention: ${process.env.BACKUP_RETENTION || 10} local, ` +
+        `${getDiscordRetention()} Discord backups.`
+    );
+
+    // Один стартовый бэкап через 30 секунд.
     setTimeout(() => {
         runAutomaticBackup(client, 'startup').catch(console.error);
     }, 30_000).unref?.();
@@ -230,13 +329,20 @@ function startAutomaticBackups(client) {
 
     criticalPollHandle = setInterval(() => {
         try {
-            // Если таблица паков появилась после запуска — установим её триггеры.
             installCriticalBackupTracking();
+
             const state = getCriticalState();
             if (!state?.dirty) return;
 
+            const nowSeconds = Math.floor(Date.now() / 1000);
+            const lastBackupAt = Number(state.last_backup_at || 0);
+
+            if (nowSeconds - lastBackupAt < debounceSeconds) {
+                return;
+            }
+
             const reason = state.reason || 'critical-database-change';
-            runAutomaticBackup(client, reason).catch(console.error);
+            runAutomaticBackup(client, `grouped:${reason}`).catch(console.error);
         } catch (error) {
             console.error('❌ Critical backup monitor failed:', error);
         }
