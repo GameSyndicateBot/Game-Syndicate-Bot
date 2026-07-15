@@ -30,14 +30,14 @@ RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY . .
 
-RUN echo "=== Проверка папки /app/data ===" \
-    && ls -la /app \
-    && ls -la /app/data \
-    && test -f /app/data/achievements.json \
-    && test -f /app/data/cards.json
+RUN mkdir -p /opt/gs-data \
+    && cp /app/data/achievements.json /opt/gs-data/achievements.json \
+    && cp /app/data/cards.json /opt/gs-data/cards.json \
+    && test -f /opt/gs-data/achievements.json \
+    && test -f /opt/gs-data/cards.json
 
-RUN mkdir -p /app/database/backups /data/backups \
+RUN mkdir -p /app/data /app/database/backups /data/backups \
     && touch /app/database/database.sqlite \
-    && chmod -R 777 /app/database /data
+    && chmod -R 777 /app/database /data /opt/gs-data
 
-CMD ["node", "index.js"]
+CMD ["sh", "-c", "mkdir -p /app/data /app/database/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/database && echo '✅ Data-файлы восстановлены' && ls -la /app/data && exec node index.js"]
