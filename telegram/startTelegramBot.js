@@ -102,6 +102,7 @@ async function deleteMessageQuietly(api, chatId, messageId) {
 
 async function beginPrivateGather(api, from) {
     const targetChatId = getSetting('telegram_gatherings_chat_id');
+    const targetThreadId = getSetting('telegram_gatherings_thread_id');
 
     if (!targetChatId) {
         await sendMessage(api, from.id, [
@@ -118,6 +119,7 @@ async function beginPrivateGather(api, from) {
     drafts.set(key, {
         chatId: String(from.id),
         targetChatId: String(targetChatId),
+        targetThreadId: targetThreadId ? Number(targetThreadId) : null,
         creatorId: String(from.id),
         creatorName: userName(from),
         step: 'game',
@@ -185,12 +187,19 @@ async function handleCommand(api, message, command) {
 
         setSetting('telegram_gatherings_chat_id', String(chat.id));
         setSetting('telegram_gatherings_chat_title', chat.title || 'game-lobby');
+        if (message.message_thread_id) {
+            setSetting('telegram_gatherings_thread_id', String(message.message_thread_id));
+        } else {
+            setSetting('telegram_gatherings_thread_id', '');
+        }
 
         await deleteMessageQuietly(api, chat.id, message.message_id);
         const confirmation = await sendMessage(api, chat.id, [
             '✅ Этот чат назначен каналом игровых сборов.',
             'Все новые сборы будут публиковаться здесь.',
-        ].join('\n'));
+        ].join('\n'), {
+            ...(message.message_thread_id ? { message_thread_id: message.message_thread_id } : {}),
+        });
 
         setTimeout(() => {
             deleteMessageQuietly(api, chat.id, confirmation.message_id);
@@ -282,6 +291,7 @@ async function handleText(api, message) {
             maxPlayers: draft.maxPlayers,
             comment: draft.comment,
             telegramChatId: draft.targetChatId,
+            telegramThreadId: draft.targetThreadId,
             discordUserId: null,
         });
 

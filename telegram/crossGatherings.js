@@ -88,7 +88,8 @@ function createGathering(data) {
             starts_at_ts,
             max_players,
             comment,
-            telegram_chat_id
+            telegram_chat_id,
+            telegram_thread_id
         ) VALUES (
             @creatorPlatform,
             @creatorId,
@@ -98,7 +99,8 @@ function createGathering(data) {
             @startsAtTs,
             @maxPlayers,
             @comment,
-            @telegramChatId
+            @telegramChatId,
+            @telegramThreadId
         )
     `).run({ ...data, startsAtTs });
 
@@ -367,6 +369,7 @@ async function publish(gathering) {
     if (runtime.api && gathering.telegram_chat_id) {
         const message = await runtime.api('sendMessage', {
             chat_id: gathering.telegram_chat_id,
+            ...(gathering.telegram_thread_id ? { message_thread_id: Number(gathering.telegram_thread_id) } : {}),
             text: [
                 '🔔 <b>НОВЫЙ СБОР — ОТМЕТЬТЕСЬ!</b>',
                 '',
@@ -526,6 +529,7 @@ async function sendNotice(gathering, kind) {
 
         await runtime.api('sendMessage', {
             chat_id: gathering.telegram_chat_id,
+            ...(gathering.telegram_thread_id ? { message_thread_id: Number(gathering.telegram_thread_id) } : {}),
             parse_mode: 'HTML',
             disable_web_page_preview: true,
             text: [

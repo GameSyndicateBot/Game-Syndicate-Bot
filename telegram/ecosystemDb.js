@@ -48,6 +48,7 @@ ensureColumn('cross_gatherings', 'reminder_30_sent', 'INTEGER DEFAULT 0');
 ensureColumn('cross_gatherings', 'reminder_10_sent', 'INTEGER DEFAULT 0');
 ensureColumn('cross_gatherings', 'start_notice_sent', 'INTEGER DEFAULT 0');
 ensureColumn('cross_gatherings', 'started_at', 'INTEGER');
+ensureColumn('cross_gatherings', 'telegram_thread_id', 'INTEGER');
 
 function getSetting(key) {
     return db.prepare('SELECT value FROM gs_settings WHERE key = ?').get(key)?.value ?? null;
