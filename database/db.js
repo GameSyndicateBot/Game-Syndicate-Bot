@@ -24,6 +24,16 @@ db.pragma('busy_timeout = 5000');
 
 const databasePath = configuredDatabasePath;
 
+console.log('📁 Database path:', configuredDatabasePath);
+console.log(
+    '📦 DB exists:',
+    fs.existsSync(configuredDatabasePath),
+    'size:',
+    fs.existsSync(configuredDatabasePath)
+        ? fs.statSync(configuredDatabasePath).size
+        : 0
+);
+
 db.prepare(`
     CREATE TABLE IF NOT EXISTS players (
         user_id TEXT PRIMARY KEY,
