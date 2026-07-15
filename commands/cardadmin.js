@@ -67,8 +67,14 @@ module.exports = {
                 .addUserOption(option =>
                     option
                         .setName('user')
-                        .setDescription('Участник, которому нужно выдать карточку')
-                        .setRequired(true)
+                        .setDescription('Выбери участника из списка')
+                        .setRequired(false)
+                )
+                .addStringOption(option =>
+                    option
+                        .setName('user_id')
+                        .setDescription('Или вставь Discord ID участника вручную')
+                        .setRequired(false)
                 )
                 .addStringOption(option =>
                     option
@@ -162,7 +168,33 @@ module.exports = {
             });
         }
 
-        const target = interaction.options.getUser('user');
+        const selectedUser = interaction.options.getUser('user');
+        const typedUserId = interaction.options.getString('user_id')?.trim();
+
+        if (!selectedUser && !typedUserId) {
+            return interaction.editReply({
+                content: '❌ Выбери участника в поле `user` или вставь его Discord ID в поле `user_id`.',
+            });
+        }
+
+        let target = selectedUser;
+
+        if (!target && typedUserId) {
+            if (!/^\d{17,20}$/.test(typedUserId)) {
+                return interaction.editReply({
+                    content: '❌ Неверный Discord ID. Он должен состоять только из 17–20 цифр.',
+                });
+            }
+
+            target = await interaction.client.users.fetch(typedUserId).catch(() => null);
+
+            if (!target) {
+                return interaction.editReply({
+                    content: `❌ Не удалось найти пользователя с ID \`${typedUserId}\`.`,
+                });
+            }
+        }
+
         const query = interaction.options.getString('card', true);
         const amount = interaction.options.getInteger('amount') ?? 1;
         const rarity = interaction.options.getString('rarity') ?? undefined;
