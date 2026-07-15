@@ -11,19 +11,19 @@ function getTheme(type) {
     const themes = {
         created: {
             title: 'ИГРОВОЙ ВЕЧЕР СОЗДАН',
-            icon: '◆',
+            icon: 'EVT',
             color: '#8B5CF6',
             status: 'ОЖИДАНИЕ',
         },
         started: {
             title: 'ИГРОВОЙ ВЕЧЕР НАЧАЛСЯ',
-            icon: '●',
+            icon: 'LIVE',
             color: '#22C55E',
             status: 'ИДЁТ СЕЙЧАС',
         },
         finished: {
             title: 'ИГРОВОЙ ВЕЧЕР ЗАВЕРШЁН',
-            icon: '★',
+            icon: 'DONE',
             color: '#F59E0B',
             status: 'ЗАВЕРШЁН',
         },
@@ -90,23 +90,23 @@ async function createEventCard(type, data) {
     ctx.font = 'bold 24px Arial';
     ctx.fillText('GAME SYNDICATE • EVENT SYSTEM', 80, 155);
 
-    drawBox(ctx, 80, 215, 500, 110, '◆ ИГРА', data.gameName, theme.color);
-    drawBox(ctx, 620, 215, 500, 110, '◆ СТАТУС', theme.status, theme.color);
+    drawBox(ctx, 80, 215, 500, 110, 'ИГРА', data.gameName, theme.color);
+    drawBox(ctx, 620, 215, 500, 110, 'СТАТУС', theme.status, theme.color);
 
-    drawBox(ctx, 80, 355, 320, 110, '⏱ МИНИМУМ', `${data.minMinutes ?? 30} мин.`, theme.color);
-    drawBox(ctx, 440, 355, 320, 110, '● УЧАСТНИКОВ', data.totalParticipants ?? '—', theme.color);
-    drawBox(ctx, 800, 355, 320, 110, '✓ ЗАЧЁТ', data.countedParticipants ?? '—', theme.color);
+    drawBox(ctx, 80, 355, 320, 110, 'МИНИМУМ', `${data.minMinutes ?? 30} мин.`, theme.color);
+    drawBox(ctx, 440, 355, 320, 110, 'УЧАСТНИКОВ', data.totalParticipants ?? '—', theme.color);
+    drawBox(ctx, 800, 355, 320, 110, 'ЗАЧЁТ', data.countedParticipants ?? '—', theme.color);
 
     if (data.notCounted !== undefined) {
-        drawBox(ctx, 80, 495, 320, 90, '✕ НЕ ХВАТИЛО', data.notCounted, theme.color);
+        drawBox(ctx, 80, 495, 320, 90, 'НЕ ХВАТИЛО', data.notCounted, theme.color);
     }
 
     if (data.reward) {
-        drawBox(ctx, 440, 495, 320, 90, '□ НАГРАДА', data.reward, theme.color);
+        drawBox(ctx, 440, 495, 320, 90, 'НАГРАДА', data.reward, theme.color);
     }
 
     if (data.leader) {
-        drawBox(ctx, 800, 495, 320, 90, '♛ ЛИДЕР', data.leader, theme.color);
+        drawBox(ctx, 800, 495, 320, 90, 'ЛИДЕР', data.leader, theme.color);
     }
 
     ctx.fillStyle = '#A78BFA';

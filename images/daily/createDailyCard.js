@@ -48,6 +48,73 @@ function drawQuestIcon(ctx, field, x, y, color = '#FFFFFF') {
     ctx.restore();
 }
 
+
+function drawQuestStatus(ctx, x, y, state) {
+    const color = state === 'claimed'
+        ? '#22C55E'
+        : state === 'done'
+            ? '#FBBF24'
+            : '#C084FC';
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.roundRect(x - 13, y - 13, 26, 26, 4);
+    ctx.stroke();
+
+    if (state === 'claimed') {
+        ctx.beginPath();
+        ctx.moveTo(x - 7, y);
+        ctx.lineTo(x - 2, y + 6);
+        ctx.lineTo(x + 8, y - 7);
+        ctx.stroke();
+    } else if (state === 'done') {
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+function drawBonusStatus(ctx, x, y, state) {
+    const color = state === 'claimed'
+        ? '#22C55E'
+        : state === 'ready'
+            ? '#FBBF24'
+            : '#A855F7';
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.arc(x, y, 12, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (state === 'claimed') {
+        ctx.beginPath();
+        ctx.moveTo(x - 6, y);
+        ctx.lineTo(x - 1, y + 5);
+        ctx.lineTo(x + 7, y - 6);
+        ctx.stroke();
+    } else if (state === 'ready') {
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    ctx.restore();
+}
+
 function formatValue(value, unit) {
     if (unit === 'seconds') return Math.floor(value / 60);
     return value;
@@ -86,9 +153,12 @@ function drawQuest(ctx, y, quest, progressData) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    ctx.fillStyle = claimed ? '#22C55E' : done ? '#FBBF24' : '#C084FC';
-    ctx.font = 'bold 30px Arial';
-    ctx.fillText(claimed ? '✓' : done ? '□' : '⬜', 120, y + 52);
+    drawQuestStatus(
+        ctx,
+        133,
+        y + 41,
+        claimed ? 'claimed' : done ? 'done' : 'idle'
+    );
 
     drawQuestIcon(ctx, quest.field, 175, y + 12);
 
@@ -181,6 +251,17 @@ async function createDailyCard(user, progress, quests, bonusXP, bonusDust = 45) 
             ? '#22C55E'
             : '#FBBF24';
 
+    drawBonusStatus(
+        ctx,
+        104,
+        656,
+        progress.claimed
+            ? 'claimed'
+            : allCompleted && allClaimed
+                ? 'ready'
+                : 'idle'
+    );
+
     ctx.font = 'bold 28px Arial';
     ctx.fillText(
         progress.claimed
@@ -188,7 +269,7 @@ async function createDailyCard(user, progress, quests, bonusXP, bonusDust = 45) 
             : allCompleted && allClaimed
                 ? `Бонус дня готов: +${bonusXP} XP • +${bonusDust} Dust`
                 : `Бонус за все задания: +${bonusXP} XP • +${bonusDust} Dust`,
-        90,
+        130,
         665
     );
 

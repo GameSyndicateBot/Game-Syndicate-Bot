@@ -1,5 +1,5 @@
 const { AuditLogEvent } = require('discord.js');
-const { sendLog } = require('../utils/sendLog');
+const { sendLog, formatUser } = require('../utils/sendLog');
 const { getAuditExecutor } = require('../utils/getAuditExecutor');
 
 module.exports = {
@@ -13,19 +13,20 @@ module.exports = {
         );
 
         await sendLog(ban.guild, {
-            title: '✅ Пользователь разбанен',
+            section: 'Модерация',
+            title: 'Пользователь разблокирован',
+            thumbnail: ban.user.displayAvatarURL({ size: 256 }),
             color: 0x22C55E,
-            thumbnail: ban.user.displayAvatarURL(),
-            fields: [
+                        fields: [
                 {
                     name: '👤 Пользователь',
-                    value: `${ban.user}\n\`${ban.user.tag}\``,
+                    value: formatUser(ban.user),
                     inline: true,
                 },
                 {
                     name: '🛡️ Модератор',
                     value: audit?.executor
-                        ? `${audit.executor}\n\`${audit.executor.tag}\``
+                        ? formatUser(audit.executor)
                         : 'Неизвестно',
                     inline: true,
                 },

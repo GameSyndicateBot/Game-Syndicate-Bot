@@ -9,21 +9,21 @@ function roundRect(ctx, x, y, w, h, r) {
 
 function getCategoryInfo(category) {
     const categories = {
-        messages: { icon: '💬', title: 'Сообщения' },
-        levels: { icon: '⬆', title: 'Уровни' },
-        voice: { icon: '🎤', title: 'Голос' },
-        reactions: { icon: '👍', title: 'Реакции' },
-        server: { icon: '📅', title: 'Сервер' },
-        collection: { icon: '🎴', title: 'Коллекция' },
-        events: { icon: '◆', title: 'Игровые вечера' },
-        quick_events: { icon: '⚡', title: 'Quick Events' },
-        daily: { icon: '📅', title: 'Ежедневки' },
-        streaks: { icon: '🔥', title: 'Серии' },
-        special: { icon: '☾', title: 'Особые' },
-        xp: { icon: '⚡', title: 'XP' },
+        messages: { icon: 'MSG', title: 'Сообщения' },
+        levels: { icon: 'LVL', title: 'Уровни' },
+        voice: { icon: 'VOC', title: 'Голос' },
+        reactions: { icon: 'RCT', title: 'Реакции' },
+        server: { icon: 'SRV', title: 'Сервер' },
+        collection: { icon: 'CRD', title: 'Коллекция' },
+        events: { icon: 'EVT', title: 'Игровые вечера' },
+        quick_events: { icon: 'QEV', title: 'Quick Events' },
+        daily: { icon: 'DAY', title: 'Ежедневки' },
+        streaks: { icon: 'STR', title: 'Серии' },
+        special: { icon: 'SPC', title: 'Особые' },
+        xp: { icon: 'XP', title: 'XP' },
     };
 
-    return categories[category] || { icon: '◆', title: category };
+    return categories[category] || { icon: 'ACH', title: category };
 }
 
 function drawProgressBar(ctx, x, y, w, h, progress) {
@@ -61,8 +61,8 @@ function drawCategoryRow(ctx, category, unlocked, total, x, y, w) {
     ctx.stroke();
 
     ctx.fillStyle = '#C084FC';
-    ctx.font = 'bold 28px Arial';
-    ctx.fillText(info.icon, x + 28, y + 44);
+    ctx.font = 'bold 17px Arial';
+    ctx.fillText(info.icon, x + 20, y + 42);
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 24px Arial';

@@ -75,6 +75,63 @@ function drawMiniStat(ctx, x, y, w, title, value) {
     ctx.fillText(String(value), x + 22, y + 62);
 }
 
+
+function drawHistoryStatus(ctx, x, y, status) {
+    const color = status === 'full'
+        ? '#22C55E'
+        : status === 'partial'
+            ? '#FBBF24'
+            : status === 'missed'
+                ? '#EF4444'
+                : '#6B7280';
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.arc(x, y, 15, 0, Math.PI * 2);
+    ctx.stroke();
+
+    if (status === 'full') {
+        ctx.beginPath();
+        ctx.moveTo(x - 7, y);
+        ctx.lineTo(x - 2, y + 6);
+        ctx.lineTo(x + 8, y - 7);
+        ctx.stroke();
+    } else if (status === 'partial') {
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+    } else if (status === 'missed') {
+        ctx.beginPath();
+        ctx.moveTo(x - 6, y - 6);
+        ctx.lineTo(x + 6, y + 6);
+        ctx.moveTo(x + 6, y - 6);
+        ctx.lineTo(x - 6, y + 6);
+        ctx.stroke();
+    } else {
+        ctx.beginPath();
+        ctx.moveTo(x - 6, y);
+        ctx.lineTo(x + 6, y);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+function drawLegendDot(ctx, x, y, color) {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
 function drawDayCell(ctx, x, y, date, row) {
     const status = getStatus(row);
     const color = getStatusColor(status);
@@ -152,7 +209,7 @@ async function createDailyHistoryCard(user, history, dailyStreak) {
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 46px Arial';
-    ctx.fillText('▤ ИСТОРИЯ ЕЖЕДНЕВОК', 250, 125);
+    ctx.fillText('ИСТОРИЯ ЕЖЕДНЕВОК', 250, 125);
 
     ctx.fillStyle = '#A855F7';
     ctx.font = 'bold 24px Arial';
@@ -185,7 +242,7 @@ async function createDailyHistoryCard(user, history, dailyStreak) {
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 30px Arial';
-    ctx.fillText('▣ Последние 14 дней', 90, 390);
+    ctx.fillText('ПОСЛЕДНИЕ 14 ДНЕЙ', 90, 390);
 
     const historyByDate = new Map(history.map(row => [row.date, row]));
     const days = getLastNDays(14);
@@ -198,13 +255,24 @@ async function createDailyHistoryCard(user, history, dailyStreak) {
         x += 76;
     }
 
+    ctx.font = 'bold 18px Arial';
+
+    drawLegendDot(ctx, 96, 539, '#22C55E');
     ctx.fillStyle = '#A78BFA';
-    ctx.font = 'bold 20px Arial';
-    ctx.fillText('● полностью   ● частично   ● без наград   ⚫ нет данных', 90, 545);
+    ctx.fillText('полностью', 112, 545);
+
+    drawLegendDot(ctx, 285, 539, '#FBBF24');
+    ctx.fillText('частично', 301, 545);
+
+    drawLegendDot(ctx, 455, 539, '#EF4444');
+    ctx.fillText('без наград', 471, 545);
+
+    drawLegendDot(ctx, 665, 539, '#6B7280');
+    ctx.fillText('нет данных', 681, 545);
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 30px Arial';
-    ctx.fillText('▥ Итоги за последние 30 записей', 90, 620);
+    ctx.fillText('ИТОГИ ЗА ПОСЛЕДНИЕ 30 ЗАПИСЕЙ', 90, 620);
 
     roundRect(ctx, 90, 655, 1020, 90, 24);
     ctx.fillStyle = 'rgba(139, 92, 246, 0.12)';

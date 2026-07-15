@@ -13,6 +13,7 @@ const {
 } = require('../utils/cardSystem');
 
 const { checkDeveloper } = require('../utils/devOnly');
+const { checkAchievementsForInteraction } = require('../utils/checkAchievements');
 
 const MAX_GIVE_AMOUNT = 25;
 
@@ -175,6 +176,8 @@ module.exports = {
 
             drops.push(drop);
         }
+
+        await checkAchievementsForInteraction(interaction);
 
         const lines = [];
 

@@ -16,11 +16,11 @@ const rarityColors = {
 };
 
 const rarityNames = {
-    common: '⚪ Обычное',
-    rare: '● Редкое',
-    epic: '● Эпическое',
-    legendary: '● Легендарное',
-    mythic: '● Мифическое',
+    common: 'Обычное',
+    rare: 'Редкое',
+    epic: 'Эпическое',
+    legendary: 'Легендарное',
+    mythic: 'Мифическое',
 };
 
 function drawStat(ctx, x, y, icon, label, value) {
@@ -117,7 +117,7 @@ async function createForecastCard(user, forecast) {
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 46px Arial';
-    ctx.fillText('◇ ПРОРОЧЕСТВО ДНЯ', 250, 120);
+    ctx.fillText('ПРОРОЧЕСТВО ДНЯ', 250, 120);
 
     ctx.fillStyle = '#A855F7';
     ctx.font = 'bold 24px Arial';
@@ -127,11 +127,11 @@ async function createForecastCard(user, forecast) {
     ctx.font = 'bold 25px Arial';
     ctx.fillText(`${rarityNames[forecast.rarity] || forecast.rarity} • ${forecast.day_type}`, 250, 205);
 
-    drawStat(ctx, 90, 260, '♣', 'Удача', forecast.luck);
-    drawStat(ctx, 315, 260, '⚡', 'Энергия', forecast.energy);
-    drawStat(ctx, 540, 260, '●', 'Общение', forecast.social);
-    drawStat(ctx, 765, 260, '◆', 'Игры', forecast.gaming);
-    drawStat(ctx, 990, 260, '◆', 'Фокус', forecast.focus);
+    drawStat(ctx, 90, 260, 'LUCK', 'Удача', forecast.luck);
+    drawStat(ctx, 315, 260, 'NRG', 'Энергия', forecast.energy);
+    drawStat(ctx, 540, 260, 'SOC', 'Общение', forecast.social);
+    drawStat(ctx, 765, 260, 'GAME', 'Игры', forecast.gaming);
+    drawStat(ctx, 990, 260, 'GAME', 'Фокус', forecast.focus);
 
     roundRect(ctx, 90, 380, 1120, 170, 26);
     ctx.fillStyle = 'rgba(139, 92, 246, 0.14)';
@@ -157,7 +157,7 @@ async function createForecastCard(user, forecast) {
 
     ctx.fillStyle = '#FBBF24';
     ctx.font = 'bold 30px Arial';
-    ctx.fillText(`✦ ${forecast.blessing_title}`, 130, 640);
+    ctx.fillText(`${forecast.blessing_title}`, 130, 640);
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 23px Arial';
@@ -172,14 +172,14 @@ async function createForecastCard(user, forecast) {
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 24px Arial';
-    ctx.fillText(`◇ Счастливое число: ${forecast.lucky_number}`, 130, 812);
-    ctx.fillText(`✦ Цвет дня: ${forecast.color}`, 470, 812);
-    ctx.fillText(`◷ Лучшее время: ${forecast.best_time}`, 790, 812);
+    ctx.fillText(`Счастливое число: ${forecast.lucky_number}`, 130, 812);
+    ctx.fillText(`Цвет дня: ${forecast.color}`, 470, 812);
+    ctx.fillText(`Лучшее время: ${forecast.best_time}`, 790, 812);
 
     ctx.fillStyle = '#A78BFA';
     ctx.font = 'bold 22px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(`★ Шанс получить достижение: ${forecast.achievement_chance}`, 650, 895);
+    ctx.fillText(`Шанс получить достижение: ${forecast.achievement_chance}`, 650, 895);
     ctx.textAlign = 'left';
 
     return canvas.toBuffer('image/png');

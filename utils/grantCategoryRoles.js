@@ -94,6 +94,8 @@ function getCategoryProgress(userId, category) {
 }
 
 async function sendCategoryRoleMessage(member, role, category, progress, dustReward = 0) {
+    if (Number(dustReward) <= 0) return;
+
     const channelId = process.env.ACHIEVEMENTS_CHANNEL_ID;
     if (!channelId) return;
 
@@ -148,9 +150,23 @@ async function grantReplaceableCategoryRoles(member, category, options = {}) {
 
         const role = member.guild.roles.cache.get(roleToAdd);
 
-        const dustReward = grantCategoryDust(member.user.id, category, roleToAdd, roleIndex);
-        if (role && !options.silent) {
-            await sendCategoryRoleMessage(member, role, category, progress, dustReward);
+        const dustReward = grantCategoryDust(
+            member.user.id,
+            category,
+            roleToAdd,
+            roleIndex
+        );
+
+        // Сообщение отправляется только при реальном первом начислении.
+        // Параллельные проверки получают dustReward = 0 и тихо завершаются.
+        if (role && !options.silent && dustReward > 0) {
+            await sendCategoryRoleMessage(
+                member,
+                role,
+                category,
+                progress,
+                dustReward
+            );
         }
     }
 }
@@ -192,9 +208,22 @@ async function grantAdditiveCategoryRoles(member, category, options = {}) {
 
         const role = member.guild.roles.cache.get(roleId);
 
-        const dustReward = grantCategoryDust(member.user.id, category, roleId, roleIndex);
-        if (role && !options.silent) {
-            await sendCategoryRoleMessage(member, role, category, progress, dustReward);
+        const dustReward = grantCategoryDust(
+            member.user.id,
+            category,
+            roleId,
+            roleIndex
+        );
+
+        // Не публикуем дубликат карточки с +0 GS Dust.
+        if (role && !options.silent && dustReward > 0) {
+            await sendCategoryRoleMessage(
+                member,
+                role,
+                category,
+                progress,
+                dustReward
+            );
         }
     }
 }

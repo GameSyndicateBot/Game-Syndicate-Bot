@@ -1,53 +1,15 @@
-const { sendLog, cutText } = require('../utils/sendLog');
-
-module.exports = {
-    name: 'messageUpdate',
-
-    async execute(oldMessage, newMessage) {
-        if (!oldMessage.guild) return;
-
-        const author = oldMessage.author ?? newMessage.author;
-        if (!author || author.bot) return;
-
-        const oldContent = oldMessage.content ?? '';
-        const newContent = newMessage.content ?? '';
-
-        if (!oldContent && !newContent) return;
-        if (oldContent === newContent) return;
-
-        await sendLog(oldMessage.guild, {
-            title: '✏️ Сообщение изменено',
-            color: 0xF59E0B,
-            thumbnail: author.displayAvatarURL(),
-            fields: [
-                {
-                    name: '👤 Автор',
-                    value: `${author}\n\`${author.tag}\``,
-                    inline: true,
-                },
-                {
-                    name: '📍 Канал',
-                    value: `${oldMessage.channel ?? newMessage.channel}`,
-                    inline: true,
-                },
-                {
-                    name: '📌 Ссылка',
-                    value: newMessage.url
-                        ? `[Перейти к сообщению](${newMessage.url})`
-                        : 'Ссылка недоступна',
-                    inline: false,
-                },
-                {
-                    name: 'До',
-                    value: `\`\`\`\n${cutText(oldContent || 'Пусто', 800)}\n\`\`\``,
-                    inline: false,
-                },
-                {
-                    name: 'После',
-                    value: `\`\`\`\n${cutText(newContent || 'Пусто', 800)}\n\`\`\``,
-                    inline: false,
-                },
-            ],
-        });
-    },
-};
+const { sendLog, safeCode, formatUser } = require('../utils/sendLog');
+module.exports={name:'messageUpdate',async execute(oldMessage,newMessage){
+    if(!oldMessage.guild)return;
+    if(oldMessage.partial)await oldMessage.fetch().catch(()=>null);
+    if(newMessage.partial)await newMessage.fetch().catch(()=>null);
+    const author=newMessage.author||oldMessage.author; if(!author||author.bot)return;
+    const before=oldMessage.content||'', after=newMessage.content||''; if(before===after)return;
+    await sendLog(oldMessage.guild,{section:'Сообщения',title:'Сообщение изменено',color:0xF59E0B,url:newMessage.url,thumbnail:newMessage.author?.displayAvatarURL({size:256}),fields:[
+        {name:'Автор',value:formatUser(author),inline:false},
+        {name:'Канал',value:`${newMessage.channel}  \`${newMessage.channelId}\``,inline:false},
+        {name:'До',value:`\`\`\`\n${safeCode(before,700)}\n\`\`\``,inline:false},
+        {name:'После',value:`\`\`\`\n${safeCode(after,700)}\n\`\`\``,inline:false},
+        {name:'Ссылка',value:newMessage.url?`[Открыть сообщение](${newMessage.url})`:'—',inline:false},
+    ]});
+}};

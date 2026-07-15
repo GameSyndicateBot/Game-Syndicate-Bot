@@ -15,6 +15,7 @@ const { createAuctionPanel } = require('../images/auction/createAuctionPanel');
 const { createAuctionHistoryCard } = require('../images/history/createAuctionHistoryCard');
 
 const AUCTION_TTL_DAYS = 7;
+const AUCTION_PAGE_SIZE = 20;
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS card_auction_listings (
@@ -48,8 +49,44 @@ function cardLocked(inventoryId) {
     const t=db.prepare("SELECT 1 FROM card_trades WHERE status IN ('selecting','pending') AND (initiator_card_id=? OR target_card_id=?) AND expires_at>?").get(inventoryId,inventoryId,new Date().toISOString());
     return Boolean(a||t);
 }
-function sellableCards(userId) { return getUserCards(userId).filter(c=>c.rarity!=='treasure'&&!cardLocked(c.id)).slice(0,25); }
+function sellableCards(userId) { return getUserCards(userId).filter(c=>c.rarity!=='treasure'&&!cardLocked(c.id)).sort((a,b)=>Number(b.id)-Number(a.id)); }
 function options(cards) { return cards.map(c=>({label:`${c.code} • ${c.name}`.slice(0,100),value:String(c.id),description:`${rarityLabel(c.rarity).replace(/^\S+\s/,'')} • #${String(c.copy_number).padStart(6,'0')}`.slice(0,100),emoji:'🎴'})); }
+
+function paginate(items,page=1){
+    const pageSize = Number.isInteger(AUCTION_PAGE_SIZE) && AUCTION_PAGE_SIZE > 0 ? AUCTION_PAGE_SIZE : 20;
+    const totalPages=Math.max(1,Math.ceil(items.length/pageSize));
+    const safePage=Math.max(1,Math.min(Number(page)||1,totalPages));
+    const start=(safePage-1)*pageSize;
+    return{items:items.slice(start,start+pageSize),safePage,totalPages,totalItems:items.length};
+}
+function auctionNavRow(kind,context,page,totalPages,totalItems){
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`auction_page_${kind}_${context}_${page-1}`).setLabel('Назад').setStyle(ButtonStyle.Secondary).setDisabled(page<=1),
+        new ButtonBuilder().setCustomId(`auction_pageinfo_${kind}_${context}_${page}`).setLabel(`${page}/${totalPages} • ${totalItems}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+        new ButtonBuilder().setCustomId(`auction_page_${kind}_${context}_${page+1}`).setLabel('Вперёд').setStyle(ButtonStyle.Secondary).setDisabled(page>=totalPages)
+    );
+}
+function buildSellPicker(userId,price,page=1){
+    const all=sellableCards(userId),data=paginate(all,page);
+    if(!data.items.length)return null;
+    const menu=new StringSelectMenuBuilder().setCustomId(`auction_sellpick_${price}_${data.safePage}`).setPlaceholder('Выбери карточку для продажи').addOptions(options(data.items));
+    const components=[new ActionRowBuilder().addComponents(menu)];
+    if(data.totalPages>1)components.push(auctionNavRow('sell',price,data.safePage,data.totalPages,data.totalItems));
+    return{...data,components};
+}
+function activeListings(){
+    return db.prepare("SELECT * FROM card_auction_listings WHERE status='active' AND expires_at>? ORDER BY id DESC").all(new Date().toISOString());
+}
+function buildBrowsePicker(page=1){
+    const all=activeListings(),data=paginate(all,page);
+    if(!data.items.length)return null;
+    const opts=data.items.map(l=>{const c=ownedFromListing(l);return{label:`#${l.id} • ${c?.name??'Карточка'}`.slice(0,100),value:String(l.id),description:`${l.price} Dust • ${c?.rarity??'unknown'}`.slice(0,100),emoji:'🏷️'};});
+    const menu=new StringSelectMenuBuilder().setCustomId(`auction_view_select_${data.safePage}`).setPlaceholder('Выбери объявление').addOptions(opts);
+    const components=[new ActionRowBuilder().addComponents(menu)];
+    if(data.totalPages>1)components.push(auctionNavRow('browse','all',data.safePage,data.totalPages,data.totalItems));
+    return{...data,components};
+}
+
 
 async function resolveMemberName(client, guildId, userId) {
     try {
@@ -135,10 +172,9 @@ module.exports={
     async execute(interaction){
         const sub=interaction.options.getSubcommand();
         if(sub==='sell'){
-            const price=interaction.options.getInteger('цена',true);const cards=sellableCards(interaction.user.id);
-            if(!cards.length)return interaction.reply({content:'❌ У тебя нет карточек, доступных для продажи.',ephemeral:true});
-            const menu=new StringSelectMenuBuilder().setCustomId(`auction_sellpick_${price}`).setPlaceholder('Выбери карточку для продажи').addOptions(options(cards));
-            return interaction.reply({content:`Выбери карточку. Цена: **${price.toLocaleString('ru-RU')} GS Dust**. Показываются последние 25 доступных экземпляров.`,components:[new ActionRowBuilder().addComponents(menu)],ephemeral:true});
+            const price=interaction.options.getInteger('цена',true);const picker=buildSellPicker(interaction.user.id,price,1);
+            if(!picker)return interaction.reply({content:'❌ У тебя нет карточек, доступных для продажи.',ephemeral:true});
+            return interaction.reply({content:`Выбери карточку. Цена: **${price.toLocaleString('ru-RU')} GS Dust**. Доступно: **${picker.totalItems}**.`,components:picker.components,ephemeral:true});
         }
         if(sub==='browse'){
             const rows=db.prepare("SELECT * FROM card_auction_listings WHERE status='active' AND expires_at>? ORDER BY id DESC LIMIT 25").all(new Date().toISOString());
@@ -148,9 +184,10 @@ module.exports={
             return interaction.reply({content:`# 🏷️ Аукцион Game Syndicate\nТвой баланс: **${getCardDust(interaction.user.id)} GS Dust**`,components:[new ActionRowBuilder().addComponents(menu)],ephemeral:true});
         }
         if(sub==='my'){
-            const rows=db.prepare("SELECT * FROM card_auction_listings WHERE seller_id=? AND status='active' ORDER BY id DESC LIMIT 25").all(interaction.user.id);
+            const rows=db.prepare("SELECT * FROM card_auction_listings WHERE seller_id=? AND status='active' ORDER BY id DESC").all(interaction.user.id);
             if(!rows.length)return interaction.reply({content:'У тебя нет активных объявлений.',ephemeral:true});
-            return interaction.reply({content:rows.map(l=>`**#${l.id}** • ${ownedFromListing(l)?.name??'карточка'} • **${l.price} Dust**`).join('\n'),ephemeral:true});
+            const shown=rows.slice(0,20);
+            return interaction.reply({content:`# Мои объявления (${rows.length})\n${shown.map(l=>`**#${l.id}** • ${ownedFromListing(l)?.name??'карточка'} • **${l.price} Dust**`).join('\n')}${rows.length>20?'\n\nПоказаны последние 20. Остальные доступны через /auction browse.':''}`,ephemeral:true});
         }
         if(sub==='history'){
             db.prepare("UPDATE card_auction_listings SET status='expired' WHERE status='active' AND expires_at<=?")
@@ -202,7 +239,22 @@ module.exports={
 
     async handleComponent(interaction){
         if(!interaction.customId.startsWith('auction_'))return false;
-        const [,action,raw]=interaction.customId.split('_');
+        const parts=interaction.customId.split('_');const action=parts[1],raw=parts[2];
+        if(action==='page'){
+            const kind=parts[2],context=parts[3],page=Number(parts[4]||1);
+            if(kind==='sell'){
+                const price=Number(context),picker=buildSellPicker(interaction.user.id,price,page);
+                if(!picker)return interaction.update({content:'❌ У тебя больше нет доступных карточек.',components:[]});
+                await interaction.update({content:`Выбери карточку. Цена: **${price.toLocaleString('ru-RU')} GS Dust**. Страница **${picker.safePage}/${picker.totalPages}**, всего **${picker.totalItems}**.`,components:picker.components});
+                return true;
+            }
+            if(kind==='browse'){
+                const picker=buildBrowsePicker(page);
+                if(!picker)return interaction.update({content:'На аукционе пока нет активных карточек.',components:[]});
+                await interaction.update({content:`# 🏷️ Аукцион Game Syndicate\nТвой баланс: **${getCardDust(interaction.user.id)} GS Dust**\nСтраница **${picker.safePage}/${picker.totalPages}**, объявлений: **${picker.totalItems}**`,components:picker.components});
+                return true;
+            }
+        }
         if(action==='sellpick'){
             const price=Number(raw),inventoryId=Number(interaction.values[0]),owned=getUserCardByInventoryId(interaction.user.id,inventoryId);
             if(!owned||owned.rarity==='treasure'||cardLocked(inventoryId))return interaction.update({content:'❌ Эта карточка больше недоступна для продажи.',components:[]});

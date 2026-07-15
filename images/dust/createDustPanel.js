@@ -25,17 +25,17 @@ async function createDustPanel(user, data = {}) {
 
     drawBackground(ctx, WIDTH, HEIGHT, 'DUST');
     drawFrame(ctx, WIDTH, HEIGHT);
-    drawHeader(ctx, '✦ GS DUST', `GAME SYNDICATE • ${(user.gsDisplayName || user.username).toUpperCase()}`, WIDTH);
+    drawHeader(ctx, 'GS DUST', `GAME SYNDICATE • ${(user.gsDisplayName || user.username).toUpperCase()}`, WIDTH);
 
-    drawStatBox(ctx, 90, 200, 440, 135, 'БАЛАНС', `✦ ${balance}`, colors.gold);
-    drawStatBox(ctx, 580, 200, 440, 135, 'МОЖНО ПОЛУЧИТЬ', `✦ ${totalDust}`, colors.purpleLight);
+    drawStatBox(ctx, 90, 200, 440, 135, 'БАЛАНС', `${balance}`, colors.gold);
+    drawStatBox(ctx, 580, 200, 440, 135, 'МОЖНО ПОЛУЧИТЬ', `${totalDust}`, colors.purpleLight);
     drawStatBox(ctx, 1070, 200, 440, 135, 'ПОВТОРОК', totalDuplicates, colors.green);
 
     drawPanel(ctx, 90, 375, 1420, 390);
 
     ctx.fillStyle = colors.white;
     ctx.font = 'bold 38px Arial';
-    ctx.fillText('♻ ПОВТОРКИ ДЛЯ РАСПЫЛЕНИЯ', 130, 440);
+    ctx.fillText('ПОВТОРКИ ДЛЯ РАСПЫЛЕНИЯ', 130, 440);
 
     ctx.fillStyle = colors.muted;
     ctx.font = 'bold 22px Arial';

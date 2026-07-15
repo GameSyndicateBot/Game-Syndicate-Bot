@@ -80,7 +80,7 @@ async function createQuickEventWinnerCard(data){
   rounded(ctx,150,235,1100,330,28);ctx.fillStyle='rgba(20,10,38,.88)';ctx.fill();ctx.strokeStyle='rgba(255,217,120,.55)';ctx.stroke();
   glowText(ctx,data.winnerName,700,345,58,accent,'center');ctx.fillStyle='#bcb0d0';ctx.font='24px Arial';ctx.fillText('ПЕРВЫЙ ПРАВИЛЬНЫЙ ОТВЕТ',700,395);
   glowText(ctx,data.reward.label,700,490,48,'#ffd978','center');ctx.fillStyle='#bcb0d0';ctx.font='22px Arial';ctx.fillText(data.reward.details||'',700,535);
-  ctx.fillStyle=accent;ctx.font='700 22px Arial';ctx.fillText('Следующее событие появится случайно через 2–3 часа',700,660);
+  ctx.fillStyle=accent;ctx.font='700 22px Arial';ctx.fillText('Следующее событие появится случайно',700,660);
   return c.toBuffer('image/png');
 }
 module.exports={createQuickEventCard,createQuickEventWinnerCard};

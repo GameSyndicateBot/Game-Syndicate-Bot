@@ -113,7 +113,7 @@ async function createAchievementCategoryCard(category, achievements, unlockedIds
 
         ctx.fillStyle = unlocked ? '#C084FC' : '#6B7280';
         ctx.font = 'bold 30px Arial';
-        ctx.fillText(unlocked ? '●' : '■', 105, y + 52);
+        ctx.fillText(unlocked ? 'OK' : '--', 105, y + 52);
 
         ctx.fillStyle = unlocked ? '#FFFFFF' : '#9CA3AF';
         ctx.font = 'bold 25px Arial';

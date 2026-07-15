@@ -102,7 +102,7 @@ async function createAchievementCard(user, achievement) {
 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 32px Arial';
-    ctx.fillText('★ Новое достижение!', 250, 70);
+    ctx.fillText('НОВОЕ ДОСТИЖЕНИЕ!', 250, 70);
 
     ctx.fillStyle = style.main;
     ctx.font = 'bold 18px Arial';

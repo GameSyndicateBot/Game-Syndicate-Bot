@@ -8,7 +8,7 @@ const RARITY={common:colors.common,rare:colors.rare,epic:colors.epic,legendary:c
 async function createAuctionPanel(data={}){
  const canvas=createCanvas(WIDTH,HEIGHT),ctx=canvas.getContext('2d');
  drawBackground(ctx,WIDTH,HEIGHT,'AUCTION'); drawFrame(ctx,WIDTH,HEIGHT);
- drawHeader(ctx,'◇ АУКЦИОН КАРТОЧЕК',`GAME SYNDICATE • ЛОТ #${data.id??'—'}`,WIDTH);
+ drawHeader(ctx,'АУКЦИОН КАРТОЧЕК',`GAME SYNDICATE • ЛОТ #${data.id??'—'}`,WIDTH);
  const owned=data.owned, accent=owned?(RARITY[owned.rarity]||colors.gold):colors.muted;
  drawStatBox(ctx,90,185,430,120,'ЦЕНА ЛОТА',`${Number(data.price||0).toLocaleString('ru-RU')} DUST`,colors.gold);
  drawStatBox(ctx,585,185,430,120,'СТАТУС',data.statusLabel||'АКТИВЕН',data.statusColor||colors.green,{valueSize:34});

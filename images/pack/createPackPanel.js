@@ -22,7 +22,7 @@ async function createPackPanel(user, data = {}) {
 
     drawBackground(ctx, WIDTH, HEIGHT, 'PACK');
     drawFrame(ctx, WIDTH, HEIGHT);
-    drawHeader(ctx, '□ DAILY PACK', `GAME SYNDICATE • ${(user.gsDisplayName || user.username).toUpperCase()}`, WIDTH);
+    drawHeader(ctx, 'DAILY PACK', `GAME SYNDICATE • ${(user.gsDisplayName || user.username).toUpperCase()}`, WIDTH);
 
     drawPanel(ctx, 90, 205, 680, 560, {
         fill: 'rgba(0,0,0,0.42)',

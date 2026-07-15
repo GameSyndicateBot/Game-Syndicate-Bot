@@ -1,6 +1,6 @@
 const path = require('path');
 const { AttachmentBuilder } = require('discord.js');
-const { sendLog } = require('../utils/sendLog');
+const { sendLog, formatUser } = require('../utils/sendLog');
 
 module.exports = {
     name: 'guildMemberAdd',

@@ -8,7 +8,7 @@ const {
     AttachmentBuilder,
 } = require('discord.js');
 
-const { normalizeServerNickname } = require('../utils/displayName');
+const { normalizeServerNickname, getServerDisplayName } = require('../utils/displayName');
 const { db } = require('../database/db');
 const { getUserCards, getUserCardByInventoryId } = require('../utils/cardSystem');
 const { createTradePanel } = require('../images/trade/createTradePanel');
@@ -110,11 +110,11 @@ async function resolveTradeMemberName(client, guildId, userId) {
     try {
         const guild = await client.guilds.fetch(guildId);
         const member = await guild.members.fetch(userId);
-        return normalizeServerNickname(member.displayName || member.user.globalName || member.user.username || userId);
+        return getServerDisplayName(member, member.user);
     } catch (_) {
         try {
             const user = await client.users.fetch(userId);
-            return normalizeServerNickname(user.globalName || user.username || userId);
+            return getServerDisplayName(null, user);
         } catch (_) {
             return userId;
         }

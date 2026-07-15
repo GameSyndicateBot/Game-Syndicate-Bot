@@ -249,7 +249,13 @@ function buildDailyButtons(userId, hasReward) {
             .setLabel('Получить награды')
             .setEmoji('🎁')
             .setStyle(ButtonStyle.Success)
-            .setDisabled(!hasReward)
+            .setDisabled(!hasReward),
+
+        new ButtonBuilder()
+            .setCustomId(`daily_refresh_all_${userId}`)
+            .setLabel('Обновить')
+            .setEmoji('🔄')
+            .setStyle(ButtonStyle.Primary)
     );
 }
 
@@ -451,6 +457,44 @@ data: new SlashCommandBuilder()
             });
 
             return true;
+        }
+
+
+        if (action === 'refresh' && parts[2] === 'all') {
+            await interaction.deferUpdate();
+
+            const member = await interaction.guild.members
+                .fetch(interaction.user.id)
+                .catch(() => interaction.member);
+
+            // Добавляет время активной голосовой сессии перед пересчётом панели.
+            await checkpointCurrentMemberVoice(member);
+
+            const progress = getOrCreateDailyProgress(interaction.user.id);
+            const quests = getOrCreatePersonalQuests(interaction.user.id);
+
+            saveDailyHistory(
+                interaction.user.id,
+                progress,
+                quests,
+                0,
+                0,
+                Boolean(progress.claimed)
+            );
+
+            const reply = await buildDailyReply(interaction.user);
+            const gsBackRow = getGsBackRowFromMessage(interaction);
+            const components = [...(reply.components ?? [])];
+
+            if (gsBackRow) {
+                components.push(gsBackRow);
+            }
+
+            return interaction.editReply({
+                content: '# Ежедневные задания\n\nИнформация обновлена.',
+                files: reply.files,
+                components,
+            });
         }
 
         if (action === 'claim' && parts[2] === 'all') {

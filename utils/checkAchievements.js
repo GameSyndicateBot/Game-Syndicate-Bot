@@ -1,7 +1,10 @@
-const ACHIEVEMENT_DUST = { common: 5, rare: 10, epic: 20, legendary: 35, mythic: 60 };
-
 const { AttachmentBuilder } = require('discord.js');
 const achievements = require('../data/achievements.json');
+const {
+    calculateAchievementDust,
+    grantAchievementDust,
+    rebalancePreviouslyUnlockedAchievements,
+} = require('./achievementDustEconomy');
 
 const {
     db,
@@ -17,25 +20,18 @@ const { createAchievementCard } = require('../images/achievements/createAchievem
 const { grantAchievementRoles } = require('./grantAchievementRoles');
 const { grantCategoryRoles } = require('./grantCategoryRoles');
 
-db.exec(`
-    CREATE TABLE IF NOT EXISTS achievement_dust_rewards (
-        user_id TEXT NOT NULL,
-        achievement_id TEXT NOT NULL,
-        dust INTEGER NOT NULL,
-        claimed_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY(user_id, achievement_id)
-    );
-`);
+try {
+    const migration = rebalancePreviouslyUnlockedAchievements();
 
-function grantAchievementDust(userId, achievementId, rarity) {
-    const dust = ACHIEVEMENT_DUST[String(rarity || 'common').toLowerCase()] ?? 5;
-    const result = db.prepare(`
-        INSERT OR IGNORE INTO achievement_dust_rewards(user_id, achievement_id, dust)
-        VALUES (?, ?, ?)
-    `).run(userId, achievementId, dust);
-    if (!result.changes) return 0;
-    addCardDust(userId, dust);
-    return dust;
+    if (migration.applied) {
+        console.log(
+            `[Achievements] Dust v2: доплачено ${migration.dustDistributed} Dust ` +
+            `${migration.usersUpdated} участникам за ` +
+            `${migration.achievementsUpdated} достижений.`
+        );
+    }
+} catch (error) {
+    console.error('[Achievements] Ошибка перерасчёта Dust:', error);
 }
 
 function getServerDays(member) {
@@ -228,8 +224,12 @@ async function checkAchievements({ message, player, member }) {
                 (player.achievement_points ?? 0) + (achievement.points ?? 0);
 
             player = addXP(player, achievement.xp ?? 0);
-            const dustReward = ACHIEVEMENT_DUST[String(achievement.rarity ?? 'common').toLowerCase()] ?? 5;
-            addCardDust(player.user_id, dustReward);
+
+            const dustResult = grantAchievementDust(
+                player.user_id,
+                achievement
+            );
+            const dustReward = dustResult.granted;
 
             unlockedAchievements.push(achievement);
 

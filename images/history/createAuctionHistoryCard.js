@@ -35,7 +35,7 @@ async function createAuctionHistoryCard(data = {}) {
     const height = Math.max(900, TOP + entries.length * ROW_H + BOTTOM);
     const canvas = createCanvas(WIDTH, height), ctx = canvas.getContext('2d');
     drawBackground(ctx, WIDTH, height, 'AUCTION HISTORY'); drawFrame(ctx, WIDTH, height);
-    drawHeader(ctx, '◇ ИСТОРИЯ АУКЦИОНА', `GAME SYNDICATE • ${data.ownerName || 'УЧАСТНИК'}`, WIDTH);
+    drawHeader(ctx, 'ИСТОРИЯ АУКЦИОНА', `GAME SYNDICATE • ${data.ownerName || 'УЧАСТНИК'}`, WIDTH);
 
     if (!entries.length) {
         drawPanel(ctx, 100, 250, 1400, 380, { fill: 'rgba(0,0,0,0.42)', stroke: colors.gold, lineWidth: 3, radius: 30 });

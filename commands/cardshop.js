@@ -25,13 +25,24 @@ function buildShopButtons(user) {
     );
 }
 
+
+function buildGsHubRow(userId) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`gs_home_${userId}`)
+            .setLabel('Вернуться в GS Hub')
+            .setEmoji('🏠')
+            .setStyle(ButtonStyle.Secondary)
+    );
+}
+
 async function buildShopReply(user) {
     const balance = getCardDust(user.id);
     const panel = await createCardShopPanel(user, { balance, packs: PACK_TYPES });
     return {
         content: `# Card Shop\n${user}, выбери пак. Каждый пак содержит одну случайную карточку.`,
         files: [new AttachmentBuilder(panel, { name: 'card-shop.png' })],
-        components: [buildShopButtons(user)],
+        components: [buildShopButtons(user), buildGsHubRow(user.id)],
     };
 }
 
@@ -61,7 +72,7 @@ async function playBuyAnimation(interaction, user, packId) {
     return interaction.editReply({
         content: `Покупка успешна: **${result.drop.rarityName} ${result.drop.card.name}**. Остаток: **${result.balance} GS Dust**.`,
         files: [new AttachmentBuilder(finalPanel, { name: 'shop-result.png' })],
-        components: [buildShopButtons(user)],
+        components: [buildShopButtons(user), buildGsHubRow(user.id)],
     });
 }
 

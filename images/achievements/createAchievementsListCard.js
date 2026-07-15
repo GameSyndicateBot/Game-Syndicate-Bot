@@ -32,7 +32,7 @@ function drawAchievementRow(ctx, achievement, unlocked, x, y, w) {
 
     ctx.fillStyle = unlocked ? '#C084FC' : '#6B5B7A';
     ctx.font = 'bold 28px Arial';
-    ctx.fillText(unlocked ? '●' : '■', x + 22, y + 45);
+    ctx.fillText(unlocked ? 'OK' : '--', x + 22, y + 45);
 
     ctx.fillStyle = unlocked ? '#FFFFFF' : '#9CA3AF';
     ctx.font = 'bold 22px Arial';

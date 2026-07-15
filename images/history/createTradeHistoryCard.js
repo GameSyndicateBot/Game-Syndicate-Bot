@@ -1,4 +1,5 @@
 const path = require('path');
+const { sanitizeCanvasText } = require('../../utils/displayName');
 const { createCanvas, loadImage } = require('canvas');
 const colors = require('../ui/colors');
 const { drawBackground, drawFrame, drawHeader, drawPanel, drawTag, drawAutoText, roundRect } = require('../ui/draw');

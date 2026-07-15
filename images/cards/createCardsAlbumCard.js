@@ -188,7 +188,7 @@ function drawLockedCard(ctx, card, x, y, w, h) {
     ctx.fillStyle = '#6B7280';
     ctx.font = 'bold 42px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('■', x + w / 2, y + 58);
+    ctx.fillText('--', x + w / 2, y + 58);
 
     ctx.fillStyle = '#A1A1AA';
     ctx.font = 'bold 22px Arial';
@@ -328,8 +328,8 @@ async function createCardsAlbumCard(user, allCards, userCards, options = {}) {
     ctx.shadowBlur = 0;
 
     ctx.fillStyle = '#FFFFFF';
-    fitText(ctx, '▥ КОЛЛЕКЦИЯ GAME SYNDICATE', 680, 39);
-    ctx.fillText('▥ КОЛЛЕКЦИЯ GAME SYNDICATE', 90, 105);
+    fitText(ctx, 'КОЛЛЕКЦИЯ GAME SYNDICATE', 680, 39);
+    ctx.fillText('КОЛЛЕКЦИЯ GAME SYNDICATE', 90, 105);
 
     ctx.fillStyle = '#A855F7';
     fitText(ctx, `${(user.gsDisplayName || user.username).toUpperCase()} • BASE 2026 • ${filterNames[filter] ?? filter}`, 660, 24);

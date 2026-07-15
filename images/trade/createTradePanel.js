@@ -1,6 +1,7 @@
 const path = require('path');
 const { createCanvas, loadImage } = require('canvas');
 const colors = require('../ui/colors');
+const { sanitizeCanvasText } = require('../../utils/displayName');
 const { drawBackground, drawFrame, drawHeader, drawPanel, drawTag, drawAutoText, roundRect } = require('../ui/draw');
 
 const { installIconRenderer } = require('../ui/icons');
@@ -12,7 +13,7 @@ async function drawCard(ctx, owned, x, y, w, h, sideTitle, confirmed) {
     const accent = owned ? (RARITY[owned.rarity] || colors.purpleLight) : colors.muted;
     drawPanel(ctx, x, y, w, h, { fill: 'rgba(0,0,0,0.42)', stroke: accent, lineWidth: 3, radius: 28 });
     ctx.fillStyle = accent;
-    drawAutoText(ctx, sideTitle, x + 34, y + 52, w - 68, 26, { minSize: 18 });
+    drawAutoText(ctx, sanitizeCanvasText(sideTitle, 'Участник'), x + 34, y + 52, w - 68, 26, { minSize: 18 });
 
     const artX = x + 34, artY = y + 82, artW = 245, artH = 340;
     roundRect(ctx, artX, artY, artW, artH, 22);

@@ -9,6 +9,7 @@ const {
 
 const achievements = require('../data/achievements.json');
 const { db, getOrCreatePlayer } = require('../database/db');
+const { checkAchievementsForInteraction } = require('../utils/checkAchievements');
 const { createAchievementsOverviewCard } = require('../images/achievements/createAchievementsOverviewCard');
 const { createAchievementCategoryCard } = require('../images/achievements/createAchievementCategoryCard');
 
@@ -125,6 +126,7 @@ data: new SlashCommandBuilder()
 
     async execute(interaction) {
         getOrCreatePlayer(interaction.user);
+        await checkAchievementsForInteraction(interaction);
 
         const reply = await buildAchievementsReply(interaction.user);
         await interaction.reply(reply);

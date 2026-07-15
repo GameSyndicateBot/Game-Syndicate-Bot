@@ -16,38 +16,57 @@ const { createPackPanel } = require('../images/pack/createPackPanel');
 const { createPackOpeningPanel } = require('../images/pack/createPackOpeningPanel');
 const { createPackOpeningGif } = require('../images/pack/createPackOpeningGif');
 
-const OPEN_BUTTON_ID = 'pack_daily_open';
-const CANCEL_BUTTON_ID = 'pack_daily_cancel';
-
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function buildPackButtons(isReady = true) {
+function openButtonId(userId) {
+    return `pack_daily_open_${userId}`;
+}
+
+function cancelButtonId(userId) {
+    return `pack_daily_cancel_${userId}`;
+}
+
+function buildPackButtons(userId, isReady = true) {
     return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-            .setCustomId(OPEN_BUTTON_ID)
+            .setCustomId(openButtonId(userId))
             .setLabel('Открыть пак')
             .setEmoji('🎴')
             .setStyle(ButtonStyle.Primary)
             .setDisabled(!isReady),
 
         new ButtonBuilder()
-            .setCustomId(CANCEL_BUTTON_ID)
+            .setCustomId(cancelButtonId(userId))
             .setLabel('Отмена')
             .setStyle(ButtonStyle.Secondary)
-            .setDisabled(!isReady)
+            .setDisabled(!isReady),
+
+        new ButtonBuilder()
+            .setCustomId(`gs_home_${userId}`)
+            .setLabel('GS Hub')
+            .setEmoji('🏠')
+            .setStyle(ButtonStyle.Secondary)
     );
 }
 
 function buildResultButtons(userId) {
-    return new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`cards_back_${userId}_all_1`)
-            .setLabel('Открыть альбом')
-            .setEmoji('📖')
-            .setStyle(ButtonStyle.Primary)
-    );
+    return [
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`cards_back_${userId}_all_1`)
+                .setLabel('Открыть альбом')
+                .setEmoji('📖')
+                .setStyle(ButtonStyle.Primary),
+
+            new ButtonBuilder()
+                .setCustomId(`gs_home_${userId}`)
+                .setLabel('Вернуться в GS Hub')
+                .setEmoji('🏠')
+                .setStyle(ButtonStyle.Secondary)
+        ),
+    ];
 }
 
 async function buildPackReply(user) {
@@ -56,19 +75,15 @@ async function buildPackReply(user) {
 
     return {
         content: isReady
-            ? `# 🎁 Ежедневный пак готов`
-            : `# ❌ Ежедневный пак уже открыт`,
-        files: [new AttachmentBuilder(panel, { name: 'daily-pack.png' })],
-        components: [buildPackButtons(isReady)],
+            ? '# 🎁 Ежедневный пак готов'
+            : '# ❌ Ежедневный пак уже открыт',
+        files: [
+            new AttachmentBuilder(panel, {
+                name: 'daily-pack.png',
+            }),
+        ],
+        components: [buildPackButtons(user.id, isReady)],
     };
-}
-
-async function editPanel(interaction, content, panel, fileName) {
-    return interaction.editReply({
-        content,
-        files: [new AttachmentBuilder(panel, { name: fileName })],
-        components: [],
-    });
 }
 
 async function playPackOpening(interaction, user) {
@@ -79,22 +94,39 @@ async function playPackOpening(interaction, user) {
         return interaction.editReply(reply);
     }
 
-    const gif = await createPackOpeningGif(user, result.drop, 'DAILY PACK');
+    const gif = await createPackOpeningGif(
+        user,
+        result.drop,
+        'DAILY PACK'
+    );
 
     await interaction.editReply({
         content: '# 🎬 Открытие пака...',
-        files: [new AttachmentBuilder(gif, { name: 'pack-opening.gif' })],
+        files: [
+            new AttachmentBuilder(gif, {
+                name: 'pack-opening.gif',
+            }),
+        ],
         components: [],
     });
 
     await sleep(6200);
 
-    const finalPanel = await createPackOpeningPanel(user, 'result', result.drop, 'DAILY PACK');
+    const finalPanel = await createPackOpeningPanel(
+        user,
+        'result',
+        result.drop,
+        'DAILY PACK'
+    );
 
     return interaction.editReply({
-        content: `# 🎴 Карточка получена`,
-        files: [new AttachmentBuilder(finalPanel, { name: 'pack-result.png' })],
-        components: [buildResultButtons(user.id)],
+        content: '# 🎴 Карточка получена',
+        files: [
+            new AttachmentBuilder(finalPanel, {
+                name: 'pack-result.png',
+            }),
+        ],
+        components: buildResultButtons(user.id),
     });
 }
 
@@ -115,77 +147,80 @@ module.exports = {
         await interaction.deferReply();
         syncCardsCatalog();
 
-        if (interaction.options.getSubcommand() === 'daily') {
-            const reply = await buildPackReply(interaction.user);
-            await interaction.editReply(reply);
-
-            const message = await interaction.fetchReply();
-            const collector = message.createMessageComponentCollector({
-                time: 60_000,
-            });
-
-            collector.on('collect', async buttonInteraction => {
-                if (buttonInteraction.user.id !== interaction.user.id) {
-                    return buttonInteraction.reply({
-                        content: 'Этот пак открыт не для тебя.',
-                        ephemeral: true,
-                    });
-                }
-
-                if (buttonInteraction.customId === CANCEL_BUTTON_ID) {
-                    collector.stop('cancelled');
-                    await buttonInteraction.update({
-                        content: '❌ Открытие пака отменено.',
-                        files: [],
-                        components: [],
-                    });
-                    return;
-                }
-
-                if (buttonInteraction.customId === OPEN_BUTTON_ID) {
-                    collector.stop('opened');
-                    await buttonInteraction.deferUpdate();
-                    await playPackOpening(interaction, interaction.user);
-                }
-            });
-
-            collector.on('end', async (_, reason) => {
-                if (reason === 'opened' || reason === 'cancelled') return;
-
-                await interaction.editReply({
-                    content: '⌛ Время открытия пака истекло. Используй `/pack daily` ещё раз.',
-                    files: [],
-                    components: [],
-                }).catch(() => null);
-            });
-
-            return;
-        }
-
-        return interaction.editReply({
-            content: '❌ Неизвестная команда пака.',
-            files: [],
-            components: [],
-        });
-    },
-
-    async handleComponent(interaction) {
-        if (interaction.customId !== OPEN_BUTTON_ID && interaction.customId !== CANCEL_BUTTON_ID) {
-            return false;
-        }
-
-        if (interaction.customId === CANCEL_BUTTON_ID) {
-            await interaction.update({
-                content: '❌ Открытие пака отменено.',
+        if (interaction.options.getSubcommand() !== 'daily') {
+            return interaction.editReply({
+                content: '❌ Неизвестная команда пака.',
                 files: [],
                 components: [],
             });
+        }
 
+        const reply = await buildPackReply(interaction.user);
+        return interaction.editReply(reply);
+    },
+
+    async handleComponent(interaction) {
+        if (!interaction.customId.startsWith('pack_daily_')) {
+            return false;
+        }
+
+        const parts = interaction.customId.split('_');
+        const action = parts[2];
+        const ownerId = parts[3];
+
+        if (!ownerId || interaction.user.id !== ownerId) {
+            await interaction.reply({
+                content: 'Этот пак открыт не для тебя.',
+                ephemeral: true,
+            });
             return true;
         }
 
+        if (action === 'cancel') {
+            await interaction.update({
+                content: '❌ Открытие пака отменено.',
+                files: [],
+                components: [
+                    new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`gs_home_${ownerId}`)
+                            .setLabel('Вернуться в GS Hub')
+                            .setEmoji('🏠')
+                            .setStyle(ButtonStyle.Secondary)
+                    ),
+                ],
+            });
+            return true;
+        }
+
+        if (action !== 'open') {
+            return false;
+        }
+
+        // Ровно одно подтверждение interaction.
+        // После deferUpdate используются только editReply.
         await interaction.deferUpdate();
-        await playPackOpening(interaction, interaction.user);
+
+        try {
+            await playPackOpening(interaction, interaction.user);
+        } catch (error) {
+            console.error('Daily pack opening failed:', error);
+
+            await interaction.editReply({
+                content:
+                    '❌ Не удалось открыть ежедневный пак. Попробуй ещё раз.',
+                files: [],
+                components: [
+                    new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`gs_home_${ownerId}`)
+                            .setLabel('Вернуться в GS Hub')
+                            .setEmoji('🏠')
+                            .setStyle(ButtonStyle.Secondary)
+                    ),
+                ],
+            }).catch(() => null);
+        }
 
         return true;
     },
