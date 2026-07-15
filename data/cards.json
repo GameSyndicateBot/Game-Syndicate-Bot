@@ -592,7 +592,7 @@
   {
     "id": 28,
     "code": "028",
-    "name": "Групповушка в пылесосе",
+    "name": "Сварщик и NonF — Ебаденжер",
     "type": "meme",
     "role": "Meme Collection",
     "series": "MEMES2026",
@@ -610,7 +610,7 @@
   {
     "id": 29,
     "code": "029",
-    "name": "KRISSA мимик — видеоверсия",
+    "name": "Всасывающая групповушка",
     "type": "meme",
     "role": "Meme Collection",
     "series": "MEMES2026",
@@ -627,6 +627,132 @@
   },
   {
     "id": 30,
+    "code": "030",
+    "name": "Бунт ради спама",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/030_holographic.png"
+    },
+    "image": "assets/cards/holographic/030_holographic.png"
+  },
+  {
+    "id": 31,
+    "code": "031",
+    "name": "Одно тело — два сознания",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/031_holographic.png"
+    },
+    "image": "assets/cards/holographic/031_holographic.png"
+  },
+  {
+    "id": 32,
+    "code": "032",
+    "name": "Rafael — хозяин мусорки",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/032_holographic.jpg"
+    },
+    "image": "assets/cards/holographic/032_holographic.jpg"
+  },
+  {
+    "id": 33,
+    "code": "033",
+    "name": "Лудомания",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/033_holographic.png"
+    },
+    "image": "assets/cards/holographic/033_holographic.png"
+  },
+  {
+    "id": 34,
+    "code": "034",
+    "name": "Дружба? Да. Подарки? Тоже да!",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/034_holographic.png"
+    },
+    "image": "assets/cards/holographic/034_holographic.png"
+  },
+  {
+    "id": 35,
+    "code": "035",
+    "name": "Дружная команда",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/035_holographic.png"
+    },
+    "image": "assets/cards/holographic/035_holographic.png"
+  },
+  {
+    "id": 36,
+    "code": "036",
+    "name": "Вместе мы сильнее!",
+    "type": "meme",
+    "role": "Meme Collection",
+    "series": "MEMES2026",
+    "collection": "holographic",
+    "base_rarity": "holographic",
+    "description": "Мем-карта сообщества Game Syndicate.",
+    "drop_rarities": [
+      "holographic"
+    ],
+    "images": {
+      "holographic": "assets/cards/holographic/036_holographic.png"
+    },
+    "image": "assets/cards/holographic/036_holographic.png"
+  },
+  {
+    "id": 1001,
     "code": "T-001",
     "name": "Твой выбор. Твоя награда.",
     "type": "reward",
