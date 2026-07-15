@@ -17,7 +17,6 @@ const LOW_ONLINE_RETRY_MIN_MS = 10 * 60 * 1000;
 const LOW_ONLINE_RETRY_MAX_MS = 15 * 60 * 1000;
 const MIN_ONLINE_MEMBERS = 4;
 const MAX_ATTEMPTS = 3;
-const MAX_DAILY_WINS = 3;
 const ACTIVE_TTL_MS = 45 * 60 * 1000;
 
 const WORDS = ['коллекция','синдикат','карточка','легендарный','достижение','аукцион','профиль','награда','сокровище','голографик','мифический','активность','сообщество','испытание','победитель'];
@@ -521,7 +520,7 @@ async function handleQuickEventAnswer(message){
   if(!message.guild||message.author.bot||message.channel.id!==CHANNEL_ID)return false;initTables();
   const round=db.prepare("SELECT * FROM quick_event_rounds WHERE channel_id=? AND status='active' ORDER BY id DESC LIMIT 1").get(CHANNEL_ID);if(!round)return false;
   if(Date.now()-(round.activated_at||round.created_at)>ACTIVE_TTL_MS)return false;
-  const today=new Date().toISOString().slice(0,10);const dayStart=Date.parse(today+'T00:00:00Z');const wins=db.prepare("SELECT COUNT(*) count FROM quick_event_rounds WHERE winner_id=? AND solved_at>=?").get(message.author.id,dayStart)?.count??0;if(wins>=MAX_DAILY_WINS)return true;
+  
   const answer=normalize(message.content);if(!answer)return false;markParticipation(round.id,message.author.id);const attempts=db.prepare('SELECT COUNT(*) count FROM quick_event_attempts WHERE round_id=? AND user_id=?').get(round.id,message.author.id)?.count??0;if(attempts>=MAX_ATTEMPTS)return true;
   const inserted=db.prepare('INSERT OR IGNORE INTO quick_event_attempts(round_id,user_id,normalized_answer,created_at) VALUES(?,?,?,?)').run(round.id,message.author.id,answer,Date.now());if(!inserted.changes)return true;
   const accepted=JSON.parse(round.answers_json).map(normalize);if(!accepted.includes(answer))return true;
