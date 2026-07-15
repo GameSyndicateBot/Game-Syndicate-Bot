@@ -1,15 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const { AttachmentBuilder } = require('discord.js');
-const { db, getOrCreatePlayer, updatePlayer, addCardDust } = require('../database/db');
-const { addXP } = require('../utils/levelSystem');
+const { db, getOrCreatePlayer, addCardDust } = require('../database/db');
 const { openRandomCard, PACK_TYPES } = require('../utils/cardSystem');
 const { createQuickEventCard, createQuickEventWinnerCard } = require('../images/quickEvent/createQuickEventCard');
 const { checkAchievements } = require('../utils/checkAchievements');
 
 const CHANNEL_ID = '1526504061870932049';
-const MIN_INTERVAL_MS = 2 * 60 * 60 * 1000;
-const MAX_INTERVAL_MS = 3 * 60 * 60 * 1000;
+const MIN_INTERVAL_MS = 60 * 60 * 1000;
+const MAX_INTERVAL_MS = 90 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
 const ACTIVE_TTL_MS = 45 * 60 * 1000;
 
@@ -275,18 +274,15 @@ function pickEventTier(){
 function baseReward(diff){
   const r=Math.random()*100;
   if(diff==='easy'){
-    if(r<80)return{type:'dust',amount:30,label:'30 GS Dust'};
-    if(r<98)return{type:'xp',amount:75,label:'75 XP'};
+    if(r<92)return{type:'dust',amount:30,label:'30 GS Dust'};
     return{type:'base_pack',amount:1,label:'Base Pack'};
   }
   if(diff==='medium'){
-    if(r<75)return{type:'dust',amount:60,label:'60 GS Dust'};
-    if(r<96)return{type:'xp',amount:150,label:'150 XP'};
+    if(r<88)return{type:'dust',amount:60,label:'60 GS Dust'};
     return{type:'base_pack',amount:1,label:'Base Pack'};
   }
-  if(r<68)return{type:'dust',amount:100,label:'100 GS Dust'};
-  if(r<92)return{type:'xp',amount:250,label:'250 XP'};
-  if(r<99)return{type:'base_pack',amount:1,label:'Base Pack'};
+  if(r<80)return{type:'dust',amount:100,label:'100 GS Dust'};
+  if(r<97)return{type:'base_pack',amount:1,label:'Base Pack'};
   return{type:'premium_pack',amount:1,label:'Premium Pack'};
 }
 function pickReward(diff,tier='normal'){
@@ -298,9 +294,9 @@ function pickReward(diff,tier='normal'){
   }
   const reward=baseReward(diff);
   if(tier==='golden'){
-    if(reward.type==='dust'||reward.type==='xp'){
+    if(reward.type==='dust'){
       reward.amount*=2;
-      reward.label=`${reward.amount} ${reward.type==='dust'?'GS Dust':'XP'}`;
+      reward.label=`${reward.amount} GS Dust`;
     }else if(reward.type==='base_pack'){
       reward.type='premium_pack';
       reward.label='Premium Pack';
@@ -311,7 +307,6 @@ function pickReward(diff,tier='normal'){
 function grantReward(user,reward){
   getOrCreatePlayer(user);
   if(reward.type==='dust'){const balance=addCardDust(user.id,reward.amount);return{...reward,details:`Баланс: ${balance} Dust`};}
-  if(reward.type==='xp'){const player=getOrCreatePlayer(user);const updated=addXP(player,reward.amount);updatePlayer(updated);return{...reward,details:`Уровень: ${updated.level}`};}
   const packId=reward.type==='premium_pack'?'premium':'base',pack=PACK_TYPES[packId]??PACK_TYPES.base;const drop=openRandomCard(user.id,{source:`quick_event_${packId}`,allowTreasure:true,rarityChances:pack.chances});
   return{...reward,details:`${drop.rarityName}: ${drop.card.name} #${String(drop.copyNumber).padStart(4,'0')}`};
 }
@@ -358,6 +353,6 @@ function startQuickEventScheduler(client){
   const schedule=(delay=randomDelay())=>{if(timer)clearTimeout(timer);timer=setTimeout(async()=>{if(posting)return schedule();posting=true;try{await postQuickEvent(client);}catch(e){console.error('[QuickEvent]',e);}finally{posting=false;schedule();}},Math.max(1000,delay));};
   const last=db.prepare('SELECT created_at FROM quick_event_rounds ORDER BY id DESC LIMIT 1').get();const age=last?Date.now()-Number(last.created_at):null;
   if(!last||age>=MAX_INTERVAL_MS){setTimeout(async()=>{if(posting)return;posting=true;try{await postQuickEvent(client);}catch(e){console.error('[QuickEvent]',e);}finally{posting=false;schedule();}},2500);}else{const min=Math.max(0,MIN_INTERVAL_MS-age),max=Math.max(min,MAX_INTERVAL_MS-age);schedule(min+Math.floor(Math.random()*(max-min+1)));}
-  console.log('[QuickEvent] Запущено: первое событие сразу, затем случайно через 2–3 часа');
+  console.log('[QuickEvent] Запущено: первое событие сразу, затем случайно через 1–1.5 часа');
 }
 module.exports={startQuickEventScheduler,handleQuickEventAnswer,postQuickEvent};
