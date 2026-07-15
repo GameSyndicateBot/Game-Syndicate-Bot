@@ -19,12 +19,35 @@ if (configuredDatabasePath !== bundledDatabasePath && !fs.existsSync(configuredD
 }
 
 const db = new Database(configuredDatabasePath);
-db.pragma('journal_mode = WAL');
-db.pragma('busy_timeout = 5000');
+
+// Bothost может жёстко перезапускать контейнер и не сохранять WAL-файл.
+// Поэтому используем обычный журнал DELETE: изменения сразу фиксируются
+// в основном database.sqlite, который лежит в /app/shared.
+try {
+    const currentJournalMode = String(
+        db.pragma('journal_mode', { simple: true }) ?? ''
+    ).toLowerCase();
+
+    if (currentJournalMode === 'wal') {
+        try {
+            db.pragma('wal_checkpoint(TRUNCATE)');
+        } catch (error) {
+            console.warn('⚠️ Не удалось выполнить WAL checkpoint:', error.message);
+        }
+    }
+
+    db.pragma('journal_mode = DELETE');
+    db.pragma('synchronous = FULL');
+    db.pragma('busy_timeout = 5000');
+} catch (error) {
+    console.error('❌ Ошибка настройки SQLite:', error);
+    throw error;
+}
 
 const databasePath = configuredDatabasePath;
 
 console.log('📁 Database path:', configuredDatabasePath);
+console.log('🧾 SQLite journal mode:', db.pragma('journal_mode', { simple: true }));
 console.log(
     '📦 DB exists:',
     fs.existsSync(configuredDatabasePath),
