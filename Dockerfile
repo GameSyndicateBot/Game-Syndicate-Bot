@@ -30,14 +30,19 @@ RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY . .
 
+Проверяем обязательные файлы.
+Если Bothost их не загрузил, сборка остановится здесь.
 RUN echo "=== Проверка папки /app/data ===" \
     && ls -la /app \
     && ls -la /app/data \
     && test -f /app/data/achievements.json \
     && test -f /app/data/cards.json
 
-RUN mkdir -p /data/backups \
-    && chown -R node:node /app /data
+Создаём каталоги для базы и резервных копий.
+Выдаём пользователю node права на чтение и запись.
+RUN mkdir -p /app/database/backups /data/backups \
+    && chown -R node:node /app /data \
+    && chmod -R 775 /app/database /data
 
 USER node
 
