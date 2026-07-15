@@ -1,6 +1,28 @@
+const fs = require('fs');
+const path = require('path');
 const Database = require('better-sqlite3');
 
-const db = new Database('./database/database.sqlite');
+const bundledDatabasePath = path.join(__dirname, 'database.sqlite');
+const configuredDatabasePath = process.env.DATABASE_PATH
+    ? path.resolve(process.env.DATABASE_PATH)
+    : bundledDatabasePath;
+
+fs.mkdirSync(path.dirname(configuredDatabasePath), { recursive: true });
+
+// При первом запуске с постоянным диском переносим текущую базу проекта,
+// чтобы не потерять уже накопленный прогресс.
+if (configuredDatabasePath !== bundledDatabasePath && !fs.existsSync(configuredDatabasePath)) {
+    if (fs.existsSync(bundledDatabasePath)) {
+        fs.copyFileSync(bundledDatabasePath, configuredDatabasePath);
+        console.log(`✅ База данных скопирована на постоянный диск: ${configuredDatabasePath}`);
+    }
+}
+
+const db = new Database(configuredDatabasePath);
+db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
+
+const databasePath = configuredDatabasePath;
 
 db.prepare(`
     CREATE TABLE IF NOT EXISTS players (
@@ -37,6 +59,16 @@ db.prepare(`
         achievement_id TEXT NOT NULL,
         unlocked_at TEXT DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY(user_id, achievement_id)
+    )
+`).run();
+
+
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS player_level_notifications (
+        user_id TEXT NOT NULL,
+        level INTEGER NOT NULL,
+        notified_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, level)
     )
 `).run();
 
@@ -525,6 +557,17 @@ function unlockAchievement(userId, achievementId) {
     return unlocked;
 }
 
+
+function claimLevelNotification(userId, level) {
+    const safeLevel = Math.max(1, Number(level) || 1);
+    const result = db.prepare(`
+        INSERT OR IGNORE INTO player_level_notifications (user_id, level)
+        VALUES (?, ?)
+    `).run(String(userId), safeLevel);
+
+    return result.changes > 0;
+}
+
 function getCardDust(userId) {
     const row = db.prepare(`
         SELECT card_dust
@@ -573,6 +616,7 @@ function removeCardDust(userId, amount) {
 
 function resetPlayer(userId) {
     db.prepare(`DELETE FROM player_achievements WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM player_level_notifications WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM daily_progress WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM daily_player_quests WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM daily_history WHERE user_id = ?`).run(userId);
@@ -590,6 +634,7 @@ module.exports = {
     getOrCreatePlayer,
     hasAchievement,
     unlockAchievement,
+    claimLevelNotification,
     resetPlayer,
     updatePlayer,
     getAchievementCount,
@@ -607,4 +652,5 @@ module.exports = {
     updateStreak,
     getUserStreak,
     getUserStreaks,
+    databasePath,
 };

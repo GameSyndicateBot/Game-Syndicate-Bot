@@ -1,13 +1,14 @@
 const fs = require('fs');
 const path = require('path');
+const { databasePath } = require('../database/db');
 
 function backupDatabase() {
-    const source = path.join(__dirname, '..', 'database', 'database.sqlite');
-    const backupDir = path.join(__dirname, '..', 'backups');
+    const source = databasePath;
+    const backupDir = process.env.BACKUP_DIR
+        ? path.resolve(process.env.BACKUP_DIR)
+        : path.join(__dirname, '..', 'backups');
 
-    if (!fs.existsSync(backupDir)) {
-        fs.mkdirSync(backupDir);
-    }
+    fs.mkdirSync(backupDir, { recursive: true });
 
     const now = new Date();
     const fileName = `database-backup-${now.toISOString().replace(/[:.]/g, '-')}.sqlite`;

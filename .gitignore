@@ -1,6 +1,11 @@
 node_modules/
 .env
-database.sqlite
+.env.*
+!.env.example
+npm-debug.log*
+*.log
 backups/
-output/
-output-reference/
+*.zip
+*.part-*
+.DS_Store
+Thumbs.db
