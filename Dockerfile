@@ -37,9 +37,7 @@ RUN echo "=== Проверка папки /app/data ===" \
     && test -f /app/data/cards.json
 
 RUN mkdir -p /app/database/backups /data/backups \
-    && chown -R node:node /app /data \
-    && chmod -R 775 /app/database /data
-
-USER node
+    && touch /app/database/database.sqlite \
+    && chmod -R 777 /app/database /data
 
 CMD ["node", "index.js"]
