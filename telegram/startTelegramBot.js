@@ -6,6 +6,7 @@ const {
     resolveStartTimestamp,
 } = require('./crossGatherings');
 const { getSetting, setSetting } = require('./ecosystemDb');
+const { setGameLobbyRuntime } = require('../systems/gameLobbySystem');
 
 const drafts = new Map();
 let pollingStarted = false;
@@ -396,6 +397,7 @@ async function startTelegramBot(client) {
     const api = createTelegramApi(token);
     const botInfo = await api('getMe');
     setRuntime(api, client);
+    setGameLobbyRuntime(api, client);
 
     await api('deleteWebhook', { drop_pending_updates: false }).catch(() => null);
     await api('setMyCommands', {

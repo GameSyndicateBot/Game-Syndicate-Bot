@@ -55,7 +55,20 @@ client.on('interactionCreate', async interaction => {
         if (interaction.user) {
             attachServerDisplayName(interaction.user, interaction.member);
         }
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId === 'game_create_modal') {
+                const command = client.commands.get('game');
+                if (command?.handleModal) return await command.handleModal(interaction);
+            }
+            return;
+        }
+
         if (interaction.isStringSelectMenu() || interaction.isButton()) {
+
+            if (interaction.customId.startsWith('game_copy:')) {
+                const { handleGameLobbyButton } = require('./systems/gameLobbySystem');
+                return await handleGameLobbyButton(interaction);
+            }
 
             if (interaction.customId.startsWith('xg_')) {
                 const { handleDiscord } = require('./telegram/crossGatherings');

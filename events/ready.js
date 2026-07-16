@@ -38,6 +38,9 @@ module.exports = {
         startLuckyDayScheduler(client);
         startAutomaticBackups(client);
 
+        const { setGameLobbyRuntime } = require('../systems/gameLobbySystem');
+        setGameLobbyRuntime(null, client);
+
         console.log('✅ Участники синхронизированы, голосовые сессии восстановлены');
     },
 };
