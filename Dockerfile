@@ -7,8 +7,6 @@ ENV NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000
 ENV NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
 ENV NPM_CONFIG_FETCH_TIMEOUT=300000
 
-# Постоянное хранилище Bothost.
-# Значения из панели переменных окружения смогут переопределить эти пути.
 ENV DATABASE_PATH=/app/shared/database.sqlite
 ENV BACKUP_DIR=/app/shared/backups
 
@@ -30,13 +28,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY package.json package-lock.json .npmrc ./
-
 RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY . .
 
-# Сохраняем обязательные JSON-файлы вне /app/data,
-# потому что Bothost может перекрывать эту папку при запуске.
+# Жёсткая проверка, что в Docker-образ попала именно новая простая
+# система бэкапов. Если Bothost соберёт старый файл, сборка остановится.
+RUN test -f /app/services/automaticBackups.js \
+    && grep -q "SIMPLE_BACKUP_SYSTEM_V2 loaded" /app/services/automaticBackups.js \
+    && ! grep -q "installCriticalBackupTracking" /app/services/automaticBackups.js \
+    && echo "✅ Verified SIMPLE_BACKUP_SYSTEM_V2 during build" \
+    && sha256sum /app/services/automaticBackups.js
+
 RUN mkdir -p /opt/gs-data \
     && cp /app/data/achievements.json /opt/gs-data/achievements.json \
     && cp /app/data/cards.json /opt/gs-data/cards.json \
@@ -44,11 +47,4 @@ RUN mkdir -p /opt/gs-data \
     && test -f /opt/gs-data/cards.json \
     && chmod -R 755 /opt/gs-data
 
-# На старте:
-# 1. восстанавливаем JSON-файлы;
-# 2. создаём папки постоянного хранилища;
-# 3. запускаем бота.
-#
-# database/db.js сам скопирует старую /app/database/database.sqlite
-# в /app/shared/database.sqlite, если постоянной базы ещё нет.
-CMD ["sh", "-c", "mkdir -p /app/data /app/shared/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/shared /app/data && echo '✅ Data-файлы восстановлены' && echo \"📁 DATABASE_PATH=$DATABASE_PATH\" && echo \"📁 BACKUP_DIR=$BACKUP_DIR\" && ls -la /app/shared && node scripts/restoreDatabaseFromDiscord.js && exec node index.js"]
+CMD ["sh", "-c", "mkdir -p /app/data /app/shared/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/shared /app/data && echo '✅ Data-файлы восстановлены' && echo \"📁 DATABASE_PATH=$DATABASE_PATH\" && echo \"📁 BACKUP_DIR=$BACKUP_DIR\" && echo '=== BACKUP SERVICE CHECK ===' && grep 'SIMPLE_BACKUP_SYSTEM_V2 loaded' /app/services/automaticBackups.js && ! grep -q 'installCriticalBackupTracking' /app/services/automaticBackups.js && sha256sum /app/services/automaticBackups.js && ls -la /app/shared && node scripts/restoreDatabaseFromDiscord.js && exec node index.js"]
