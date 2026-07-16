@@ -24,9 +24,11 @@ module.exports = {
         ),
 
     async execute(interaction) {
-        const subcommand = interaction.options.getSubcommand();
+        // false = не выбрасывать ошибку, если Discord ещё хранит
+        // старую версию команды /backup без подкоманды create.
+        const subcommand = interaction.options.getSubcommand(false);
 
-        if (subcommand !== 'create') {
+        if (subcommand && subcommand !== 'create') {
             return interaction.reply({
                 content: 'Неизвестная подкоманда.',
                 flags: MessageFlags.Ephemeral,
