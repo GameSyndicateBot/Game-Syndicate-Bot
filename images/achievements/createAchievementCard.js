@@ -129,8 +129,10 @@ async function createAchievementCard(user, achievement) {
     ctx.fillText(`+${achievement.dustReward || 0} Dust`, 510, 225);
 
     ctx.fillStyle = '#A78BFA';
-    ctx.font = '18px Arial';
-    ctx.fillText('Game Syndicate • Система достижений', 665, 225);
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText('GAME SYNDICATE • ДОСТИЖЕНИЯ', 850, 225);
+    ctx.textAlign = 'left';
 
     return canvas.toBuffer('image/png');
 }

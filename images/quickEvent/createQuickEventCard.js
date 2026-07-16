@@ -11,6 +11,9 @@ const TYPE_META = {
   rarity: { title: 'УГАДАЙ РЕДКОСТЬ КАРТЫ', accent: '#ff6f7f' },
   avatar: { title: 'УГАДАЙ УЧАСТНИКА', accent: '#8ce66b' },
   reaction: { title: 'ТЕСТ НА РЕАКЦИЮ', accent: '#ffd15e' },
+  treasure_chest: { title: 'ТАИНСТВЕННЫЙ СУНДУК', accent: '#43e38d' },
+  lucky_roll: { title: 'LUCKY ROLL', accent: '#63f3ff' },
+  world_boss: { title: 'МИРОВОЙ БОСС', accent: '#ff5d73' },
 };
 
 function rounded(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
@@ -65,10 +68,10 @@ async function createQuickEventCard(event, phase='active'){
     if(event.options?.length){ctx.font='600 30px Arial';ctx.fillStyle='#cbbbe0';ctx.fillText(event.options.join('    •    '),700,520);}
   }
   ctx.textAlign='left';ctx.fillStyle='#bcb0d0';ctx.font='24px Arial';
-  const footer=phase==='show'?'Запоминайте — изображение исчезнет через несколько секунд':phase==='ready'?'Не отвечайте до сигнала':event.type==='reaction'?'Первый, кто напишет «жми», побеждает':'Первый правильный ответ получает награду • до 3 уникальных попыток';
+  const footer=phase==='show'?'Запоминайте — изображение исчезнет через несколько секунд':phase==='ready'?'Не отвечайте до сигнала':event.type==='reaction'?'Первый, кто напишет «жми», побеждает':event.type==='treasure_chest'?'Первый нажавший забирает награду':event.type==='lucky_roll'?'Победитель выбирается случайно среди активных участников':event.type==='world_boss'?'Атакуйте вместе • одна атака в минуту':'Первый правильный ответ получает награду • до 3 уникальных попыток';
   ctx.fillText(footer,85,640);
   ctx.fillStyle=accent;ctx.font='700 23px Arial';
-  const rewardHint=tier==='jackpot'?'JACKPOT: 300 DUST • BASE PACK • PREMIUM PACK':tier==='golden'?'GOLDEN: УДВОЕННЫЕ DUST/XP • УЛУЧШЕННЫЙ ПАК':'НАГРАДА: DUST • XP • РЕДКИЙ ШАНС НА ПАК';
+  const rewardHint=tier==='jackpot'?'JACKPOT: DUST • BASE PACK • PREMIUM PACK':tier==='golden'?'GOLDEN: ПОВЫШЕННЫЙ DUST • УЛУЧШЕННЫЙ ПАК':'НАГРАДА: GS DUST ИЛИ ПАК';
   ctx.fillText(rewardHint,85,685);
   return c.toBuffer('image/png');
 }

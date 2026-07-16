@@ -49,7 +49,11 @@ const COLORS = [
   {name:'жёлтый',hex:'#ffd75e'},{name:'фиолетовый',hex:'#b879ff'},{name:'оранжевый',hex:'#ff9b52'},
 ];
 const TYPE_WEIGHTS = [
-  ['unscramble',18],['math',16],['typing',14],['finish',12],['odd',10],['color',9],['memory',8],['reaction',6],['rarity',4],['avatar',3],
+  ['unscramble',18],['math',16],['typing',14],['finish',12],
+  ['odd',10],['color',9],['memory',8],['reaction',6],
+  ['rarity',4],['avatar',3],
+  // Новые события дополняют существующие мини-игры.
+  ['treasure_chest',7],['lucky_roll',5],['world_boss',2],
 ];
 
 function initTables(){
@@ -137,6 +141,16 @@ function initTables(){
       next_event_at INTEGER,
       updated_at INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS quick_event_boss_attacks (
+      round_id INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
+      damage INTEGER NOT NULL DEFAULT 0,
+      attacks INTEGER NOT NULL DEFAULT 0,
+      last_attack_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(round_id,user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_quick_event_boss_round
+      ON quick_event_boss_attacks(round_id);
     INSERT OR IGNORE INTO quick_event_scheduler_state(id,next_event_at,updated_at)
     VALUES(1,NULL,0);
   `);
@@ -330,6 +344,24 @@ async function buildEvent(client,type,diff){
   if(type==='reaction')return {prompt:'Напиши «жми» после сигнала',answers:['жми']};
   if(type==='rarity')return rarityMedia();
   if(type==='avatar')return await avatarEvent(client) || {prompt:'Напиши Game Syndicate без ошибок',answers:['game syndicate']};
+  if(type==='treasure_chest')return {
+    prompt:'Таинственный сундук появился! Первый, кто нажмёт кнопку, заберёт награду.',
+    answers:[],
+  };
+  if(type==='lucky_roll')return {
+    prompt:'Система выбирает случайного активного участника.',
+    answers:[],
+  };
+  if(type==='world_boss'){
+    const maxHp = diff === 'hard' ? 1800 : diff === 'medium' ? 1400 : 1000;
+    return {
+      prompt:'Мировой босс вторгся на сервер. Атакуйте вместе!',
+      answers:[],
+      bossName:pick(['Тёмный Страж','Пожиратель Пустоты','Архонт Хаоса','Кибер-Титан']),
+      maxHp,
+      hp:maxHp,
+    };
+  }
   return mathEvent(diff);
 }
 
@@ -401,6 +433,398 @@ function grantReward(user,reward,roundId){
   }
   return{...reward,packReward:packDetails,details:`Баланс: ${balance} Dust`};
 }
+
+function pickSpecialReward(kind = 'chest') {
+  const roll = Math.random() * 100;
+
+  if (kind === 'boss_mvp') {
+    if (roll < 10) return { type:'pack', packType:'elite', amount:1, label:'Elite Pack' };
+    if (roll < 55) return { type:'pack', packType:'premium', amount:1, label:'Premium Pack' };
+    return { type:'pack', packType:'base', amount:1, label:'Base Pack' };
+  }
+
+  if (kind === 'lucky') {
+    if (roll < 55) return { type:'dust', amount:randomInt(120,300), label:null };
+    if (roll < 92) return { type:'pack', packType:'base', amount:1, label:'Base Pack' };
+    return { type:'pack', packType:'premium', amount:1, label:'Premium Pack' };
+  }
+
+  if (roll < 50) return { type:'dust', amount:randomInt(80,250), label:null };
+  if (roll < 87) return { type:'pack', packType:'base', amount:1, label:'Base Pack' };
+  if (roll < 98) return { type:'pack', packType:'premium', amount:1, label:'Premium Pack' };
+  return { type:'pack', packType:'elite', amount:1, label:'Elite Pack' };
+}
+
+function grantSpecialReward(user, reward, roundId) {
+  getOrCreatePlayer(user);
+
+  if (reward.type === 'dust') {
+    const balance = addCardDust(user.id, reward.amount);
+    return {
+      ...reward,
+      label: `${reward.amount} GS Dust`,
+      details: `Баланс: ${balance} Dust`,
+    };
+  }
+
+  addPack(user.id, reward.packType, reward.amount || 1);
+  db.prepare(`
+    INSERT INTO quick_event_pack_drops(
+      round_id,user_id,pack_type,amount,created_at
+    ) VALUES(?,?,?,?,?)
+  `).run(
+    roundId,
+    String(user.id),
+    reward.packType,
+    reward.amount || 1,
+    Date.now()
+  );
+
+  return {
+    ...reward,
+    label: reward.label || `${reward.packType} Pack`,
+    details: 'Пак добавлен в инвентарь',
+  };
+}
+
+function specialEventButton(roundId, type) {
+  const config = {
+    treasure_chest: {
+      customId:`quickevent_chest_${roundId}`,
+      label:'Открыть сундук',
+      emoji:'🎁',
+      style:ButtonStyle.Success,
+    },
+    world_boss: {
+      customId:`quickevent_boss_${roundId}`,
+      label:'Атаковать босса',
+      emoji:'⚔️',
+      style:ButtonStyle.Danger,
+    },
+  }[type];
+
+  if (!config) return null;
+
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(config.customId)
+      .setLabel(config.label)
+      .setEmoji(config.emoji)
+      .setStyle(config.style)
+  );
+}
+
+async function getLuckyRollCandidates(channel) {
+  const guild = channel.guild;
+  const members = await guild.members.fetch().catch(() => guild.members.cache);
+  const activeSince = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentIds = new Set(
+    db.prepare(`
+      SELECT DISTINCT user_id
+      FROM quick_event_participation
+      WHERE created_at >= ?
+    `).all(activeSince).map(row => String(row.user_id))
+  );
+
+  let pool = [...members.values()].filter(member =>
+    !member.user.bot &&
+    recentIds.has(String(member.id))
+  );
+
+  if (!pool.length) {
+    pool = [...members.values()].filter(member =>
+      !member.user.bot &&
+      member.presence?.status &&
+      member.presence.status !== 'offline'
+    );
+  }
+
+  if (!pool.length) {
+    pool = [...members.values()].filter(member => !member.user.bot);
+  }
+
+  return pool;
+}
+
+async function resolveLuckyRoll(channel, roundId, event) {
+  const candidates = await getLuckyRollCandidates(channel);
+  if (!candidates.length) {
+    db.prepare(`
+      UPDATE quick_event_rounds SET status='expired'
+      WHERE id=? AND status IN ('pending','active')
+    `).run(roundId);
+    await channel.send('🎲 Lucky Roll отменён: не найдено подходящих участников.');
+    return;
+  }
+
+  const winner = pick(candidates);
+  const claimed = db.prepare(`
+    UPDATE quick_event_rounds
+    SET status='solved',winner_id=?,solved_at=?
+    WHERE id=? AND status IN ('pending','active')
+  `).run(winner.id, Date.now(), roundId);
+
+  if (!claimed.changes) return;
+
+  markParticipation(roundId, winner.id);
+  const reward = grantSpecialReward(
+    winner.user,
+    pickSpecialReward('lucky'),
+    roundId
+  );
+
+  db.prepare(`
+    UPDATE quick_event_rounds
+    SET reward_type=?,reward_amount=?,reward_details=?
+    WHERE id=?
+  `).run(reward.type, reward.amount || 1, reward.details, roundId);
+
+  const stats = recordQuickEventWin(winner.id, 'lucky_roll', roundId);
+  const winnerName = getServerDisplayName(winner, winner.user);
+  const winnerCard = await createQuickEventWinnerCard({
+    type:'lucky_roll',
+    winnerName,
+    reward,
+    tier:event.tier || 'normal',
+  });
+
+  await channel.send({
+    content:[
+      '## 🎲 GS Lucky Roll',
+      `${winner} выбран счастливчиком!`,
+      `Награда: **${reward.label}**`,
+      `Побед Quick Event: **${stats.totalWins}**`,
+    ].join('\n'),
+    files:[new AttachmentBuilder(winnerCard,{name:'gs-lucky-roll-winner.png'})],
+    allowedMentions:{users:[winner.id]},
+  });
+}
+
+async function handleTreasureChest(interaction, roundId) {
+  const round = db.prepare(`
+    SELECT * FROM quick_event_rounds
+    WHERE id=? AND type='treasure_chest' AND status='active'
+  `).get(roundId);
+
+  if (!round) {
+    await interaction.reply({
+      content:'❌ Этот сундук уже открыт или событие завершено.',
+      ephemeral:true,
+    });
+    return true;
+  }
+
+  const claimed = db.prepare(`
+    UPDATE quick_event_rounds
+    SET status='solved',winner_id=?,solved_at=?
+    WHERE id=? AND status='active'
+  `).run(interaction.user.id, Date.now(), roundId);
+
+  if (!claimed.changes) {
+    await interaction.reply({
+      content:'❌ Кто-то успел открыть сундук раньше.',
+      ephemeral:true,
+    });
+    return true;
+  }
+
+  markParticipation(roundId, interaction.user.id);
+  const reward = grantSpecialReward(
+    interaction.user,
+    pickSpecialReward('chest'),
+    roundId
+  );
+
+  db.prepare(`
+    UPDATE quick_event_rounds
+    SET reward_type=?,reward_amount=?,reward_details=?
+    WHERE id=?
+  `).run(reward.type, reward.amount || 1, reward.details, roundId);
+
+  const stats = recordQuickEventWin(
+    interaction.user.id,
+    'treasure_chest',
+    roundId
+  );
+
+  await interaction.update({components:[]});
+
+  const member = interaction.member;
+  const winnerName = getServerDisplayName(member, interaction.user);
+  const winnerCard = await createQuickEventWinnerCard({
+    type:'treasure_chest',
+    winnerName,
+    reward,
+    tier:'normal',
+  });
+
+  await interaction.channel.send({
+    content:[
+      '## 🎁 Сундук открыт!',
+      `${interaction.user} первым открыл сундук.`,
+      `Награда: **${reward.label}**`,
+      `Побед Quick Event: **${stats.totalWins}**`,
+    ].join('\n'),
+    files:[new AttachmentBuilder(winnerCard,{name:'gs-treasure-winner.png'})],
+    allowedMentions:{users:[interaction.user.id]},
+  });
+
+  return true;
+}
+
+async function handleWorldBoss(interaction, roundId) {
+  const round = db.prepare(`
+    SELECT * FROM quick_event_rounds
+    WHERE id=? AND type='world_boss' AND status='active'
+  `).get(roundId);
+
+  if (!round) {
+    await interaction.reply({
+      content:'❌ Босс уже побеждён или событие завершено.',
+      ephemeral:true,
+    });
+    return true;
+  }
+
+  const now = Date.now();
+  const previous = db.prepare(`
+    SELECT * FROM quick_event_boss_attacks
+    WHERE round_id=? AND user_id=?
+  `).get(roundId, interaction.user.id);
+
+  const cooldownMs = 60 * 1000;
+  if (previous && now - Number(previous.last_attack_at || 0) < cooldownMs) {
+    const wait = Math.ceil(
+      (cooldownMs - (now - Number(previous.last_attack_at || 0))) / 1000
+    );
+    await interaction.reply({
+      content:`⏳ Следующая атака будет доступна через **${wait} сек.**`,
+      ephemeral:true,
+    });
+    return true;
+  }
+
+  const payload = JSON.parse(round.payload_json || '{}');
+  const damage = Math.random() < 0.10
+    ? randomInt(55,80)
+    : randomInt(15,40);
+  const currentHp = Math.max(0, Number(payload.hp || payload.maxHp || 1000));
+  const newHp = Math.max(0, currentHp - damage);
+
+  payload.hp = newHp;
+
+  db.prepare(`
+    INSERT INTO quick_event_boss_attacks(
+      round_id,user_id,damage,attacks,last_attack_at
+    ) VALUES(?,?,?,1,?)
+    ON CONFLICT(round_id,user_id) DO UPDATE SET
+      damage=quick_event_boss_attacks.damage+excluded.damage,
+      attacks=quick_event_boss_attacks.attacks+1,
+      last_attack_at=excluded.last_attack_at
+  `).run(roundId, interaction.user.id, damage, now);
+
+  markParticipation(roundId, interaction.user.id);
+
+  db.prepare(`
+    UPDATE quick_event_rounds
+    SET payload_json=?
+    WHERE id=? AND status='active'
+  `).run(JSON.stringify(payload), roundId);
+
+  if (newHp > 0) {
+    await interaction.reply({
+      content:`⚔️ Ты нанёс **${damage} урона**. У босса осталось **${newHp}/${payload.maxHp} HP**.`,
+      ephemeral:true,
+    });
+
+    await interaction.message.edit({
+      content:[
+        '## 👾 GS WORLD BOSS',
+        `**${payload.bossName || 'Мировой босс'}**`,
+        `❤️ HP: **${newHp}/${payload.maxHp}**`,
+        'Атаковать можно раз в минуту.',
+      ].join('\n'),
+      components:[specialEventButton(roundId,'world_boss')],
+    }).catch(() => {});
+
+    return true;
+  }
+
+  const finished = db.prepare(`
+    UPDATE quick_event_rounds
+    SET status='solved',solved_at=?
+    WHERE id=? AND status='active'
+  `).run(now, roundId);
+
+  if (!finished.changes) {
+    await interaction.reply({
+      content:'❌ Босс уже побеждён.',
+      ephemeral:true,
+    });
+    return true;
+  }
+
+  await interaction.update({components:[]});
+
+  const attackers = db.prepare(`
+    SELECT user_id,damage,attacks
+    FROM quick_event_boss_attacks
+    WHERE round_id=?
+    ORDER BY damage DESC,attacks ASC
+  `).all(roundId);
+
+  for (const attacker of attackers) {
+    addCardDust(attacker.user_id, 60);
+  }
+
+  const mvp = attackers[0];
+  let mvpReward = null;
+
+  if (mvp) {
+    const mvpMember = await interaction.guild.members
+      .fetch(mvp.user_id)
+      .catch(() => null);
+
+    if (mvpMember) {
+      mvpReward = grantSpecialReward(
+        mvpMember.user,
+        pickSpecialReward('boss_mvp'),
+        roundId
+      );
+    }
+  }
+
+  db.prepare(`
+    UPDATE quick_event_rounds
+    SET winner_id=?,reward_type=?,reward_amount=?,reward_details=?
+    WHERE id=?
+  `).run(
+    mvp?.user_id || null,
+    'boss_rewards',
+    attackers.length,
+    `60 Dust каждому; MVP: ${mvpReward?.label || 'нет'}`,
+    roundId
+  );
+
+  const mentions = attackers.map(item => `<@${item.user_id}>`);
+  await interaction.channel.send({
+    content:[
+      '# 👾 Мировой босс повержен!',
+      `Участников: **${attackers.length}**`,
+      'Каждый участник получил **60 GS Dust**.',
+      mvp
+        ? `🥇 MVP: <@${mvp.user_id}> — **${mvp.damage} урона**`
+        : '',
+      mvpReward
+        ? `🎁 Награда MVP: **${mvpReward.label}**`
+        : '',
+    ].filter(Boolean).join('\n'),
+    allowedMentions:{users:attackers.map(item => item.user_id)},
+  });
+
+  return true;
+}
+
 function randomDelay(){
   if(Math.random()<BONUS_INTERVAL_CHANCE){
     return BONUS_INTERVAL_MIN_MS+Math.floor(Math.random()*(BONUS_INTERVAL_MAX_MS-BONUS_INTERVAL_MIN_MS+1));
@@ -492,8 +916,21 @@ function memoryButton(roundId){
   );
 }
 async function handleQuickEventComponent(interaction){
-  if(!interaction.isButton()||!interaction.customId.startsWith('quickevent_memory_'))return false;
+  if(!interaction.isButton())return false;
   initTables();
+
+  if(interaction.customId.startsWith('quickevent_chest_')){
+    const roundId=Number(interaction.customId.slice('quickevent_chest_'.length));
+    return handleTreasureChest(interaction,roundId);
+  }
+
+  if(interaction.customId.startsWith('quickevent_boss_')){
+    const roundId=Number(interaction.customId.slice('quickevent_boss_'.length));
+    return handleWorldBoss(interaction,roundId);
+  }
+
+  if(!interaction.customId.startsWith('quickevent_memory_'))return false;
+
   const roundId=Number(interaction.customId.slice('quickevent_memory_'.length));
   const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='memory' AND status='active'").get(roundId);
   if(!round){await interaction.reply({content:'❌ Этот Quick Event уже завершён.',ephemeral:true});return true;}
@@ -510,19 +947,115 @@ async function handleQuickEventComponent(interaction){
 }
 
 async function postQuickEvent(client){
-  initTables();db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE status IN ('active','pending')").run();
-  const channel=await client.channels.fetch(CHANNEL_ID).catch(()=>null);if(!channel?.isTextBased())return console.error('[QuickEvent] Канал не найден:',CHANNEL_ID);
-  const type=weightedType(),diff=difficulty(),tier=pickEventTier(),event=await buildEvent(client,type,diff);event.type=type;event.difficulty=diff;event.tier=tier;
-  const now=Date.now();const info=db.prepare(`INSERT INTO quick_event_rounds(round_key,channel_id,type,difficulty,prompt,answers_json,payload_json,created_at) VALUES(?,?,?,?,?,?,?,?)`).run(roundKey(),CHANNEL_ID,type,diff,event.prompt||event.display||'',JSON.stringify(event.answers||[]),JSON.stringify({...event,media:undefined}),now);
-  let phase='active';if(type==='reaction')phase='ready';
+  initTables();
+  db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE status IN ('active','pending')").run();
+
+  const channel=await client.channels.fetch(CHANNEL_ID).catch(()=>null);
+  if(!channel?.isTextBased())return console.error('[QuickEvent] Канал не найден:',CHANNEL_ID);
+
+  const type=weightedType();
+  const diff=difficulty();
+  const tier=pickEventTier();
+  const event=await buildEvent(client,type,diff);
+  event.type=type;
+  event.difficulty=diff;
+  event.tier=tier;
+
+  const now=Date.now();
+  const info=db.prepare(`
+    INSERT INTO quick_event_rounds(
+      round_key,channel_id,type,difficulty,prompt,
+      answers_json,payload_json,created_at
+    ) VALUES(?,?,?,?,?,?,?,?)
+  `).run(
+    roundKey(),
+    CHANNEL_ID,
+    type,
+    diff,
+    event.prompt||event.display||'',
+    JSON.stringify(event.answers||[]),
+    JSON.stringify({...event,media:undefined}),
+    now
+  );
+
+  const roundId=Number(info.lastInsertRowid);
+
+  if(type==='lucky_roll'){
+    const card=await createQuickEventCard(event,'active');
+    await channel.send({
+      content:'## 🎲 GS Lucky Roll\nСистема выбирает случайного активного участника...',
+      files:[new AttachmentBuilder(card,{name:'gs-lucky-roll.png'})],
+    });
+    db.prepare(`
+      UPDATE quick_event_rounds
+      SET status='active',activated_at=?
+      WHERE id=?
+    `).run(Date.now(),roundId);
+    setTimeout(
+      ()=>resolveLuckyRoll(channel,roundId,event).catch(console.error),
+      5000
+    ).unref?.();
+    return;
+  }
+
+  if(type==='treasure_chest'){
+    const card=await createQuickEventCard(event,'active');
+    const message=await channel.send({
+      content:'## 🎁 GS TREASURE CHEST\nПервый, кто откроет сундук, получает награду.',
+      files:[new AttachmentBuilder(card,{name:'gs-treasure-chest.png'})],
+      components:[specialEventButton(roundId,'treasure_chest')],
+    });
+    db.prepare(`
+      UPDATE quick_event_rounds
+      SET message_id=?,status='active',activated_at=?
+      WHERE id=?
+    `).run(message.id,Date.now(),roundId);
+    return;
+  }
+
+  if(type==='world_boss'){
+    const card=await createQuickEventCard(event,'active');
+    const message=await channel.send({
+      content:[
+        '## 👾 GS WORLD BOSS',
+        `**${event.bossName}**`,
+        `❤️ HP: **${event.hp}/${event.maxHp}**`,
+        'Атаковать можно раз в минуту.',
+      ].join('\n'),
+      files:[new AttachmentBuilder(card,{name:'gs-world-boss.png'})],
+      components:[specialEventButton(roundId,'world_boss')],
+    });
+    db.prepare(`
+      UPDATE quick_event_rounds
+      SET message_id=?,status='active',activated_at=?
+      WHERE id=?
+    `).run(message.id,Date.now(),roundId);
+    return;
+  }
+
+  let phase='active';
+  if(type==='reaction')phase='ready';
   const card=await createQuickEventCard(event,phase);
-  const components=type==='memory'?[memoryButton(info.lastInsertRowid)]:[];
-  const content=type==='memory'?'## ⚡ GS Quick Event\nНажми кнопку, запомни последовательность и отправь её в чат.':'## ⚡ GS Quick Event\nСобытие начинается!';
-  const message=await channel.send({content,files:[new AttachmentBuilder(card,{name:'gs-quick-event.png'})],components});
-  db.prepare('UPDATE quick_event_rounds SET message_id=? WHERE id=?').run(message.id,info.lastInsertRowid);
-  if(type==='reaction')setTimeout(()=>activateRound(channel,message,info.lastInsertRowid,event,'go').catch(console.error),randomInt(3000,8000));
-  else db.prepare("UPDATE quick_event_rounds SET status='active',activated_at=? WHERE id=?").run(Date.now(),info.lastInsertRowid);
+  const components=type==='memory'?[memoryButton(roundId)]:[];
+  const content=type==='memory'
+    ?'## ⚡ GS Quick Event\nНажми кнопку, запомни последовательность и отправь её в чат.'
+    :'## ⚡ GS Quick Event\nСобытие начинается!';
+  const message=await channel.send({
+    content,
+    files:[new AttachmentBuilder(card,{name:'gs-quick-event.png'})],
+    components
+  });
+  db.prepare('UPDATE quick_event_rounds SET message_id=? WHERE id=?').run(message.id,roundId);
+  if(type==='reaction'){
+    setTimeout(
+      ()=>activateRound(channel,message,roundId,event,'go').catch(console.error),
+      randomInt(3000,8000)
+    );
+  }else{
+    db.prepare("UPDATE quick_event_rounds SET status='active',activated_at=? WHERE id=?").run(Date.now(),roundId);
+  }
 }
+
 async function handleQuickEventAnswer(message){
   if(!message.guild||message.author.bot||message.channel.id!==CHANNEL_ID)return false;initTables();
   const round=db.prepare("SELECT * FROM quick_event_rounds WHERE channel_id=? AND status='active' ORDER BY id DESC LIMIT 1").get(CHANNEL_ID);if(!round)return false;
