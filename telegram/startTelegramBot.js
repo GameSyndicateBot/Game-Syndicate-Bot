@@ -170,7 +170,7 @@ async function handleCommand(api, message, command) {
             'Этот бот используется для быстрой публикации игровых лобби.',
             '',
             'Команда:',
-            '<code>/game Игра | Карта | Код</code> — быстро создать лобби.',
+            '<code>/game</code> + три строки: игра, карта, код.',
             '',
             'Лобби сразу появится в Telegram game-lobby и в назначенном Discord-канале.',
         ].join('\n'), { parse_mode: 'HTML' });
@@ -214,19 +214,25 @@ async function handleCommand(api, message, command) {
 
     if (command === '/game') {
         const fullText = message.text || '';
+
         const args = fullText
-            .replace(/^\/game(?:@\w+)?\s*/i, '')
+            .replace(/^\/\s*game(?:@\w+)?[ \t]*/i, '')
+            .replace(/^\r?\n/, '')
             .trim();
 
         if (!args) {
             await sendMessage(api, chat.id, [
                 '🎮 <b>GS Game Lobby</b>',
                 '',
-                'Введи команду одной строкой:',
-                '<code>/game Игра | Карта / режим | Код лобби</code>',
+                'Отправь команду в четыре строки:',
+                '<code>/game',
+                'Goose Goose Duck',
+                'Basement',
+                'ABC123</code>',
                 '',
-                'Пример:',
-                '<code>/game Goose Goose Duck | Basement | ABC123</code>',
+                '1 строка — игра',
+                '2 строка — карта / режим',
+                '3 строка — код лобби',
             ].join('\n'), {
                 parse_mode: 'HTML',
                 ...(message.message_thread_id
@@ -237,14 +243,19 @@ async function handleCommand(api, message, command) {
         }
 
         const parts = args
-            .split('|')
+            .split(/\r?\n/)
             .map(value => value.trim())
             .filter(Boolean);
 
         if (parts.length !== 3) {
             await sendMessage(api, chat.id, [
-                '❌ Нужны ровно три значения через символ <b>|</b>:',
-                '<code>/game Игра | Карта / режим | Код</code>',
+                '❌ Неверный формат.',
+                '',
+                'Отправь ровно три строки после команды:',
+                '<code>/game',
+                'Goose Goose Duck',
+                'Basement',
+                'ABC123</code>',
             ].join('\n'), {
                 parse_mode: 'HTML',
                 ...(message.message_thread_id
@@ -308,7 +319,10 @@ async function handleCommand(api, message, command) {
             'ℹ️ Команда <code>/gather</code> заменена на <code>/game</code>.',
             '',
             'Формат:',
-            '<code>/game Игра | Карта / режим | Код</code>',
+            '<code>/game',
+            'Goose Goose Duck',
+            'Basement',
+            'ABC123</code>',
         ].join('\n'), {
             parse_mode: 'HTML',
             ...(message.message_thread_id
@@ -331,7 +345,17 @@ async function handleText(api, message) {
     const text = message.text?.trim();
     if (!text) return;
 
-    const command = text.split(/\s+/)[0].split('@')[0].toLowerCase();
+    // Дополнительно понимаем вариант "/ game" с пробелом.
+    const normalizedText = text.replace(/^\/\s+game\b/i, '/game');
+    if (normalizedText !== text) {
+        message = { ...message, text: normalizedText };
+    }
+
+    const command = normalizedText
+        .split(/\s+/)[0]
+        .split('@')[0]
+        .toLowerCase();
+
     if (command.startsWith('/')) {
         const handled = await handleCommand(api, message, command);
         if (handled) return;
