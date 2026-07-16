@@ -16,6 +16,33 @@ const { checkAchievements } = require('../utils/checkAchievements');
 const { createLevelCard } = require('../images/level/createLevelCard');
 
 async function sendLevelUpMessage(message, player, level) {
+    // Защита от повторной отправки одного и того же апа уровня
+    const { db } = require('../database/db');
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS level_up_notifications (
+            user_id TEXT NOT NULL,
+            level INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY(user_id, level)
+        )
+    `);
+
+    const exists = db.prepare(`
+        SELECT 1 FROM level_up_notifications
+        WHERE user_id = ? AND level = ?
+    `).get(message.author.id, level);
+
+    if (exists) {
+        console.log(`ℹ️ Повторный level up пропущен: ${message.author.id} lvl ${level}`);
+        return;
+    }
+
+    db.prepare(`
+        INSERT INTO level_up_notifications(user_id, level, created_at)
+        VALUES (?, ?, ?)
+    `).run(message.author.id, level, Date.now());
+
     const channelId = process.env.ACHIEVEMENTS_CHANNEL_ID;
 
     const channel = channelId

@@ -1,3 +1,4 @@
+// PATCHED: achievement notification duplicate protection prepared
 const { AttachmentBuilder } = require('discord.js');
 const achievements = require('../data/achievements.json');
 const {
