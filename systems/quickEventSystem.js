@@ -571,38 +571,193 @@ async function forceQuickEventWin(interaction,targetUser,targetMember){
   return {ok:true,reward};
 }
 
-function startQuickEventScheduler(client){
-  initTables();let timer=null,posting=false;
-  const schedule=(delay=randomDelay())=>{
-    if(timer)clearTimeout(timer);
-    timer=setTimeout(async()=>{
-      if(posting)return schedule();
-      posting=true;
-      try{
-        await awardPreviousWeek(client);
-        const channel=await client.channels.fetch(CHANNEL_ID).catch(()=>null);
-        const online=channel?.guild?getVisibleOnlineCount(channel.guild):null;
-        if(online!==null&&online<MIN_ONLINE_MEMBERS){
-          return schedule(lowOnlineRetryDelay());
-        }
-        await postQuickEvent(client);
-      }catch(e){console.error('[QuickEvent]',e);}
-      finally{posting=false;}
-      schedule();
-    },Math.max(1000,delay));
+
+let quickEventTimer = null;
+let quickEventNextAt = null;
+let quickEventClient = null;
+let quickEventPosting = false;
+
+function getQuickEventScheduleStatus() {
+  return {
+    nextEventAt: quickEventNextAt,
+    remainingMs: quickEventNextAt
+      ? Math.max(0, quickEventNextAt - Date.now())
+      : null,
+    active: Boolean(
+      db.prepare(`
+        SELECT 1
+        FROM quick_event_rounds
+        WHERE status = 'active'
+        LIMIT 1
+      `).get()
+    ),
   };
-  const last=db.prepare('SELECT created_at FROM quick_event_rounds ORDER BY id DESC LIMIT 1').get();
-  const age=last?Date.now()-Number(last.created_at):null;
-  if(!last||age>=MAX_INTERVAL_MS){
-    setTimeout(async()=>{
-      if(posting)return;posting=true;
-      try{await awardPreviousWeek(client);await postQuickEvent(client);}catch(e){console.error('[QuickEvent]',e);}finally{posting=false;schedule();}
-    },2500);
-  }else{
-    const min=Math.max(0,MIN_INTERVAL_MS-age),max=Math.max(min,MAX_INTERVAL_MS-age);
-    schedule(min+Math.floor(Math.random()*(max-min+1)));
-  }
-  setInterval(()=>awardPreviousWeek(client).catch(error=>console.error('[QuickEvent Weekly]',error)),60*60*1000);
-  console.log('[QuickEvent] Запущено: 45–75 минут, 10% шанс 20–30 минут, Golden раз в сутки');
 }
-module.exports={startQuickEventScheduler,handleQuickEventAnswer,handleQuickEventComponent,forceQuickEventWin,postQuickEvent};
+
+function scheduleNextQuickEvent(delay = randomDelay()) {
+  if (!quickEventClient) return null;
+
+  if (quickEventTimer) {
+    clearTimeout(quickEventTimer);
+  }
+
+  const safeDelay = Math.max(1000, Number(delay) || randomDelay());
+  quickEventNextAt = Date.now() + safeDelay;
+
+  quickEventTimer = setTimeout(async () => {
+    if (quickEventPosting) {
+      return scheduleNextQuickEvent();
+    }
+
+    quickEventPosting = true;
+    quickEventNextAt = null;
+
+    try {
+      await awardPreviousWeek(quickEventClient);
+
+      const channel = await quickEventClient.channels
+        .fetch(CHANNEL_ID)
+        .catch(() => null);
+
+      const online = channel?.guild
+        ? getVisibleOnlineCount(channel.guild)
+        : null;
+
+      if (online !== null && online < MIN_ONLINE_MEMBERS) {
+        return scheduleNextQuickEvent(lowOnlineRetryDelay());
+      }
+
+      await postQuickEvent(quickEventClient);
+    } catch (error) {
+      console.error('[QuickEvent]', error);
+    } finally {
+      quickEventPosting = false;
+    }
+
+    scheduleNextQuickEvent();
+  }, safeDelay);
+
+  quickEventTimer.unref?.();
+  return quickEventNextAt;
+}
+
+async function forceCloseQuickEvent(client) {
+  initTables();
+
+  quickEventClient = client || quickEventClient;
+
+  const round = db.prepare(`
+    SELECT *
+    FROM quick_event_rounds
+    WHERE status IN ('active', 'pending')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get();
+
+  let closed = false;
+
+  if (round) {
+    const result = db.prepare(`
+      UPDATE quick_event_rounds
+      SET status = 'expired'
+      WHERE id = ? AND status IN ('active', 'pending')
+    `).run(round.id);
+
+    closed = result.changes > 0;
+
+    if (closed && round.channel_id && round.message_id && quickEventClient) {
+      const channel = await quickEventClient.channels
+        .fetch(round.channel_id)
+        .catch(() => null);
+
+      if (channel?.isTextBased?.()) {
+        const message = await channel.messages
+          .fetch(round.message_id)
+          .catch(() => null);
+
+        if (message) {
+          await message.edit({ components: [] }).catch(() => {});
+        }
+      }
+    }
+  }
+
+  const delayMs = randomDelay();
+  const scheduledAt = scheduleNextQuickEvent(delayMs);
+
+  return {
+    closed,
+    roundId: round?.id ?? null,
+    delayMs,
+    scheduledAt,
+  };
+}
+
+function startQuickEventScheduler(client) {
+  initTables();
+
+  quickEventClient = client;
+
+  const last = db.prepare(`
+    SELECT created_at
+    FROM quick_event_rounds
+    ORDER BY id DESC
+    LIMIT 1
+  `).get();
+
+  const age = last
+    ? Date.now() - Number(last.created_at)
+    : null;
+
+  if (!last || age >= MAX_INTERVAL_MS) {
+    quickEventNextAt = Date.now() + 2500;
+
+    quickEventTimer = setTimeout(async () => {
+      if (quickEventPosting) return;
+
+      quickEventPosting = true;
+      quickEventNextAt = null;
+
+      try {
+        await awardPreviousWeek(client);
+        await postQuickEvent(client);
+      } catch (error) {
+        console.error('[QuickEvent]', error);
+      } finally {
+        quickEventPosting = false;
+        scheduleNextQuickEvent();
+      }
+    }, 2500);
+
+    quickEventTimer.unref?.();
+  } else {
+    const min = Math.max(0, MIN_INTERVAL_MS - age);
+    const max = Math.max(min, MAX_INTERVAL_MS - age);
+    const delay = min + Math.floor(Math.random() * (max - min + 1));
+
+    scheduleNextQuickEvent(delay);
+  }
+
+  const weeklyTimer = setInterval(
+    () => awardPreviousWeek(client)
+      .catch(error => console.error('[QuickEvent Weekly]', error)),
+    60 * 60 * 1000
+  );
+
+  weeklyTimer.unref?.();
+
+  console.log(
+    '[QuickEvent] Запущено: 45–75 минут, ' +
+    '10% шанс 20–30 минут, Golden раз в сутки'
+  );
+}
+
+module.exports = {
+  startQuickEventScheduler,
+  handleQuickEventAnswer,
+  handleQuickEventComponent,
+  forceQuickEventWin,
+  forceCloseQuickEvent,
+  getQuickEventScheduleStatus,
+  postQuickEvent,
+};
