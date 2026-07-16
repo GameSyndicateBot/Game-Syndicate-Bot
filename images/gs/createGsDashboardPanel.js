@@ -144,10 +144,11 @@ async function createGsDashboardPanel(user, data = {}) {
     ];
 
     mini.forEach((item, index) => {
-        const boxX = 1050 + index * 146;
+        const boxX = 1042 + index * 147;
         const boxY = 215;
-        const boxW = 134;
+        const boxW = 132;
         const boxH = 110;
+        const paddingX = 12;
 
         drawPanel(ctx, boxX, boxY, boxW, boxH, {
             fill: 'rgba(139,92,246,.11)',
@@ -158,26 +159,34 @@ async function createGsDashboardPanel(user, data = {}) {
         const label = fitText(
             ctx,
             item[0],
-            boxW - 26,
-            15,
-            11
+            boxW - paddingX * 2,
+            14,
+            10
         );
 
         ctx.fillStyle = colors.muted;
         ctx.font = `bold ${label.size}px Arial`;
-        ctx.fillText(label.text, boxX + 13, boxY + 29);
+        ctx.fillText(
+            label.text,
+            boxX + paddingX,
+            boxY + 28
+        );
 
         const value = fitText(
             ctx,
             String(item[1]),
-            boxW - 26,
-            29,
-            20
+            boxW - paddingX * 2,
+            28,
+            19
         );
 
         ctx.fillStyle = item[2];
         ctx.font = `bold ${value.size}px Arial`;
-        ctx.fillText(value.text, boxX + 13, boxY + 71);
+        ctx.fillText(
+            value.text,
+            boxX + paddingX,
+            boxY + 69
+        );
     });
 
     const tiles=[
@@ -198,12 +207,12 @@ async function createGsDashboardPanel(user, data = {}) {
     tiles.forEach((item,i)=>{const col=i%4,row=Math.floor(i/4);drawTile(ctx,startX+col*(tileW+gapX),startY+row*(tileH+gapY),tileW,tileH,item);});
 
     ctx.fillStyle = colors.muted;
-    ctx.font = 'bold 17px Arial';
+    ctx.font = 'bold 16px Arial';
     ctx.textAlign = 'center';
     ctx.fillText(
         'GS ENGINE v3  •  GAME SYNDICATE',
         WIDTH / 2,
-        840
+        825
     );
     ctx.textAlign = 'left';
     return canvas.toBuffer('image/png');
