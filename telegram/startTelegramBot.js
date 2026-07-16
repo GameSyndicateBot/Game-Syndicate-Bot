@@ -6,7 +6,10 @@ const {
     resolveStartTimestamp,
 } = require('./crossGatherings');
 const { getSetting, setSetting } = require('./ecosystemDb');
-const { setGameLobbyRuntime } = require('../systems/gameLobbySystem');
+const {
+    setGameLobbyRuntime,
+    publishGameLobby,
+} = require('../systems/gameLobbySystem');
 
 const drafts = new Map();
 let pollingStarted = false;
@@ -164,12 +167,12 @@ async function handleCommand(api, message, command) {
         await sendMessage(api, chat.id, [
             '🎮 <b>GAME SYNDICATE — СБОРЫ</b>',
             '',
-            'Этот бот используется только для создания игровых сборов.',
+            'Этот бот используется для быстрой публикации игровых лобби.',
             '',
             'Команда:',
-            '<code>/gather</code> — открыть приватное меню создания сбора.',
+            '<code>/game Игра | Карта | Код</code> — быстро создать лобби.',
             '',
-            'Готовый сбор появится в Telegram game-lobby и в назначенном Discord-канале.',
+            'Лобби сразу появится в Telegram game-lobby и в назначенном Discord-канале.',
         ].join('\n'), { parse_mode: 'HTML' });
         return true;
     }
@@ -209,8 +212,109 @@ async function handleCommand(api, message, command) {
         return true;
     }
 
+    if (command === '/game') {
+        const fullText = message.text || '';
+        const args = fullText
+            .replace(/^\/game(?:@\w+)?\s*/i, '')
+            .trim();
+
+        if (!args) {
+            await sendMessage(api, chat.id, [
+                '🎮 <b>GS Game Lobby</b>',
+                '',
+                'Введи команду одной строкой:',
+                '<code>/game Игра | Карта / режим | Код лобби</code>',
+                '',
+                'Пример:',
+                '<code>/game Goose Goose Duck | Basement | ABC123</code>',
+            ].join('\n'), {
+                parse_mode: 'HTML',
+                ...(message.message_thread_id
+                    ? { message_thread_id: message.message_thread_id }
+                    : {}),
+            });
+            return true;
+        }
+
+        const parts = args
+            .split('|')
+            .map(value => value.trim())
+            .filter(Boolean);
+
+        if (parts.length !== 3) {
+            await sendMessage(api, chat.id, [
+                '❌ Нужны ровно три значения через символ <b>|</b>:',
+                '<code>/game Игра | Карта / режим | Код</code>',
+            ].join('\n'), {
+                parse_mode: 'HTML',
+                ...(message.message_thread_id
+                    ? { message_thread_id: message.message_thread_id }
+                    : {}),
+            });
+            return true;
+        }
+
+        const [game, mapName, lobbyCode] = parts;
+
+        if (game.length > 60 || mapName.length > 60 || lobbyCode.length > 40) {
+            await sendMessage(
+                api,
+                chat.id,
+                '❌ Слишком длинные данные. Игра и карта — до 60 символов, код — до 40.',
+                message.message_thread_id
+                    ? { message_thread_id: message.message_thread_id }
+                    : {}
+            );
+            return true;
+        }
+
+        try {
+            await publishGameLobby({
+                creatorId: `tg:${from.id}`,
+                creatorName: userName(from),
+                game,
+                mapName,
+                lobbyCode,
+            });
+
+            if (chat.type !== 'private') {
+                await deleteMessageQuietly(api, chat.id, message.message_id);
+            }
+
+            if (chat.type === 'private') {
+                await sendMessage(api, chat.id, [
+                    '✅ Лобби опубликовано в Telegram и Discord.',
+                    'Оно автоматически закроется через 4 часа.',
+                ].join('\n'));
+            }
+        } catch (error) {
+            console.error('[Telegram /game]:', error);
+            await sendMessage(api, chat.id, [
+                '❌ Не удалось опубликовать лобби.',
+                `<code>${String(error.message || error)}</code>`,
+            ].join('\n'), {
+                parse_mode: 'HTML',
+                ...(message.message_thread_id
+                    ? { message_thread_id: message.message_thread_id }
+                    : {}),
+            });
+        }
+
+        return true;
+    }
+
     if (command === '/gather' || command === '/сбор') {
-        await beginGather(api, message);
+        await sendMessage(api, chat.id, [
+            'ℹ️ Команда <code>/gather</code> заменена на <code>/game</code>.',
+            '',
+            'Формат:',
+            '<code>/game Игра | Карта / режим | Код</code>',
+        ].join('\n'), {
+            parse_mode: 'HTML',
+            ...(message.message_thread_id
+                ? { message_thread_id: message.message_thread_id }
+                : {}),
+        });
         return true;
     }
 
@@ -402,9 +506,8 @@ async function startTelegramBot(client) {
     await api('deleteWebhook', { drop_pending_updates: false }).catch(() => null);
     await api('setMyCommands', {
         commands: [
-            { command: 'gather', description: 'создать игровой сбор' },
-            { command: 'cancel', description: 'отменить создание сбора' },
-            { command: 'setgatherchannel', description: 'назначить Telegram-чат сборов' },
+            { command: 'game', description: 'создать игровое лобби' },
+            { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' },
         ],
     }).catch(error => {
         console.error('⚠️ Не удалось установить команды Telegram:', error.message);
