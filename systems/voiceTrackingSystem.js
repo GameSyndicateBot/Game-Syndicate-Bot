@@ -2,6 +2,7 @@ const {
     db,
     getOrCreatePlayer,
     updatePlayer,
+    incrementPlayerStat,
     updateDailyProgress,
     getOrCreateDailyProgress,
     updateStreak,
@@ -97,10 +98,17 @@ async function settleVoiceSession(member, guild, { close = false } = {}) {
 
         if (seconds <= 0) return 0;
 
+        // И ежедневный прогресс, и общий голосовой счётчик увеличиваются
+        // атомарно в SQLite. Так параллельный тик, команда /daily или открытие
+        // профиля не смогут перезаписать голосовое время старым значением.
         updateDailyProgress(member.id, 'voice_seconds', seconds);
 
-        let player = getOrCreatePlayer(member.user);
-        player.voice_seconds = (player.voice_seconds ?? 0) + seconds;
+        getOrCreatePlayer(member.user);
+        let player = incrementPlayerStat(
+            member.id,
+            'voice_seconds',
+            seconds
+        );
 
         const accumulatedForXp = Number(session.xp_remainder_seconds || 0) + seconds;
         const fullMinutes = Math.floor(accumulatedForXp / 60);
