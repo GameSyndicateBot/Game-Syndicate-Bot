@@ -10,6 +10,7 @@ const {
     setGameLobbyRuntime,
     publishGameLobby,
     handleGameLobbyTelegramCallback,
+    handleTelegramPinnedServiceMessage,
 } = require('../systems/gameLobbySystem');
 
 const drafts = new Map();
@@ -494,6 +495,11 @@ async function handleCallback(api, callback) {
 
 async function processUpdate(api, update) {
     try {
+        if (update.message?.pinned_message) {
+            await handleTelegramPinnedServiceMessage(update.message);
+            return;
+        }
+
         if (update.message?.text) {
             await handleText(api, update.message);
         } else if (update.callback_query) {

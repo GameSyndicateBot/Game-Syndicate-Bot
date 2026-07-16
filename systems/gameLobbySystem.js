@@ -5,6 +5,12 @@ const {createGameLobbyCard}=require('../images/game/createGameLobbyCard');
 const AUTO_CLOSE_MS=4*60*60*1000;
 let runtime={api:null,client:null},timer=null;
 db.exec(`CREATE TABLE IF NOT EXISTS game_lobbies(id INTEGER PRIMARY KEY AUTOINCREMENT,creator_discord_id TEXT NOT NULL,creator_name TEXT NOT NULL,game TEXT NOT NULL,map_name TEXT NOT NULL,lobby_code TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',created_at INTEGER NOT NULL,closes_at INTEGER NOT NULL,closed_at INTEGER,discord_channel_id TEXT,discord_message_id TEXT,telegram_chat_id TEXT,telegram_thread_id INTEGER,telegram_message_id INTEGER);CREATE INDEX IF NOT EXISTS idx_game_lobbies_status_close ON game_lobbies(status,closes_at);`);
+
+const gameLobbyColumns=db.prepare('PRAGMA table_info(game_lobbies)').all();
+if(!gameLobbyColumns.some(column=>column.name==='telegram_pin_service_message_id')){
+ db.exec('ALTER TABLE game_lobbies ADD COLUMN telegram_pin_service_message_id INTEGER');
+}
+
 const getLobby=id=>db.prepare('SELECT * FROM game_lobbies WHERE id=?').get(Number(id));
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 function rows(l){return l.status==='open'?[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`game_copy:${l.id}`).setLabel('Скопировать код').setEmoji('📋').setStyle(ButtonStyle.Primary))]:[];}
@@ -92,6 +98,43 @@ async function publishGameLobby({creatorId,creatorName,game,mapName,lobbyCode}){
 
  return getLobby(l.id);
 }
+async function handleTelegramPinnedServiceMessage(message){
+ if(!message?.pinned_message?.message_id)return false;
+
+ const chatId=String(message.chat?.id||'');
+ const pinnedMessageId=Number(message.pinned_message.message_id);
+ const serviceMessageId=Number(message.message_id);
+ const threadId=message.message_thread_id?Number(message.message_thread_id):null;
+
+ const lobby=db.prepare(`
+  SELECT id
+  FROM game_lobbies
+  WHERE status='open'
+    AND telegram_chat_id=?
+    AND telegram_message_id=?
+    AND (
+      telegram_thread_id IS NULL
+      OR telegram_thread_id=?
+    )
+  ORDER BY id DESC
+  LIMIT 1
+ `).get(chatId,pinnedMessageId,threadId);
+
+ if(!lobby)return false;
+
+ db.prepare(`
+  UPDATE game_lobbies
+  SET telegram_pin_service_message_id=?
+  WHERE id=?
+ `).run(serviceMessageId,lobby.id);
+
+ console.log(
+  `[GameLobby] Telegram pin service saved: lobby=${lobby.id}, `+
+  `message=${serviceMessageId}`
+ );
+ return true;
+}
+
 async function closeGameLobby(id){
  const l=getLobby(id);
  if(!l||l.status!=='open')return false;
@@ -113,6 +156,18 @@ async function closeGameLobby(id){
    chat_id:c.telegram_chat_id,
    message_id:c.telegram_message_id
   }).catch(()=>null);
+
+  // Telegram создаёт отдельное служебное сообщение «закрепил(а)…».
+  // Его message_id сохраняется обработчиком pinned_message и удаляется
+  // вместе с самим объявлением о лобби.
+  if(c.telegram_pin_service_message_id){
+   await runtime.api('deleteMessage',{
+    chat_id:c.telegram_chat_id,
+    message_id:c.telegram_pin_service_message_id
+   }).catch(error=>{
+    console.warn('[GameLobby] Telegram pin service delete:',error.message);
+   });
+  }
 
   await runtime.api('deleteMessage',{
    chat_id:c.telegram_chat_id,
@@ -161,4 +216,5 @@ module.exports={
  closeExpiredGameLobbies,
  handleGameLobbyButton,
  handleGameLobbyTelegramCallback,
+ handleTelegramPinnedServiceMessage,
 };
