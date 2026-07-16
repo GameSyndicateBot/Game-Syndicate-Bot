@@ -517,6 +517,39 @@ function getOrCreatePlayer(user) {
     return player;
 }
 
+
+function incrementPlayerStat(userId, field, amount = 1) {
+    const allowedFields = [
+        'messages',
+        'voice_seconds',
+        'given_reactions',
+        'received_reactions',
+        'events_count',
+    ];
+
+    if (!allowedFields.includes(field)) {
+        throw new Error(`Unsupported player stat: ${field}`);
+    }
+
+    const numericAmount = Number(amount);
+
+    if (!Number.isFinite(numericAmount)) {
+        throw new Error(`Invalid stat amount for ${field}: ${amount}`);
+    }
+
+    db.prepare(`
+        UPDATE players
+        SET ${field} = COALESCE(${field}, 0) + ?
+        WHERE user_id = ?
+    `).run(numericAmount, userId);
+
+    return db.prepare(`
+        SELECT *
+        FROM players
+        WHERE user_id = ?
+    `).get(userId);
+}
+
 function updatePlayer(player) {
     const realAchievementCount = getAchievementCount(player.user_id);
 
@@ -526,13 +559,13 @@ function updatePlayer(player) {
             username = ?,
             xp = ?,
             level = ?,
-            messages = ?,
+            messages = MAX(COALESCE(messages, 0), ?),
             achievements = ?,
-            voice_seconds = ?,
-            given_reactions = ?,
-            received_reactions = ?,
-            events_count = ?,
-            achievement_points = ?,
+            voice_seconds = MAX(COALESCE(voice_seconds, 0), ?),
+            given_reactions = MAX(COALESCE(given_reactions, 0), ?),
+            received_reactions = MAX(COALESCE(received_reactions, 0), ?),
+            events_count = MAX(COALESCE(events_count, 0), ?),
+            achievement_points = MAX(COALESCE(achievement_points, 0), ?),
             card_dust = ?
         WHERE user_id = ?
     `).run(
@@ -670,6 +703,7 @@ module.exports = {
     claimLevelNotification,
     resetPlayer,
     updatePlayer,
+    incrementPlayerStat,
     getAchievementCount,
     getPlayerAchievementIds,
     getTodayDate,

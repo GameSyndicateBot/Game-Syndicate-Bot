@@ -1,6 +1,7 @@
 const {
     getOrCreatePlayer,
     updatePlayer,
+    incrementPlayerStat,
     updateDailyProgress,
 } = require('../database/db');
 
@@ -33,10 +34,13 @@ module.exports = {
         const message = reaction.message;
         if (!message.guild) return;
 
-        let giver = getOrCreatePlayer(user);
-        const giverMember = await message.guild.members.fetch(user.id).catch(() => null);
+        getOrCreatePlayer(user);
+        incrementPlayerStat(user.id, 'given_reactions', 1);
 
-        giver.given_reactions = (giver.given_reactions ?? 0) + 1;
+        let giver = getOrCreatePlayer(user);
+        const giverMember = await message.guild.members
+            .fetch(user.id)
+            .catch(() => null);
 
         updateDailyProgress(user.id, 'given_reactions', 1);
 
@@ -59,11 +63,13 @@ module.exports = {
 
         if (!author || author.bot || author.id === user.id) return;
 
-        let receiver = getOrCreatePlayer(author);
-        const receiverMember = await message.guild.members.fetch(author.id).catch(() => null);
+        getOrCreatePlayer(author);
+        incrementPlayerStat(author.id, 'received_reactions', 1);
 
-        receiver.received_reactions =
-            (receiver.received_reactions ?? 0) + 1;
+        let receiver = getOrCreatePlayer(author);
+        const receiverMember = await message.guild.members
+            .fetch(author.id)
+            .catch(() => null);
 
         updateDailyProgress(author.id, 'received_reactions', 1);
 

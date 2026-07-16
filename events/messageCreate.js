@@ -6,6 +6,7 @@ const {
 const {
     getOrCreatePlayer,
     updatePlayer,
+    incrementPlayerStat,
     updateDailyProgress,
     updateStreak,
 } = require('../database/db');
@@ -51,10 +52,14 @@ module.exports = {
 
         await handleQuickEventAnswer(message);
 
-        let player = getOrCreatePlayer(message.author);
-        const member = await message.guild.members.fetch(message.author.id);
+        getOrCreatePlayer(message.author);
+        incrementPlayerStat(message.author.id, 'messages', 1);
 
-        player.messages += 1;
+        const member = await message.guild.members
+            .fetch(message.author.id)
+            .catch(() => message.member);
+
+        let player = getOrCreatePlayer(message.author);
 
         updateDailyProgress(message.author.id, 'messages', 1);
         updateStreak(message.author.id, 'chat');
