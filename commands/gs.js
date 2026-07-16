@@ -171,30 +171,90 @@ function buildTopSelect(userId, activeType, page = 0) {
 }
 
 function buildHubButtons(userId) {
-    const button = (id, label, style = ButtonStyle.Secondary) =>
-        new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);
+    const button = ({ id, label, emoji, style = ButtonStyle.Secondary }) =>
+        new ButtonBuilder()
+            .setCustomId(id)
+            .setLabel(label)
+            .setEmoji(emoji)
+            .setStyle(style);
 
     return [
         new ActionRowBuilder().addComponents(
-            button(`gs_profile_${userId}`, 'Профиль', ButtonStyle.Primary),
-            button(`gs_hint_${userId}_cards`, 'Коллекция'),
-            button(`gs_hint_${userId}_achievements`, 'Достижения'),
-            button(`gs_top_${userId}_xp_0`, 'Топы')
+            button({
+                id: `gs_profile_${userId}`,
+                label: 'Профиль',
+                emoji: '👤',
+                style: ButtonStyle.Primary,
+            }),
+            button({
+                id: `gs_hint_${userId}_cards`,
+                label: 'Коллекция',
+                emoji: '🃏',
+            }),
+            button({
+                id: `gs_hint_${userId}_achievements`,
+                label: 'Достижения',
+                emoji: '🏆',
+            }),
+            button({
+                id: `gs_top_${userId}_xp_0`,
+                label: 'Топы',
+                emoji: '📊',
+            })
         ),
         new ActionRowBuilder().addComponents(
-            button(`gs_hint_${userId}_pack`, 'Daily Pack', ButtonStyle.Success),
-            button(`gs_hint_${userId}_dust`, 'GS Dust'),
-            button(`gs_hint_${userId}_shop`, 'Card Shop'),
-            button(`gs_hint_${userId}_daily`, 'Ежедневки')
+            button({
+                id: `gs_hint_${userId}_pack`,
+                label: 'Daily Pack',
+                emoji: '🎁',
+                style: ButtonStyle.Success,
+            }),
+            button({
+                id: `gs_hint_${userId}_dust`,
+                label: 'GS Dust',
+                emoji: '💎',
+            }),
+            button({
+                id: `gs_hint_${userId}_shop`,
+                label: 'Card Shop',
+                emoji: '🛒',
+            }),
+            button({
+                id: `gs_hint_${userId}_daily`,
+                label: 'Ежедневки',
+                emoji: '📅',
+            })
         ),
         new ActionRowBuilder().addComponents(
-            button(`gs_hint_${userId}_trade`, 'Обмен', ButtonStyle.Primary),
-            button(`gs_hint_${userId}_auction`, 'Аукцион', ButtonStyle.Primary),
-            button(`gs_hint_${userId}_streak`, 'Серии'),
-            button(`gs_hint_${userId}_forecast`, 'Прогноз'),
-            button(`gs_refresh_${userId}_home`, 'Обновить')
+            button({
+                id: `gs_hint_${userId}_trade`,
+                label: 'Обмен',
+                emoji: '🔄',
+            }),
+            button({
+                id: `gs_hint_${userId}_auction`,
+                label: 'Аукцион',
+                emoji: '⚖️',
+            }),
+            button({
+                id: `gs_hint_${userId}_streak`,
+                label: 'Серии',
+                emoji: '🔥',
+            }),
+            button({
+                id: `gs_hint_${userId}_forecast`,
+                label: 'Прогноз',
+                emoji: '🔮',
+            })
         ),
-        buildTopSelect(userId, 'xp', 0),
+        new ActionRowBuilder().addComponents(
+            button({
+                id: `gs_refresh_${userId}_home`,
+                label: 'Обновить GS Hub',
+                emoji: '🔄',
+                style: ButtonStyle.Primary,
+            })
+        ),
     ];
 }
 
@@ -204,12 +264,12 @@ function buildNavigationRow(userId, target = 'home') {
             .setCustomId(`gs_refresh_${userId}_${target}`)
             .setLabel('Обновить')
             .setEmoji('🔄')
-            .setStyle(ButtonStyle.Secondary),
+            .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
             .setCustomId(`gs_home_${userId}`)
             .setLabel('Назад в GS Hub')
             .setEmoji('🏠')
-            .setStyle(ButtonStyle.Primary)
+            .setStyle(ButtonStyle.Secondary)
     );
 }
 
