@@ -44,33 +44,25 @@ function getDiscordRetention() {
 }
 
 function installCriticalBackupTracking() {
+    // Эта таблица хранит только служебное состояние бэкапов.
+    // Безопасно пересоздаём её при запуске, чтобы старые версии схемы
+    // не могли уронить бота из-за отсутствующей колонки last_backup_at.
     db.exec(`
-        CREATE TABLE IF NOT EXISTS persistence_backup_state (
+        DROP TABLE IF EXISTS persistence_backup_state;
+
+        CREATE TABLE persistence_backup_state (
             id INTEGER PRIMARY KEY CHECK(id = 1),
             dirty INTEGER NOT NULL DEFAULT 0,
             reason TEXT,
-            updated_at INTEGER NOT NULL DEFAULT 0
+            updated_at INTEGER NOT NULL DEFAULT 0,
+            last_backup_at INTEGER NOT NULL DEFAULT 0
         );
-    `);
 
-    // Безопасная миграция для баз, где таблица была создана старой версией.
-    const stateColumns = db.prepare(`
-        PRAGMA table_info(persistence_backup_state)
-    `).all();
-
-    if (!stateColumns.some(column => column.name === 'last_backup_at')) {
-        db.exec(`
-            ALTER TABLE persistence_backup_state
-            ADD COLUMN last_backup_at INTEGER NOT NULL DEFAULT 0
-        `);
-    }
-
-    db.prepare(`
-        INSERT OR IGNORE INTO persistence_backup_state(
+        INSERT INTO persistence_backup_state (
             id, dirty, reason, updated_at, last_backup_at
         )
-        VALUES(1, 0, NULL, 0, 0)
-    `).run();
+        VALUES (1, 0, NULL, 0, 0);
+    `);
 
     db.exec(`
         CREATE TRIGGER IF NOT EXISTS trg_backup_player_cards_insert
