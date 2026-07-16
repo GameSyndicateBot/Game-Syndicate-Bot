@@ -281,14 +281,40 @@ db.prepare(`
     ON player_cards(user_id, card_id, rarity, edition)
 `).run();
 
+const SERVER_TIME_ZONE = process.env.SERVER_TIME_ZONE || 'Europe/Moscow';
+
+function formatDateInTimeZone(date) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: SERVER_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(date);
+
+    const values = Object.fromEntries(
+        parts
+            .filter(part => part.type !== 'literal')
+            .map(part => [part.type, part.value])
+    );
+
+    return `${values.year}-${values.month}-${values.day}`;
+}
+
 function getTodayDate() {
-    return new Date().toISOString().slice(0, 10);
+    return formatDateInTimeZone(new Date());
 }
 
 function getYesterdayDate() {
-    const date = new Date();
-    date.setDate(date.getDate() - 1);
-    return date.toISOString().slice(0, 10);
+    const now = new Date();
+    const today = getTodayDate();
+
+    // Берём полдень текущего московского дня и отнимаем сутки — так переходы
+    // календарной даты не зависят от UTC и локальной зоны контейнера.
+    const [year, month, day] = today.split('-').map(Number);
+    const moscowNoonUtc = new Date(Date.UTC(year, month - 1, day, 9, 0, 0));
+    moscowNoonUtc.setUTCDate(moscowNoonUtc.getUTCDate() - 1);
+
+    return formatDateInTimeZone(moscowNoonUtc);
 }
 
 function updateDailyHistory(userId, data = {}) {

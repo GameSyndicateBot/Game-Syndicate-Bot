@@ -35,9 +35,9 @@ COPY . .
 # Жёсткая проверка, что в Docker-образ попала именно новая простая
 # система бэкапов. Если Bothost соберёт старый файл, сборка остановится.
 RUN test -f /app/services/automaticBackups.js \
-    && grep -q "SIMPLE_BACKUP_SYSTEM_V2 loaded" /app/services/automaticBackups.js \
+    && grep -q "RESILIENT_BACKUP_SYSTEM_V3 loaded" /app/services/automaticBackups.js \
     && ! grep -q "installCriticalBackupTracking" /app/services/automaticBackups.js \
-    && echo "✅ Verified SIMPLE_BACKUP_SYSTEM_V2 during build" \
+    && echo "✅ Verified RESILIENT_BACKUP_SYSTEM_V3 during build" \
     && sha256sum /app/services/automaticBackups.js
 
 RUN mkdir -p /opt/gs-data \
@@ -47,4 +47,4 @@ RUN mkdir -p /opt/gs-data \
     && test -f /opt/gs-data/cards.json \
     && chmod -R 755 /opt/gs-data
 
-CMD ["sh", "-c", "mkdir -p /app/data /app/shared/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/shared /app/data && echo '✅ Data-файлы восстановлены' && echo \"📁 DATABASE_PATH=$DATABASE_PATH\" && echo \"📁 BACKUP_DIR=$BACKUP_DIR\" && echo '=== BACKUP SERVICE CHECK ===' && grep 'SIMPLE_BACKUP_SYSTEM_V2 loaded' /app/services/automaticBackups.js && ! grep -q 'installCriticalBackupTracking' /app/services/automaticBackups.js && sha256sum /app/services/automaticBackups.js && ls -la /app/shared && node scripts/restoreDatabaseFromDiscord.js && exec node index.js"]
+CMD ["sh", "-c", "mkdir -p /app/data /app/shared/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/shared /app/data && echo '✅ Data-файлы восстановлены' && echo \"📁 DATABASE_PATH=$DATABASE_PATH\" && echo \"📁 BACKUP_DIR=$BACKUP_DIR\" && echo '=== BACKUP SERVICE V3 CHECK ===' && grep 'RESILIENT_BACKUP_SYSTEM_V3 loaded' /app/services/automaticBackups.js && ! grep -q 'installCriticalBackupTracking' /app/services/automaticBackups.js && sha256sum /app/services/automaticBackups.js && ls -la /app/shared && node scripts/restoreDatabaseFromDiscord.js && exec node index.js"]
