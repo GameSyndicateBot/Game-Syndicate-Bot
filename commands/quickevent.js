@@ -1,6 +1,7 @@
 const {
     SlashCommandBuilder,
     PermissionFlagsBits,
+    MessageFlags,
 } = require('discord.js');
 
 const {
@@ -8,13 +9,11 @@ const {
     getQuickEventScheduleStatus,
 } = require('../systems/quickEventSystem');
 
-function isOwner(userId) {
-    const ownerId = String(process.env.BOT_OWNER_ID ?? '').trim();
-    return Boolean(ownerId) && String(userId) === ownerId;
-}
-
 function formatDuration(milliseconds) {
-    const totalMinutes = Math.max(1, Math.ceil(Number(milliseconds || 0) / 60_000));
+    const totalMinutes = Math.max(
+        1,
+        Math.ceil(Number(milliseconds || 0) / 60_000)
+    );
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
 
@@ -31,53 +30,68 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('win')
-                .setDescription('Принудительно закрыть зависший ивент и запустить новый отсчёт')
+                .setDescription('Закрыть зависший ивент и запустить новый отсчёт')
         )
         .addSubcommand(subcommand =>
             subcommand
                 .setName('status')
-                .setDescription('Показать время до следующего быстрого ивента')
+                .setDescription('Показать состояние и время следующего Quick Event')
         ),
 
     async execute(interaction) {
-        if (!isOwner(interaction.user.id)) {
-            return interaction.reply({
-                content: '❌ Эта команда доступна только владельцу бота.',
-                ephemeral: true,
-            });
-        }
+        await interaction.deferReply({
+            flags: MessageFlags.Ephemeral,
+        });
 
         const subcommand = interaction.options.getSubcommand();
 
         if (subcommand === 'status') {
             const status = getQuickEventScheduleStatus();
+            const lines = ['# ⚡ Quick Event — статус', ''];
 
-            if (!status.nextEventAt) {
-                return interaction.reply({
-                    content: '⚠️ Планировщик Quick Event пока не запущен.',
-                    ephemeral: true,
-                });
+            if (status.active && status.activeRound) {
+                lines.push(
+                    `**Активный ивент:** #${status.activeRound.id}`,
+                    `**Тип:** ${status.activeRound.type}`,
+                    `**Сложность:** ${status.activeRound.difficulty}`
+                );
+            } else {
+                lines.push('**Активный ивент:** нет');
             }
 
-            return interaction.reply({
-                content: `⏳ Следующий Quick Event примерно через **${formatDuration(status.remainingMs)}** (<t:${Math.floor(status.nextEventAt / 1000)}:R>).`,
-                ephemeral: true,
+            if (status.nextEventAt) {
+                lines.push(
+                    `**Следующий запуск:** <t:${Math.floor(status.nextEventAt / 1000)}:R>`,
+                    `**Осталось примерно:** ${formatDuration(status.remainingMs)}`
+                );
+            } else if (status.schedulerStarted) {
+                lines.push('**Следующий запуск:** таймер сейчас перестраивается.');
+            } else {
+                lines.push('**Планировщик:** ещё не запущен.');
+            }
+
+            return interaction.editReply({
+                content: lines.join('\n'),
             });
         }
 
-        await interaction.deferReply({ ephemeral: true });
+        if (subcommand === 'win') {
+            const result = await forceCloseQuickEvent(interaction.client);
 
-        const result = await forceCloseQuickEvent(
-            interaction.client,
-            interaction.user.id
-        );
+            const closeText = result.closed
+                ? `✅ Quick Event #${result.roundId} закрыт без награды.`
+                : 'ℹ️ Активного Quick Event не было, но отсчёт перезапущен.';
 
-        const closeText = result.closed
-            ? `✅ Зависший Quick Event #${result.roundId} закрыт без награды.`
-            : 'ℹ️ Активного Quick Event не было, но отсчёт перезапущен.';
+            return interaction.editReply({
+                content:
+                    `${closeText}\n` +
+                    `Следующее событие появится случайно. ` +
+                    `Ориентировочно: <t:${Math.floor(result.scheduledAt / 1000)}:R>.`,
+            });
+        }
 
-        return interaction.editReply(
-            `${closeText}\n⏳ Следующий ивент появится примерно через **${formatDuration(result.delayMs)}** (<t:${Math.floor(result.scheduledAt / 1000)}:R>).`
-        );
+        return interaction.editReply({
+            content: '❌ Неизвестная подкоманда Quick Event.',
+        });
     },
 };

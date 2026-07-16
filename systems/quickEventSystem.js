@@ -132,6 +132,13 @@ function initTables(){
       golden_created INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS quick_event_scheduler_state (
+      id INTEGER PRIMARY KEY CHECK(id = 1),
+      next_event_at INTEGER,
+      updated_at INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT OR IGNORE INTO quick_event_scheduler_state(id,next_event_at,updated_at)
+    VALUES(1,NULL,0);
   `);
 
   const ensureColumn = (table, column, definition) => {
@@ -577,20 +584,46 @@ let quickEventNextAt = null;
 let quickEventClient = null;
 let quickEventPosting = false;
 
+function saveNextEventAt(timestamp) {
+  initTables();
+  const value = timestamp ? Number(timestamp) : null;
+  db.prepare(`
+    INSERT INTO quick_event_scheduler_state(id,next_event_at,updated_at)
+    VALUES(1,?,?)
+    ON CONFLICT(id) DO UPDATE SET
+      next_event_at=excluded.next_event_at,
+      updated_at=excluded.updated_at
+  `).run(value, Date.now());
+}
+
 function getQuickEventScheduleStatus() {
+  initTables();
+
+  const stored = db.prepare(`
+    SELECT next_event_at
+    FROM quick_event_scheduler_state
+    WHERE id = 1
+  `).get();
+
+  const storedNextAt = Number(stored?.next_event_at || 0) || null;
+  const nextEventAt = quickEventNextAt || storedNextAt;
+
+  const activeRound = db.prepare(`
+    SELECT id,type,difficulty,created_at,activated_at
+    FROM quick_event_rounds
+    WHERE status IN ('active','pending')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get();
+
   return {
-    nextEventAt: quickEventNextAt,
-    remainingMs: quickEventNextAt
-      ? Math.max(0, quickEventNextAt - Date.now())
+    schedulerStarted: Boolean(quickEventClient),
+    nextEventAt,
+    remainingMs: nextEventAt
+      ? Math.max(0, nextEventAt - Date.now())
       : null,
-    active: Boolean(
-      db.prepare(`
-        SELECT 1
-        FROM quick_event_rounds
-        WHERE status = 'active'
-        LIMIT 1
-      `).get()
-    ),
+    active: Boolean(activeRound),
+    activeRound: activeRound || null,
   };
 }
 
@@ -603,6 +636,7 @@ function scheduleNextQuickEvent(delay = randomDelay()) {
 
   const safeDelay = Math.max(1000, Number(delay) || randomDelay());
   quickEventNextAt = Date.now() + safeDelay;
+  saveNextEventAt(quickEventNextAt);
 
   quickEventTimer = setTimeout(async () => {
     if (quickEventPosting) {
@@ -611,6 +645,7 @@ function scheduleNextQuickEvent(delay = randomDelay()) {
 
     quickEventPosting = true;
     quickEventNextAt = null;
+    saveNextEventAt(null);
 
     try {
       await awardPreviousWeek(quickEventClient);
@@ -711,12 +746,14 @@ function startQuickEventScheduler(client) {
 
   if (!last || age >= MAX_INTERVAL_MS) {
     quickEventNextAt = Date.now() + 2500;
+    saveNextEventAt(quickEventNextAt);
 
     quickEventTimer = setTimeout(async () => {
       if (quickEventPosting) return;
 
       quickEventPosting = true;
       quickEventNextAt = null;
+      saveNextEventAt(null);
 
       try {
         await awardPreviousWeek(client);
