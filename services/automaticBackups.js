@@ -9,12 +9,11 @@ const DEFAULT_DISCORD_RETENTION = 30;
 let intervalHandle = null;
 let backupInProgress = false;
 
+console.log('✅ SIMPLE_BACKUP_SYSTEM_V2 loaded');
+
 function readPositiveInteger(name, fallback, minimum = 1) {
     const value = Number(process.env[name]);
-
-    return Number.isInteger(value) && value >= minimum
-        ? value
-        : fallback;
+    return Number.isInteger(value) && value >= minimum ? value : fallback;
 }
 
 function getIntervalMs() {
@@ -41,14 +40,10 @@ async function cleanupDiscordBackups(channel) {
 
         const backupMessages = [...messages.values()]
             .filter(message => {
-                if (message.author.id !== channel.client.user.id) {
-                    return false;
-                }
+                if (message.author.id !== channel.client.user.id) return false;
 
                 return [...message.attachments.values()].some(attachment =>
-                    /^database-backup-.*\.sqlite$/i.test(
-                        attachment.name || ''
-                    )
+                    /^database-backup-.*\.sqlite$/i.test(attachment.name || '')
                 );
             })
             .sort((a, b) => b.createdTimestamp - a.createdTimestamp);
@@ -71,41 +66,26 @@ async function cleanupDiscordBackups(channel) {
             );
         }
     } catch (error) {
-        console.warn(
-            '⚠️ Очистка Discord-бэкапов не выполнена:',
-            error.message
-        );
+        console.warn('⚠️ Очистка Discord-бэкапов не выполнена:', error.message);
     }
 }
 
 async function uploadBackupToDiscord(client, backupPath, reason) {
-    const channelId = String(
-        process.env.BACKUP_CHANNEL_ID ?? ''
-    ).trim();
+    const channelId = String(process.env.BACKUP_CHANNEL_ID ?? '').trim();
 
     if (!channelId) {
-        console.warn(
-            '⚠️ BACKUP_CHANNEL_ID не настроен; ' +
-            'бэкап сохранён только локально.'
-        );
+        console.warn('⚠️ BACKUP_CHANNEL_ID не настроен; бэкап сохранён только локально.');
         return false;
     }
 
-    const channel = await client.channels
-        .fetch(channelId)
-        .catch(() => null);
+    const channel = await client.channels.fetch(channelId).catch(() => null);
 
     if (!channel?.isTextBased?.()) {
-        throw new Error(
-            `Backup channel ${channelId} was not found or is not text-based.`
-        );
+        throw new Error(`Backup channel ${channelId} was not found or is not text-based.`);
     }
 
     const fileName = path.basename(backupPath);
-    const attachment = new AttachmentBuilder(
-        backupPath,
-        { name: fileName }
-    );
+    const attachment = new AttachmentBuilder(backupPath, { name: fileName });
 
     await channel.send({
         content: [
@@ -117,22 +97,14 @@ async function uploadBackupToDiscord(client, backupPath, reason) {
         files: [attachment],
     });
 
-    console.log(
-        `✅ Backup uploaded to Discord channel ${channelId}`
-    );
-
+    console.log(`✅ Backup uploaded to Discord channel ${channelId}`);
     await cleanupDiscordBackups(channel);
     return true;
 }
 
-async function runAutomaticBackup(
-    client,
-    reason = 'scheduled'
-) {
+async function runAutomaticBackup(client, reason = 'scheduled') {
     if (backupInProgress) {
-        console.log(
-            'ℹ️ Бэкап уже выполняется, повторный запуск пропущен.'
-        );
+        console.log('ℹ️ Бэкап уже выполняется, повторный запуск пропущен.');
         return null;
     }
 
@@ -140,13 +112,7 @@ async function runAutomaticBackup(
 
     try {
         const backupPath = await backupDatabase({ reason });
-
-        await uploadBackupToDiscord(
-            client,
-            backupPath,
-            reason
-        );
-
+        await uploadBackupToDiscord(client, backupPath, reason);
         return backupPath;
     } catch (error) {
         console.error('❌ Automatic backup failed:', error);
@@ -157,55 +123,32 @@ async function runAutomaticBackup(
 }
 
 async function backupCriticalChange() {
-    // Сохранено ради совместимости с командами,
-    // которые вызывают эту функцию.
-    // Мгновенный бэкап больше не создаётся:
-    // изменения уже сохраняются в /app/shared/database.sqlite,
-    // а резервные копии делаются по расписанию.
+    // Оставлено для совместимости со старыми вызовами.
+    // Отдельный бэкап после каждой операции больше не создаётся.
     return null;
 }
 
 function startAutomaticBackups(client) {
-    if (intervalHandle) {
-        clearInterval(intervalHandle);
-    }
+    if (intervalHandle) clearInterval(intervalHandle);
 
     const intervalMs = getIntervalMs();
-    const intervalMinutes = Math.round(
-        intervalMs / 60_000
-    );
+    const intervalMinutes = Math.round(intervalMs / 60_000);
 
+    console.log(`🛡️ Automatic backups enabled every ${intervalMinutes} minutes.`);
     console.log(
-        `🛡️ Automatic backups enabled every ` +
-        `${intervalMinutes} minutes.`
-    );
-    console.log(
-        `🧹 Retention: ` +
-        `${process.env.BACKUP_RETENTION || 10} local, ` +
+        `🧹 Retention: ${process.env.BACKUP_RETENTION || 10} local, ` +
         `${getDiscordRetention()} Discord backups.`
     );
-    console.log(
-        'ℹ️ Критические изменения не создают отдельные ' +
-        'бэкапы и сохраняются в постоянной базе.'
-    );
+    console.log('ℹ️ Критические изменения не создают отдельные бэкапы.');
 
-    // Один бэкап после запуска.
     const startupTimer = setTimeout(() => {
-        runAutomaticBackup(
-            client,
-            'startup'
-        ).catch(console.error);
+        runAutomaticBackup(client, 'startup').catch(console.error);
     }, 30_000);
-
     startupTimer.unref?.();
 
     intervalHandle = setInterval(() => {
-        runAutomaticBackup(
-            client,
-            'scheduled'
-        ).catch(console.error);
+        runAutomaticBackup(client, 'scheduled').catch(console.error);
     }, intervalMs);
-
     intervalHandle.unref?.();
 }
 
