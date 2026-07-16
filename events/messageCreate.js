@@ -9,7 +9,6 @@ const {
     incrementPlayerStat,
     updateDailyProgress,
     updateStreak,
-    claimLevelNotification,
 } = require('../database/db');
 
 const { addXP } = require('../utils/levelSystem');
@@ -79,13 +78,7 @@ module.exports = {
 
         updatePlayer(player);
 
-        if (
-            player.level > levelBefore &&
-            claimLevelNotification(message.author.id, player.level)
-        ) {
-            // INSERT OR IGNORE в player_level_notifications гарантирует,
-            // что один и тот же уровень будет объявлен только один раз,
-            // даже если несколько сообщений обработались одновременно.
+        if (player.level > levelBefore) {
             updateStreak(message.author.id, 'level_up');
             await sendLevelUpMessage(message, player, player.level);
         }
