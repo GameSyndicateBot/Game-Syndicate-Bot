@@ -221,6 +221,7 @@ async function buildCardsReply(user, filter = 'all', page = 1) {
         components: [
             buildSelectRow(user.id, filter, safePage, visibleCards),
             ...buildButtonRows(user.id, filter, safePage, totalPages),
+            buildGsHubRow(user.id),
         ],
     };
 }
@@ -235,7 +236,7 @@ async function buildSingleCardReply(user, cardId, filter, page) {
         return {
             content: '❌ Карточка не найдена.',
             files: [],
-            components: [buildBackRow(user.id, filter, page)],
+            components: [buildBackRow(user.id, filter, page), buildGsHubRow(user.id)],
         };
     }
 
@@ -256,7 +257,7 @@ async function buildSingleCardReply(user, cardId, filter, page) {
             ? `# 🎴 ${card.code} • ${card.name}\nУ тебя есть **${ownedCount}** экземпляр(ов) этой карточки. Показан лучший вариант.`
             : `# 🔒 ${card.code} • ${card.name}\nЭта карточка пока не открыта.`,
         files: [attachment],
-        components: [buildBackRow(user.id, filter, page)],
+        components: [buildBackRow(user.id, filter, page), buildGsHubRow(user.id)],
     };
 }
 
@@ -267,6 +268,22 @@ function buildBackRow(userId, filter, page) {
             .setLabel('Назад к альбому')
             .setEmoji('↩️')
             .setStyle(ButtonStyle.Secondary)
+    );
+}
+
+function buildGsHubRow(userId) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`cards_refresh_${userId}`)
+            .setLabel('Обновить альбом')
+            .setEmoji('🔄')
+            .setStyle(ButtonStyle.Secondary),
+
+        new ButtonBuilder()
+            .setCustomId(`gs_home_${userId}`)
+            .setLabel('Назад в GS Hub')
+            .setEmoji('🏠')
+            .setStyle(ButtonStyle.Primary)
     );
 }
 
@@ -333,6 +350,13 @@ data: new SlashCommandBuilder()
             const cardId = interaction.values[0];
 
             const reply = await buildSingleCardReply(interaction.user, cardId, filter, page);
+
+            await interaction.update(reply);
+            return true;
+        }
+
+        if (action === 'refresh') {
+            const reply = await buildCardsReply(interaction.user, 'all', 1);
 
             await interaction.update(reply);
             return true;

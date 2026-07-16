@@ -270,13 +270,13 @@ async function createDailyCard(user, progress, quests, bonusXP, bonusDust = 45) 
                 ? `Бонус дня готов: +${bonusXP} XP • +${bonusDust} Dust`
                 : `Бонус за все задания: +${bonusXP} XP • +${bonusDust} Dust`,
         130,
-        665
+        655
     );
 
     ctx.fillStyle = '#A78BFA';
     ctx.font = 'bold 20px Arial';
     ctx.textAlign = 'right';
-    ctx.fillText('Новые личные задания каждый день', 1110, 665);
+    ctx.fillText('Новые личные задания каждый день', 1110, 705);
     ctx.textAlign = 'left';
 
     return canvas.toBuffer('image/png');
