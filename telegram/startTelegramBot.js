@@ -9,6 +9,7 @@ const { getSetting, setSetting } = require('./ecosystemDb');
 const {
     setGameLobbyRuntime,
     publishGameLobby,
+    handleGameLobbyTelegramCallback,
 } = require('../systems/gameLobbySystem');
 
 const drafts = new Map();
@@ -434,6 +435,15 @@ async function handleCallback(api, callback) {
     const from = callback.from;
     const message = callback.message;
     if (!message) return;
+
+    if (data.startsWith('game_lobby_close:')) {
+        const handled = await handleGameLobbyTelegramCallback(
+            api,
+            callback,
+            answerCallback
+        );
+        if (handled) return;
+    }
 
     if (data.startsWith('xg_')) {
         const handled = await handleCrossGatheringTelegram(api, callback, answerCallback);
