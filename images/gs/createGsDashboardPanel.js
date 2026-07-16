@@ -144,11 +144,11 @@ async function createGsDashboardPanel(user, data = {}) {
     ];
 
     mini.forEach((item, index) => {
-        const boxX = 1042 + index * 147;
+        const boxX = 1036 + index * 148;
         const boxY = 215;
-        const boxW = 132;
+        const boxW = 136;
         const boxH = 110;
-        const paddingX = 12;
+        const paddingX = 14;
 
         drawPanel(ctx, boxX, boxY, boxW, boxH, {
             fill: 'rgba(139,92,246,.11)',
@@ -156,37 +156,40 @@ async function createGsDashboardPanel(user, data = {}) {
             radius: 20,
         });
 
+        const labelMaxSize = index === 2 ? 12 : 14;
         const label = fitText(
             ctx,
             item[0],
             boxW - paddingX * 2,
-            14,
-            10
+            labelMaxSize,
+            9
         );
 
         ctx.fillStyle = colors.muted;
         ctx.font = `bold ${label.size}px Arial`;
+        ctx.textAlign = 'center';
         ctx.fillText(
             label.text,
-            boxX + paddingX,
-            boxY + 28
+            boxX + boxW / 2,
+            boxY + 29
         );
 
         const value = fitText(
             ctx,
             String(item[1]),
             boxW - paddingX * 2,
-            28,
-            19
+            27,
+            18
         );
 
         ctx.fillStyle = item[2];
         ctx.font = `bold ${value.size}px Arial`;
         ctx.fillText(
             value.text,
-            boxX + paddingX,
-            boxY + 69
+            boxX + boxW / 2,
+            boxY + 70
         );
+        ctx.textAlign = 'left';
     });
 
     const tiles=[
@@ -207,12 +210,12 @@ async function createGsDashboardPanel(user, data = {}) {
     tiles.forEach((item,i)=>{const col=i%4,row=Math.floor(i/4);drawTile(ctx,startX+col*(tileW+gapX),startY+row*(tileH+gapY),tileW,tileH,item);});
 
     ctx.fillStyle = colors.muted;
-    ctx.font = 'bold 16px Arial';
+    ctx.font = 'bold 15px Arial';
     ctx.textAlign = 'center';
     ctx.fillText(
         'GS ENGINE v3  •  GAME SYNDICATE',
         WIDTH / 2,
-        825
+        807
     );
     ctx.textAlign = 'left';
     return canvas.toBuffer('image/png');
