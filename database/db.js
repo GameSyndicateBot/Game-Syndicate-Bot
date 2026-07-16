@@ -566,7 +566,7 @@ function updatePlayer(player) {
             received_reactions = MAX(COALESCE(received_reactions, 0), ?),
             events_count = MAX(COALESCE(events_count, 0), ?),
             achievement_points = MAX(COALESCE(achievement_points, 0), ?),
-            card_dust = ?
+            card_dust = MAX(COALESCE(card_dust, 0), ?)
         WHERE user_id = ?
     `).run(
         player.username,

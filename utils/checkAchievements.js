@@ -230,7 +230,27 @@ async function checkAchievements({ message, player, member }) {
                 player.user_id,
                 achievement
             );
-            const dustReward = dustResult.granted;
+            const dustReward = Number(dustResult.granted || 0);
+
+            // grantAchievementDust() увеличивает Dust напрямую в SQLite.
+            // Ниже updatePlayer(player) сохраняет весь объект игрока, поэтому
+            // обязательно синхронизируем его локальное значение, чтобы старый
+            // card_dust не затёр только что начисленную награду.
+            if (dustReward > 0) {
+                player.card_dust =
+                    Number(player.card_dust || 0) + dustReward;
+
+                console.log(
+                    `[Achievements] +${dustReward} Dust: ` +
+                    `${player.user_id} -> ${achievement.id}`
+                );
+            } else {
+                console.warn(
+                    `[Achievements] Dust не начислен: ` +
+                    `${player.user_id} -> ${achievement.id}; ` +
+                    `alreadyGranted=${Boolean(dustResult.alreadyGranted)}`
+                );
+            }
 
             unlockedAchievements.push(achievement);
 
