@@ -215,7 +215,7 @@ function keyboard(round) {
     const rows = [];
     if (round.status === 'guessed') {
         const likes = likeCount(round.id);
-        rows.push([{ text: `💜 Лайк ${Math.min(likes, 3)}/3`, callback_data: `croc_like:${round.id}` }]);
+        rows.push([{ text: `💜 Лайк ${likes}`, callback_data: `croc_like:${round.id}` }]);
     }
     rows.push([{ text: '✋ Хочу быть ведущим!', callback_data: `croc_claim:${round.id}` }]);
     return { inline_keyboard: rows };
@@ -558,7 +558,16 @@ async function handleMessage(api, message) {
 
     clearTimeout(timers.get(round.id));
     const finished = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(round.id);
-    await edit(api, round.chat_id, round.message_id, [
+
+    // Старое сообщение раунда остаётся в истории, но его кнопки отключаются.
+    await api('editMessageReplyMarkup', {
+        chat_id: round.chat_id,
+        message_id: round.message_id,
+        reply_markup: { inline_keyboard: [] },
+    }).catch(() => null);
+
+    // Результат раунда публикуется отдельным сообщением.
+    const resultMessage = await send(api, round.chat_id, [
         '🐊 <b>КРОКОДИЛ • GAME SYNDICATE</b>',
         '━━━━━━━━━━━━━━━━━━',
         '',
@@ -567,17 +576,15 @@ async function handleMessage(api, message) {
         `🎭 Ведущий: <b>${esc(finished.host_name)}</b>`,
         'Если объяснение понравилось — поставьте 💜.',
         '',
-        'Когда 3 участника раунда поставят лайк, ведущему начислится',
-        '<b>+1 успешное объяснение</b> в рейтинг.',
-        '',
-        '⏱ Первые 5 секунд стать ведущим может только угадавший.',
-        '',
         '━━━━━━━━━━━━━━━━━━',
         '💜 <i>GS Crocodile</i>',
     ].join('\n'), {
         parse_mode: 'HTML',
         reply_markup: keyboard(finished),
+        ...(finished.thread_id ? { message_thread_id: finished.thread_id } : {}),
     });
+    db.prepare('UPDATE crocodile_rounds SET result_message_id=? WHERE id=?')
+        .run(resultMessage.message_id, finished.id);
     await unlockAchievements(api, finished.winner_id, finished.chat_id, finished.thread_id);
     await unlockAchievements(api, finished.host_id, finished.chat_id, finished.thread_id);
     return true;
@@ -631,12 +638,19 @@ async function handleLike(api, callback, round) {
     })();
 
     const fresh = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(round.id);
-    await edit(api, round.chat_id, round.message_id, callback.message.text, {
+    await api('editMessageReplyMarkup', {
+        chat_id: callback.message.chat.id,
+        message_id: callback.message.message_id,
         reply_markup: keyboard(fresh),
-        ...(callback.message.entities ? { entities: callback.message.entities } : {}),
     }).catch(() => null);
     const likes = likeCount(round.id);
-    await answer(api, callback.id, awarded ? '🏆 3/3! Ведущему начислен рейтинг.' : `💜 Лайк принят: ${Math.min(likes, 3)}/3`);
+    await answer(
+        api,
+        callback.id,
+        awarded
+            ? '🏆 Третий лайк! Ведущему начислено успешное объяснение.'
+            : `💜 Лайк принят. Всего: ${likes}`,
+    );
     if (awarded) {
         await send(api, round.chat_id, [
             '🏆 <b>Отличное объяснение!</b>',
@@ -713,6 +727,14 @@ async function handleCallback(api, callback) {
             return true;
         }
         await answer(api, callback.id, 'Ты новый ведущий!');
+
+        // Убираем кнопки с завершённого раунда, чтобы ими нельзя было пользоваться повторно.
+        await api('editMessageReplyMarkup', {
+            chat_id: callback.message.chat.id,
+            message_id: callback.message.message_id,
+            reply_markup: { inline_keyboard: [] },
+        }).catch(() => null);
+
         await startRound(api, round.chat_id, round.thread_id, callback.from);
         return true;
     }
