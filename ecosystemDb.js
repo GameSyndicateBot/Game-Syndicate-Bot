@@ -1,4 +1,4 @@
-const { db } = require('../database/db');
+const { db } = require('./database/db');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS gs_settings (

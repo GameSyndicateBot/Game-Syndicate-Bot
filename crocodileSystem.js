@@ -6,46 +6,12 @@ const RECENT_WORD_LIMIT = 500;
 const timers = new Map();
 let apiRef = null;
 
-// Только одиночные слова: без словосочетаний и генерации комбинаций.
-const WORD_GROUPS = [
-    [
-        'аквариум','акула','альбом','апельсин','аптека','арбуз','артист','аэропорт','бабочка','багажник','балкон','банан','банкомат','барабан','бассейн','батарейка','библиотека','билет','бинокль','блендер','блокнот','бобёр','будильник','бутерброд','велосипед','вертолёт','весы','ветер','вилка','водопад','вокзал','волк','воробей','врач','галстук','гамак','гараж','гитара','глобус','голубь','гриб','грузовик','дельфин','диван','динозавр','дирижёр','дождевик','дракон','ежевика','жираф','завтрак','замок','зеркало','зонт','игрушка','кактус','календарь','камера','карандаш','карта','кастрюля','каток','кенгуру','клавиатура','ключ','книга','ковёр','корабль','компас','компьютер','конфета','корзина','корона','кошка','кресло','крокодил','кукуруза','лампа','лестница','лифт','лимон','лиса','лодка','ложка','луна','магазин','магнит','машина','маяк','медведь','метро','микрофон','молоток','мороженое','мост','муравей','наушники','облако','огурец','одеяло','окно','орёл','остров','панда','парашют','парк','паровоз','паутина','пельмень','пингвин','пицца','планета','плеер','подушка','пожарный','помидор','портфель','почтальон','пылесос','радуга','ракета','рюкзак','самолёт','самокат','свеча','светофор','сковорода','слон','снеговик','собака','сокровище','стадион','стул','телевизор','телефон','термос','тигр','торт','трактор','трамвай','троллейбус','труба','туфля','утюг','фонарь','фотоаппарат','холодильник','чайник','чемодан','черепаха','шахматы','шляпа','шоколад','щётка','экскаватор','яблоко','якорь'
-    ],
-    [
-        'абрикос','автобус','автограф','адвокат','айсберг','академия','акробат','алмаз','ананас','ангел','антенна','арена','арфа','архив','архитектор','астероид','атлас','аттракцион','багаж','барьер','башня','бегемот','белка','берег','библиотекарь','блин','богатырь','болото','борода','браслет','бриллиант','броня','будка','букет','бульдозер','бумага','бургер','вагон','валенок','ванна','варенье','вафля','ведро','веник','верблюд','верёвка','весло','виноград','витрина','водолаз','водоросль','ворота','вулкан','выдра','галактика','газета','гвоздь','генерал','географ','герой','гимнаст','гнездо','гном','горилла','горка','горчица','градусник','граната','гребень','гроза','груша','гусеница','гусь','дворец','дворник','дедушка','дельтаплан','джунгли','диктор','директор','диск','дневник','доктор','доска','дятел','енот','желе','железо','жемчуг','журнал','забор','завод','заяц','звезда','зебра','земляника','игла','изумруд','инженер','инструмент','каблук','кактус','капуста','караван','карета','карман','картофель','каска','катер','кафе','качели','каштан','кинотеатр','кирпич','кит','клоун','клубника','кнопка','ковбой','колесо','колодец','кольцо','комар','комета','конверт','конструктор','континент','конфетти','копилка','коридор','космонавт','костёр','котёнок','кофеварка','кран','креветка','кровать','кружка','кубик','кукла','купол','куртка','лавина','ладонь','лебедь','лейка','лепесток','лесник','лимонад','линейка','лопата','лошадь','лыжи','малина','мандарин','матрас','медуза','мельница','метеорит','миксер','морковь','музей','мяч','нефть','носорог','обсерватория','овца','одуванчик','олень','омлет','оркестр','осёл','осьминог','пакет','палатка','пальма','пантера','пароход','пастух','паук','печенье','пианино','пирамида','пирог','планшет','плотник','поезд','полицейский','попугай','принтер','причал','пчела','пятка','радио','раковина','расчёска','робот','ромашка','руль','рыцарь','салат','сапог','сарай','сахар','светлячок','синица','скала','скрипка','скульптор','слива','сметана','сова','сосиска','спутник','стакан','статуя','страус','стрекоза','струна','сумка','сыр','такси','тарелка','теплица','тетрадь','топор','трамплин','тюлень','удочка','улитка','флейта','флюгер','фокусник','футболист','хомяк','художник','цапля','цепочка','цирк','цистерна','часы','черника','шахтёр','шкаф','шлем','шмель','шорты','шпион','шприц','штурвал','эскалатор','эскимо','этаж','юла','ягуар'
-    ],
-    [
-        'аватар','алхимик','амулет','арбалет','аркада','артефакт','ассасин','битва','босс','бронежилет','вампир','ведьма','воин','выживание','геймер','гильдия','голем','джойстик','зелье','зомби','инвентарь','квест','киборг','клан','консоль','крипер','лабиринт','маг','мана','монстр','некромант','ниндзя','пиксель','портал','призрак','рейд','рыцарь','сервер','скелет','скин','снайпер','стратегия','стример','танк','телепорт','турнир','уровень','ферма','хилер','читер','шутер','эльф','эндермен','эфир'
-    ],
-    [
-        'актёр','аниме','балерина','барабанщик','басист','блогер','видеокамера','гример','декорация','диджей','дублёр','журналист','иллюзионист','каскадёр','комедия','концерт','критик','мелодия','мультфильм','опера','оператор','певец','плейлист','подкаст','продюсер','режиссёр','репетиция','саксофон','сериал','сцена','танцор','театр','трейлер','фильм','фотограф','хор','циркач','экран'
-    ],
-    [
-        'австралия','австрия','албания','алжир','аргентина','армения','африка','беларусь','бельгия','болгария','бразилия','венгрия','вьетнам','германия','греция','грузия','дания','египет','европа','израиль','индия','индонезия','ирландия','исландия','испания','италия','казахстан','канада','кипр','китай','корея','латвия','литва','мексика','молдова','монголия','непал','нидерланды','норвегия','польша','португалия','румыния','сербия','словакия','словения','таиланд','тунис','турция','украина','финляндия','франция','хорватия','черногория','чили','швейцария','швеция','эстония','япония','амазонка','антарктида','атлантика','байкал','берлин','варшава','венеция','вена','днепр','дубай','карпаты','киев','лондон','мадрид','мальдивы','москва','ниагара','одесса','париж','прага','рим','сахара','сидней','токио','чернобыль'
-    ],
-    [
-        'адмирал','акушер','археолог','астроном','бармен','биолог','бухгалтер','ветеринар','визажист','водитель','воспитатель','геолог','дизайнер','диспетчер','кондитер','курьер','лаборант','лётчик','маляр','маркетолог','массажист','механик','моряк','нотариус','официант','парикмахер','переводчик','повар','программист','продавец','психолог','редактор','спасатель','стоматолог','строитель','судья','тренер','учитель','фармацевт','фермер','хирург','эколог','электрик','юрист'
-    ],
-    [
-        'адреналин','азарт','вдохновение','волнение','восторг','гнев','гордость','грусть','доверие','дружба','жадность','зависть','злость','интерес','испуг','любовь','мечта','надежда','обида','одиночество','паника','радость','ревность','скука','смелость','сомнение','спокойствие','страх','стыд','счастье','тревога','удивление','усталость','ярость'
-    ],
-    [
-        'алгоритм','антивирус','браузер','вайфай','вебкамера','видеокарта','вирус','дискорд','домен','интернет','капча','комментарий','контент','лайк','логин','мем','мессенджер','модератор','ноутбук','пароль','подписчик','приложение','профиль','репост','роутер','сайт','смайлик','сообщение','спам','стикер','телеграм','флешка','форум','хэштег','чат','эмодзи'
-    ],
-    [
-        'айкидо','баскетбол','бокс','борьба','боулинг','волейбол','гантель','гольф','гонка','дайвинг','каратэ','лыжник','марафон','медаль','плавание','ракетка','ролики','самбо','серфинг','скейтборд','спортзал','теннис','фехтование','финиш','футбол','хоккей','штанга'
-    ],
-    [
-        'багет','борщ','брокколи','вафля','винегрет','голубцы','горох','гречка','йогурт','какао','карамель','карри','кефир','колбаса','котлета','круассан','лапша','майонез','макароны','мармелад','мёд','мюсли','наггетс','пельмени','персик','пирожок','попкорн','рис','салями','салат','смузи','спагетти','стейк','суп','суши','творог','тост','хлеб','хинкали','хурма','чеснок','шаурма','яичница'
-    ],
-    [
-        'авария','аплодисменты','аукцион','бал','банкет','бунт','встреча','выборы','дуэль','экзамен','катастрофа','карнавал','конкурс','конференция','маскарад','митинг','пикник','пожар','праздник','презентация','пробка','свадьба','соревнование','спектакль','фестиваль','ярмарка'
-    ]
-];
-
-const WORDS = [...new Set(WORD_GROUPS.flat())]
-    .map(word => String(word).trim().toLowerCase())
-    .filter(word => /^[а-яёa-z0-9-]+$/i.test(word));
+// Большой словарь вынесен в JSON: 15 000 одиночных слов и отобранные двухсловные выражения.
+const CROCODILE_WORDS = require('./data/crocodileWords.json');
+const SINGLE_WORDS = [...new Set(CROCODILE_WORDS.single || [])];
+const DOUBLE_WORDS = [...new Set(CROCODILE_WORDS.double || [])];
+const WORDS = [...SINGLE_WORDS, ...DOUBLE_WORDS];
+const DOUBLE_WORD_CHANCE = 0.20;
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS crocodile_rounds (
@@ -84,6 +50,12 @@ CREATE TABLE IF NOT EXISTS crocodile_ratings (
     created_at INTEGER NOT NULL,
     PRIMARY KEY(round_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS crocodile_participants (
+    round_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY(round_id, user_id)
+);
 CREATE TABLE IF NOT EXISTS crocodile_achievements (
     user_id TEXT NOT NULL,
     achievement_key TEXT NOT NULL,
@@ -108,6 +80,7 @@ function ensureColumn(table, column, definition) {
 }
 ensureColumn('crocodile_stats', 'three_heart_ratings', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('crocodile_stats', 'successful_explains', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('crocodile_rounds', 'successful_awarded', 'INTEGER NOT NULL DEFAULT 0');
 
 function esc(value) {
     return String(value ?? '')
@@ -150,16 +123,10 @@ function ensureStats(user) {
             updated_at=excluded.updated_at
     `).run(String(user.id), nameOf(user), user.username || null, Date.now());
 }
-function ratingCounts(roundId) {
-    const rows = db.prepare(`
-        SELECT score, COUNT(*) AS count
-        FROM crocodile_ratings
-        WHERE round_id=?
-        GROUP BY score
-    `).all(roundId);
-    const counts = { 1: 0, 2: 0, 3: 0 };
-    for (const row of rows) counts[row.score] = row.count;
-    return counts;
+function likeCount(roundId) {
+    return Number(db.prepare(`
+        SELECT COUNT(*) AS count FROM crocodile_ratings WHERE round_id=?
+    `).get(roundId)?.count || 0);
 }
 function recentWords(chatId, threadId) {
     return db.prepare(`
@@ -170,11 +137,16 @@ function recentWords(chatId, threadId) {
 }
 function chooseWord(chatId, threadId, exclude = []) {
     const blocked = new Set([...recentWords(chatId, threadId), ...exclude.filter(Boolean)]);
-    let available = WORDS.filter(word => !blocked.has(word));
+    const preferDouble = DOUBLE_WORDS.length > 0 && Math.random() < DOUBLE_WORD_CHANCE;
+    const primary = preferDouble ? DOUBLE_WORDS : SINGLE_WORDS;
+    const secondary = preferDouble ? SINGLE_WORDS : DOUBLE_WORDS;
+    let available = primary.filter(word => !blocked.has(word));
+    if (!available.length) available = secondary.filter(word => !blocked.has(word));
     if (!available.length) {
         db.prepare(`DELETE FROM crocodile_word_history WHERE chat_id=? AND COALESCE(thread_id,0)=?`)
             .run(String(chatId), Number(threadId || 0));
-        available = WORDS.filter(word => !exclude.includes(word));
+        available = primary.filter(word => !exclude.includes(word));
+        if (!available.length) available = secondary.filter(word => !exclude.includes(word));
     }
     return available[Math.floor(Math.random() * available.length)] || WORDS[0];
 }
@@ -197,23 +169,19 @@ function keyboard(round) {
     if (round.status === 'active') {
         return {
             inline_keyboard: [
-                [{ text: '👁 Посмотреть слово', callback_data: `croc_show:${round.id}` }],
+                [{ text: '👁 Посмотреть задание', callback_data: `croc_show:${round.id}` }],
                 [
-                    { text: '↩ Предыдущее слово', callback_data: `croc_prev:${round.id}` },
-                    { text: '🔄 Новое слово', callback_data: `croc_new:${round.id}` },
+                    { text: '↩ Предыдущее', callback_data: `croc_prev:${round.id}` },
+                    { text: '🔄 Новое', callback_data: `croc_new:${round.id}` },
                 ],
             ],
         };
     }
 
-    const counts = ratingCounts(round.id);
     const rows = [];
     if (round.status === 'guessed') {
-        rows.push([
-            { text: `💜 ${counts[1]}`, callback_data: `croc_rate1:${round.id}` },
-            { text: `💜💜 ${counts[2]}`, callback_data: `croc_rate2:${round.id}` },
-            { text: `💜💜💜 ${counts[3]}`, callback_data: `croc_rate3:${round.id}` },
-        ]);
+        const likes = likeCount(round.id);
+        rows.push([{ text: `💜 Лайк ${Math.min(likes, 3)}/3`, callback_data: `croc_like:${round.id}` }]);
     }
     rows.push([{ text: '✋ Хочу быть ведущим!', callback_data: `croc_claim:${round.id}` }]);
     return { inline_keyboard: rows };
@@ -224,7 +192,7 @@ function roundText(round) {
         '━━━━━━━━━━━━━━━━━━',
         '',
         `🎭 <b>Ведущий:</b> ${esc(round.host_name)}`,
-        '💬 Объясняет одно слово',
+        `💬 Объясняет ${round.word.includes(' ') ? 'два связанных слова' : 'одно слово'}`,
         '',
         '⏳ На объяснение даётся 1 час.',
         'Слово видит только ведущий.',
@@ -256,15 +224,15 @@ function achievementDefs(stats) {
         ['guess_500', '🌟 500 угаданных слов', stats.guessed >= 500],
         ['explain_10', '🎭 10 проведённых раундов', stats.explained >= 10],
         ['explain_50', '🎙 50 проведённых раундов', stats.explained >= 50],
-        ['triple_10', '💜 10 оценок по три сердца', stats.three_heart_ratings >= 10],
-        ['triple_50', '💜 50 оценок по три сердца', stats.three_heart_ratings >= 50],
-        ['triple_100', '💜 100 оценок по три сердца', stats.three_heart_ratings >= 100],
+        ['success_10', '💜 10 отличных объяснений', stats.successful_explains >= 10],
+        ['success_50', '💜 50 отличных объяснений', stats.successful_explains >= 50],
+        ['success_100', '💜 100 отличных объяснений', stats.successful_explains >= 100],
         ['streak_5', '🔥 Серия ×5', stats.best_streak >= 5],
         ['streak_10', '⚡ Серия ×10', stats.best_streak >= 10],
         [
             'croc_legend',
             '👑 Легенда Крокодила',
-            stats.guessed >= 100 && stats.three_heart_ratings >= 50 && stats.best_streak >= 10,
+            stats.guessed >= 100 && stats.successful_explains >= 50 && stats.best_streak >= 10,
         ],
     ];
 }
@@ -464,7 +432,7 @@ async function showTop(api, chatId, threadId) {
     `).all();
     const explainers = db.prepare(`
         SELECT * FROM crocodile_stats
-        ORDER BY three_heart_ratings DESC, explained DESC, updated_at ASC LIMIT 15
+        ORDER BY successful_explains DESC, explained DESC, updated_at ASC LIMIT 15
     `).all();
     const format = (rows, key, suffix = '') => {
         const nonZero = rows.filter(row => Number(row[key]) > 0);
@@ -482,7 +450,7 @@ async function showTop(api, chatId, threadId) {
         format(guesses, 'guessed'),
         '',
         '🎭 <b>Лучшие ведущие</b>',
-        format(explainers, 'three_heart_ratings', ' 💜💜💜'),
+        format(explainers, 'successful_explains', ' ⭐'),
     ].join('\n'), {
         parse_mode: 'HTML',
         ...(threadId ? { message_thread_id: threadId } : {}),
@@ -498,7 +466,7 @@ async function showStats(api, message) {
         `👤 ${esc(stats.display_name)}`,
         `🧠 Угадано: <b>${stats.guessed}</b>`,
         `🎭 Проведено раундов: <b>${stats.explained}</b>`,
-        `💜 Получено оценок 💜💜💜: <b>${stats.three_heart_ratings}</b>`,
+        `⭐ Успешных объяснений: <b>${stats.successful_explains}</b>`,
         `🔥 Текущая серия: <b>${stats.current_streak}</b>`,
         `⚡ Лучшая серия: <b>${stats.best_streak}</b>`,
     ].join('\n'), {
@@ -511,7 +479,14 @@ async function showStats(api, message) {
 async function handleMessage(api, message) {
     if (!sameTopic(message) || !message.text || message.text.startsWith('/')) return false;
     const round = activeRound(message.chat.id, message.message_thread_id);
-    if (!round || String(message.from.id) === String(round.host_id)) return false;
+    if (!round || !message.from?.id || String(message.from.id) === String(round.host_id)) return false;
+
+    // Участником считается тот, кто отправил хотя бы одну попытку во время раунда.
+    db.prepare(`
+        INSERT OR IGNORE INTO crocodile_participants(round_id,user_id,created_at)
+        VALUES(?,?,?)
+    `).run(round.id, String(message.from.id), Date.now());
+
     if (normalize(message.text) !== normalize(round.word)) return false;
 
     ensureStats(message.from);
@@ -556,13 +531,10 @@ async function handleMessage(api, message) {
         `🎉 <b>${esc(finished.winner_name)}</b> отгадал(а) слово <b>${esc(finished.word)}</b>!`,
         '',
         `🎭 Ведущий: <b>${esc(finished.host_name)}</b>`,
-        'Оцените объяснение:',
+        'Если объяснение понравилось — поставьте 💜.',
         '',
-        '💜 — нормально',
-        '💜💜 — хорошо',
-        '💜💜💜 — отлично',
-        '',
-        'Только оценка 💜💜💜 учитывается в топе ведущих.',
+        'Когда 3 участника раунда поставят лайк, ведущему начислится',
+        '<b>+1 успешное объяснение</b> в рейтинг.',
         '',
         '⏱ Первые 5 секунд стать ведущим может только угадавший.',
         '',
@@ -576,37 +548,51 @@ async function handleMessage(api, message) {
     await unlockAchievements(api, finished.host_id, finished.chat_id, finished.thread_id);
     return true;
 }
-async function handleRating(api, callback, round, score) {
+async function handleLike(api, callback, round) {
     const userId = String(callback.from.id);
     if (round.status !== 'guessed') {
-        await answer(api, callback.id, 'Оценка уже недоступна.');
+        await answer(api, callback.id, 'Лайк уже недоступен.');
         return true;
     }
     if (userId === String(round.host_id)) {
-        await answer(api, callback.id, 'Нельзя оценивать самого себя.', true);
+        await answer(api, callback.id, 'Ведущий не может лайкнуть себя.', true);
+        return true;
+    }
+    const participated = db.prepare(`
+        SELECT 1 FROM crocodile_participants WHERE round_id=? AND user_id=?
+    `).get(round.id, userId);
+    if (!participated) {
+        await answer(api, callback.id, 'Лайк доступен только участникам этого раунда.', true);
         return true;
     }
     const old = db.prepare(`
-        SELECT score FROM crocodile_ratings WHERE round_id=? AND user_id=?
+        SELECT 1 FROM crocodile_ratings WHERE round_id=? AND user_id=?
     `).get(round.id, userId);
     if (old) {
-        await answer(api, callback.id, 'Ты уже оценил(а) это объяснение.');
+        await answer(api, callback.id, 'Ты уже поставил(а) лайк.');
         return true;
     }
 
+    let awarded = false;
     db.transaction(() => {
         db.prepare(`
             INSERT INTO crocodile_ratings(round_id,user_id,score,created_at)
-            VALUES(?,?,?,?)
-        `).run(round.id, userId, score, Date.now());
-        if (score === 3) {
+            VALUES(?,?,1,?)
+        `).run(round.id, userId, Date.now());
+        const likes = likeCount(round.id);
+        const changed = db.prepare(`
+            UPDATE crocodile_rounds
+            SET successful_awarded=1
+            WHERE id=? AND successful_awarded=0 AND ? >= 3
+        `).run(round.id, likes);
+        if (changed.changes) {
             db.prepare(`
                 UPDATE crocodile_stats
-                SET three_heart_ratings=three_heart_ratings+1,
-                    successful_explains=successful_explains+1,
+                SET successful_explains=successful_explains+1,
                     updated_at=?
                 WHERE user_id=?
             `).run(Date.now(), String(round.host_id));
+            awarded = true;
         }
     })();
 
@@ -615,8 +601,17 @@ async function handleRating(api, callback, round, score) {
         reply_markup: keyboard(fresh),
         ...(callback.message.entities ? { entities: callback.message.entities } : {}),
     }).catch(() => null);
-    await answer(api, callback.id, `${'💜'.repeat(score)} Оценка принята!`);
-    if (score === 3) {
+    const likes = likeCount(round.id);
+    await answer(api, callback.id, awarded ? '🏆 3/3! Ведущему начислен рейтинг.' : `💜 Лайк принят: ${Math.min(likes, 3)}/3`);
+    if (awarded) {
+        await send(api, round.chat_id, [
+            '🏆 <b>Отличное объяснение!</b>',
+            '',
+            `Ведущий <b>${esc(round.host_name)}</b> получил +1 к рейтингу.`,
+        ].join('\n'), {
+            parse_mode: 'HTML',
+            ...(round.thread_id ? { message_thread_id: round.thread_id } : {}),
+        }).catch(() => null);
         await unlockAchievements(api, round.host_id, round.chat_id, round.thread_id);
     }
     return true;
@@ -637,7 +632,7 @@ async function handleCallback(api, callback) {
         if (userId !== String(round.host_id)) {
             await answer(api, callback.id, 'Слово видит только ведущий.', true);
         } else {
-            await answer(api, callback.id, `Твоё слово: ${round.word}`, true);
+            await answer(api, callback.id, `Твоё задание: ${round.word}`, true);
         }
         return true;
     }
@@ -658,12 +653,9 @@ async function handleCallback(api, callback) {
         return true;
     }
 
-    if (action === 'croc_rate1') return handleRating(api, callback, round, 1);
-    if (action === 'croc_rate2') return handleRating(api, callback, round, 2);
-    if (action === 'croc_rate3') return handleRating(api, callback, round, 3);
-
-    // Поддержка старых сообщений с кнопкой лайка после обновления.
-    if (action === 'croc_like') return handleRating(api, callback, round, 3);
+    if (action === 'croc_like' || action === 'croc_rate1' || action === 'croc_rate2' || action === 'croc_rate3') {
+        return handleLike(api, callback, round);
+    }
 
     if (action === 'croc_claim') {
         if (!['guessed', 'timeout'].includes(round.status)) {
