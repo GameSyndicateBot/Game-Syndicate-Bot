@@ -764,6 +764,32 @@ async function startTelegramBot(client) {
         console.error('⚠️ Не удалось установить команды Telegram:', error.message);
     });
 
+
+    // Register Crocodile commands for private chats and groups
+    const telegramCommands = [
+        { command: 'game', description: 'создать игровое лобби' },
+        { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' },
+        { command: 'setleavelog', description: 'назначить тему логов выходов' },
+        { command: 'setcrocodile', description: 'назначить тему Крокодила' },
+        { command: 'crocodile', description: 'начать игру Крокодил' },
+        { command: 'croctop', description: 'топ игроков Крокодила' },
+        { command: 'crocstats', description: 'личная статистика Крокодила' },
+        { command: 'crocstop', description: 'остановить текущий раунд' },
+        { command: 'crocreset', description: 'сбросить зависшие раунды' },
+    ];
+    await api('setMyCommands', {
+        commands: telegramCommands,
+        scope: { type: 'all_group_chats' },
+    }).catch(error => {
+        console.error('⚠️ Не удалось установить команды Telegram для групп:', error.message);
+    });
+    await api('setMyCommands', {
+        commands: telegramCommands,
+        scope: { type: 'all_private_chats' },
+    }).catch(error => {
+        console.error('⚠️ Не удалось установить команды Telegram для личных чатов:', error.message);
+    });
+
     crocodile.init(api);
 
     pollingStarted = true;
