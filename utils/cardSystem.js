@@ -41,22 +41,22 @@ const PACK_TYPES = {
     premium: {
         id: 'premium', name: 'Premium Pack', cost: 700,
         chances: [
-            { value: 'rare', weight: 45 },
-            { value: 'epic', weight: 30 },
-            { value: 'legendary', weight: 15 },
-            { value: 'mythic', weight: 6 },
-            { value: 'exclusive', weight: 2.5 },
-            { value: 'holographic', weight: 1.5 },
+            { value: 'rare', weight: 35 },
+            { value: 'epic', weight: 35 },
+            { value: 'legendary', weight: 18 },
+            { value: 'mythic', weight: 7 },
+            { value: 'exclusive', weight: 3 },
+            { value: 'holographic', weight: 2 },
         ],
     },
     elite: {
         id: 'elite', name: 'Elite Pack', cost: 1600,
         chances: [
-            { value: 'epic', weight: 45 },
-            { value: 'legendary', weight: 30 },
-            { value: 'mythic', weight: 15 },
-            { value: 'exclusive', weight: 7 },
-            { value: 'holographic', weight: 3 },
+            { value: 'epic', weight: 15 },
+            { value: 'legendary', weight: 25 },
+            { value: 'mythic', weight: 30 },
+            { value: 'exclusive', weight: 20 },
+            { value: 'holographic', weight: 10 },
         ],
     },
 };
