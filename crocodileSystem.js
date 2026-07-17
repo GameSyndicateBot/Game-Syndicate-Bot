@@ -6,8 +6,42 @@ const RECENT_WORD_LIMIT = 500;
 const timers = new Map();
 let apiRef = null;
 
-// Большой словарь вынесен в JSON: 15 000 одиночных слов и отобранные двухсловные выражения.
-const CROCODILE_WORDS = require('./data/crocodileWords.json');
+// Большой словарь хранится отдельным JSON-файлом.
+// Проверяем два пути, чтобы обновление не падало при особенностях упаковки хостинга.
+const fs = require('fs');
+const path = require('path');
+
+function loadCrocodileWords() {
+    const candidates = [
+        path.join(__dirname, 'data', 'crocodileWords.json'),
+        path.join(__dirname, 'crocodileWords.json'),
+    ];
+
+    for (const filename of candidates) {
+        if (!fs.existsSync(filename)) continue;
+        try {
+            const parsed = JSON.parse(fs.readFileSync(filename, 'utf8'));
+            if (Array.isArray(parsed.single) && parsed.single.length > 0) {
+                return parsed;
+            }
+        } catch (error) {
+            console.error(`⚠️ Не удалось прочитать словарь Крокодила ${filename}:`, error.message);
+        }
+    }
+
+    // Аварийный набор не даёт всему Discord/Telegram-боту упасть,
+    // даже если хостинг по ошибке не распаковал большой словарь.
+    console.error('⚠️ Большой словарь Крокодила не найден. Используется аварийный набор.');
+    return {
+        single: [
+            'кот', 'собака', 'самолёт', 'телефон', 'компьютер', 'пингвин',
+            'дракон', 'вулкан', 'пианино', 'рыцарь', 'космонавт', 'телескоп',
+        ],
+        double: ['день рождения', 'новый год', 'белый медведь', 'машина времени'],
+    };
+}
+
+const CROCODILE_WORDS = loadCrocodileWords();
 const SINGLE_WORDS = [...new Set(CROCODILE_WORDS.single || [])];
 const DOUBLE_WORDS = [...new Set(CROCODILE_WORDS.double || [])];
 const WORDS = [...SINGLE_WORDS, ...DOUBLE_WORDS];
