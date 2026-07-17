@@ -213,11 +213,15 @@ function keyboard(round) {
     }
 
     const rows = [];
-    if (round.status === 'guessed') {
+    // Лайки остаются доступными и после того, как следующий ведущий уже выбран.
+    if (round.status === 'guessed' || round.status === 'claimed') {
         const likes = likeCount(round.id);
         rows.push([{ text: `💜 Лайк ${likes}`, callback_data: `croc_like:${round.id}` }]);
     }
-    rows.push([{ text: '✋ Хочу быть ведущим!', callback_data: `croc_claim:${round.id}` }]);
+    // Кнопка выбора ведущего нужна только до выбора нового ведущего.
+    if (round.status === 'guessed' || round.status === 'timeout') {
+        rows.push([{ text: '✋ Хочу быть ведущим!', callback_data: `croc_claim:${round.id}` }]);
+    }
     return { inline_keyboard: rows };
 }
 function roundText(round) {
@@ -591,7 +595,7 @@ async function handleMessage(api, message) {
 }
 async function handleLike(api, callback, round) {
     const userId = String(callback.from.id);
-    if (round.status !== 'guessed') {
+    if (!['guessed', 'claimed'].includes(round.status)) {
         await answer(api, callback.id, 'Лайк уже недоступен.');
         return true;
     }
@@ -728,11 +732,13 @@ async function handleCallback(api, callback) {
         }
         await answer(api, callback.id, 'Ты новый ведущий!');
 
-        // Убираем кнопки с завершённого раунда, чтобы ими нельзя было пользоваться повторно.
+        // После выбора нового ведущего убираем только кнопку выбора ведущего.
+        // Лайки за завершённое объяснение остаются доступными без ограничения по времени.
+        const claimedRound = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(round.id);
         await api('editMessageReplyMarkup', {
             chat_id: callback.message.chat.id,
             message_id: callback.message.message_id,
-            reply_markup: { inline_keyboard: [] },
+            reply_markup: keyboard(claimedRound),
         }).catch(() => null);
 
         await startRound(api, round.chat_id, round.thread_id, callback.from);
