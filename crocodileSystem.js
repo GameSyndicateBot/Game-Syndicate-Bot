@@ -2,8 +2,10 @@ const { db, getSetting, setSetting } = require('./telegram/ecosystemDb');
 
 const ROUND_MS = 60 * 60 * 1000;
 const WINNER_PRIORITY_MS = 5 * 1000;
+const CLAIMED_HOST_START_MS = 2 * 60 * 1000;
 const RECENT_WORD_LIMIT = 500;
 const timers = new Map();
+const claimedHostTimers = new Map();
 let apiRef = null;
 
 // Большой словарь хранится отдельным JSON-файлом.
@@ -115,6 +117,10 @@ function ensureColumn(table, column, definition) {
 ensureColumn('crocodile_stats', 'three_heart_ratings', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('crocodile_stats', 'successful_explains', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('crocodile_rounds', 'successful_awarded', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('crocodile_rounds', 'host_ready', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('crocodile_rounds', 'host_ready_expires_at', 'INTEGER');
+ensureColumn('crocodile_rounds', 'source_round_id', 'INTEGER');
+ensureColumn('crocodile_rounds', 'claim_message_id', 'INTEGER');
 ensureColumn('crocodile_participants', 'attempts', 'INTEGER NOT NULL DEFAULT 0');
 
 function esc(value) {
@@ -298,16 +304,18 @@ async function unlockAchievements(api, userId, chatId, threadId) {
         ...(threadId ? { message_thread_id: threadId } : {}),
     });
 }
-async function startRound(api, chatId, threadId, user) {
+async function startRound(api, chatId, threadId, user, options = {}) {
     if (!user?.id || activeRound(chatId, threadId)) return null;
     ensureStats(user);
     const now = Date.now();
+    const claimedHost = Boolean(options.claimedHost);
     const word = chooseWord(chatId, threadId);
     rememberWord(chatId, threadId, word);
     const info = db.prepare(`
         INSERT INTO crocodile_rounds(
-            chat_id,thread_id,host_id,host_name,word,started_at,ends_at
-        ) VALUES(?,?,?,?,?,?,?)
+            chat_id,thread_id,host_id,host_name,word,started_at,ends_at,
+            host_ready,host_ready_expires_at,source_round_id
+        ) VALUES(?,?,?,?,?,?,?,?,?,?)
     `).run(
         String(chatId),
         threadId || null,
@@ -316,6 +324,9 @@ async function startRound(api, chatId, threadId, user) {
         word,
         now,
         now + ROUND_MS,
+        claimedHost ? 0 : 1,
+        claimedHost ? now + CLAIMED_HOST_START_MS : null,
+        options.sourceRoundId || null,
     );
     const round = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(info.lastInsertRowid);
     const message = await send(api, chatId, roundText(round), {
@@ -325,7 +336,91 @@ async function startRound(api, chatId, threadId, user) {
     });
     db.prepare('UPDATE crocodile_rounds SET message_id=? WHERE id=?').run(message.message_id, round.id);
     scheduleTimeout(round.id);
-    return round;
+    if (claimedHost) scheduleClaimedHostTimeout(round.id);
+    return db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(round.id);
+}
+
+async function updateClaimMarkup(api, sourceRound) {
+    const fresh = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(sourceRound.id);
+    const messageIds = new Set([
+        fresh.result_message_id,
+        fresh.claim_message_id,
+        fresh.status === 'timeout' ? fresh.message_id : null,
+    ].filter(Boolean));
+    for (const messageId of messageIds) {
+        await api('editMessageReplyMarkup', {
+            chat_id: fresh.chat_id,
+            message_id: messageId,
+            reply_markup: keyboard(fresh),
+        }).catch(() => null);
+    }
+}
+
+async function expireClaimedHost(roundId) {
+    const round = db.prepare(`
+        SELECT * FROM crocodile_rounds
+        WHERE id=? AND status='active' AND host_ready=0
+    `).get(roundId);
+    if (!round || !apiRef) return;
+
+    const changed = db.prepare(`
+        UPDATE crocodile_rounds
+        SET status='leader_expired'
+        WHERE id=? AND status='active' AND host_ready=0
+    `).run(round.id);
+    if (!changed.changes) return;
+
+    clearTimeout(timers.get(round.id));
+    timers.delete(round.id);
+    claimedHostTimers.delete(round.id);
+
+    if (round.message_id) {
+        await apiRef('editMessageReplyMarkup', {
+            chat_id: round.chat_id,
+            message_id: round.message_id,
+            reply_markup: { inline_keyboard: [] },
+        }).catch(() => null);
+    }
+
+    let source = null;
+    if (round.source_round_id) {
+        db.prepare(`
+            UPDATE crocodile_rounds
+            SET status=CASE WHEN winner_id IS NULL THEN 'timeout' ELSE 'guessed' END
+            WHERE id=? AND status='claimed'
+        `).run(round.source_round_id);
+        source = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(round.source_round_id);
+    }
+
+    const notification = await send(apiRef, round.chat_id, [
+        '⏰ <b>Ведущий не начал раунд в течение 2 минут.</b>',
+        '',
+        'Право стать ведущим снова открыто для участников.',
+    ].join('\n'), {
+        parse_mode: 'HTML',
+        ...(source ? { reply_markup: keyboard(source) } : {}),
+        ...(round.thread_id ? { message_thread_id: round.thread_id } : {}),
+    }).catch(() => null);
+
+    if (source && notification?.message_id) {
+        db.prepare('UPDATE crocodile_rounds SET claim_message_id=? WHERE id=?')
+            .run(notification.message_id, source.id);
+        await updateClaimMarkup(apiRef, source);
+    }
+}
+
+function scheduleClaimedHostTimeout(roundId) {
+    const round = db.prepare(`
+        SELECT * FROM crocodile_rounds
+        WHERE id=? AND status='active' AND host_ready=0
+    `).get(roundId);
+    if (!round) return;
+    clearTimeout(claimedHostTimers.get(roundId));
+    const timer = setTimeout(
+        () => expireClaimedHost(roundId),
+        Math.max(1000, Number(round.host_ready_expires_at) - Date.now()),
+    );
+    claimedHostTimers.set(roundId, timer);
 }
 async function finishTimeout(roundId) {
     const round = db.prepare(`
@@ -413,16 +508,34 @@ async function handleCommand(api, message, command, checkAdmin) {
     if (!sameTopic(message)) return false;
 
     if (command === '/crocodile' || command === '/croc' || command === '/startgame') {
-        if (activeRound(message.chat.id, message.message_thread_id)) {
-            await send(
-                api,
-                message.chat.id,
-                '🐊 Раунд уже идёт.',
-                message.message_thread_id
-                    ? { message_thread_id: message.message_thread_id }
-                    : {},
-            );
-            return true;
+        const current = activeRound(message.chat.id, message.message_thread_id);
+        if (current) {
+            const broken = !current.message_id || Number(current.ends_at) <= Date.now();
+            if (!broken) {
+                await send(
+                    api,
+                    message.chat.id,
+                    '🐊 Раунд уже идёт.',
+                    message.message_thread_id
+                        ? { message_thread_id: message.message_thread_id }
+                        : {},
+                );
+                return true;
+            }
+
+            db.prepare(`UPDATE crocodile_rounds SET status='stopped' WHERE id=? AND status='active'`)
+                .run(current.id);
+            clearTimeout(timers.get(current.id));
+            timers.delete(current.id);
+            clearTimeout(claimedHostTimers.get(current.id));
+            claimedHostTimers.delete(current.id);
+            if (current.message_id) {
+                await api('editMessageReplyMarkup', {
+                    chat_id: current.chat_id,
+                    message_id: current.message_id,
+                    reply_markup: { inline_keyboard: [] },
+                }).catch(() => null);
+            }
         }
         await startRound(api, message.chat.id, message.message_thread_id, message.from);
         return true;
@@ -455,7 +568,7 @@ async function handleCommand(api, message, command, checkAdmin) {
             ? db.prepare(`
                 SELECT * FROM crocodile_rounds
                 WHERE chat_id=? AND COALESCE(thread_id,0)=COALESCE(?,0)
-                  AND status IN ('active','guessed','timeout')
+                  AND status IN ('active','guessed','timeout','claimed','leader_expired')
             `).all(chatId, threadId)
             : (() => {
                 const round = activeRound(chatId, threadId);
@@ -466,6 +579,8 @@ async function handleCommand(api, message, command, checkAdmin) {
             db.prepare(`UPDATE crocodile_rounds SET status='stopped' WHERE id=?`).run(round.id);
             clearTimeout(timers.get(round.id));
             timers.delete(round.id);
+            clearTimeout(claimedHostTimers.get(round.id));
+            claimedHostTimers.delete(round.id);
             if (round.message_id) {
                 await api('editMessageReplyMarkup', {
                     chat_id: round.chat_id,
@@ -729,15 +844,36 @@ async function handleCallback(api, callback) {
     const userId = String(callback.from.id);
 
     if (action === 'croc_show') {
+        if (round.status === 'leader_expired') {
+            await answer(api, callback.id, '⏰ Ваше право быть ведущим уже истекло.', true);
+            return true;
+        }
+        if (round.status !== 'active') {
+            await answer(api, callback.id, 'Этот раунд уже завершён.', true);
+            return true;
+        }
         if (userId !== String(round.host_id)) {
             await answer(api, callback.id, 'Слово видит только ведущий.', true);
-        } else {
-            await answer(api, callback.id, `Твоё задание: ${round.word}`, true);
+            return true;
         }
+        if (!Number(round.host_ready)) {
+            db.prepare(`
+                UPDATE crocodile_rounds
+                SET host_ready=1,host_ready_expires_at=NULL
+                WHERE id=? AND status='active' AND host_ready=0
+            `).run(round.id);
+            clearTimeout(claimedHostTimers.get(round.id));
+            claimedHostTimers.delete(round.id);
+        }
+        await answer(api, callback.id, `Твоё задание: ${round.word}`, true);
         return true;
     }
 
     if (action === 'croc_new' || action === 'croc_prev') {
+        if (round.status === 'leader_expired') {
+            await answer(api, callback.id, '⏰ Ваше право быть ведущим уже истекло.', true);
+            return true;
+        }
         if (userId !== String(round.host_id) || round.status !== 'active') {
             await answer(api, callback.id, 'Только ведущий активного раунда.', true);
             return true;
@@ -783,13 +919,24 @@ async function handleCallback(api, callback) {
         // После выбора нового ведущего убираем только кнопку выбора ведущего.
         // Лайки за завершённое объяснение остаются доступными без ограничения по времени.
         const claimedRound = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(round.id);
-        await api('editMessageReplyMarkup', {
-            chat_id: callback.message.chat.id,
-            message_id: callback.message.message_id,
-            reply_markup: keyboard(claimedRound),
-        }).catch(() => null);
+        await updateClaimMarkup(api, claimedRound);
 
-        await startRound(api, round.chat_id, round.thread_id, callback.from);
+        const started = await startRound(api, round.chat_id, round.thread_id, callback.from, {
+            claimedHost: true,
+            sourceRoundId: round.id,
+        });
+        if (!started) {
+            db.prepare(`
+                UPDATE crocodile_rounds
+                SET status=CASE WHEN winner_id IS NULL THEN 'timeout' ELSE 'guessed' END
+                WHERE id=? AND status='claimed'
+            `).run(round.id);
+            const reverted = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(round.id);
+            await updateClaimMarkup(api, reverted);
+            await send(api, round.chat_id, '⚠️ Не удалось создать новый раунд. Попробуйте нажать кнопку ещё раз.', {
+                ...(round.thread_id ? { message_thread_id: round.thread_id } : {}),
+            }).catch(() => null);
+        }
         return true;
     }
     return true;
@@ -802,16 +949,24 @@ function init(api) {
     const recovered = db.prepare(`
         UPDATE crocodile_rounds
         SET status='stopped'
-        WHERE status='active' AND started_at<?
+        WHERE status='active' AND host_ready=1 AND started_at<?
     `).run(staleBefore).changes;
     if (recovered) {
         console.log(`♻️ Crocodile: recovered ${recovered} stale round(s).`);
     }
 
     for (const round of db.prepare(`
-        SELECT id FROM crocodile_rounds WHERE status='active'
+        SELECT id,host_ready,host_ready_expires_at
+        FROM crocodile_rounds WHERE status='active'
     `).all()) {
         scheduleTimeout(round.id);
+        if (!Number(round.host_ready)) {
+            if (Number(round.host_ready_expires_at) <= Date.now()) {
+                setTimeout(() => expireClaimedHost(round.id), 0);
+            } else {
+                scheduleClaimedHostTimeout(round.id);
+            }
+        }
     }
 }
 
