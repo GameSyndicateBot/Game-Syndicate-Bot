@@ -118,20 +118,20 @@ async function createAchievementCard(user, achievement) {
 
     ctx.fillStyle = '#FBBF24';
     ctx.font = 'bold 25px Arial';
-    ctx.fillText(`+${achievement.xp} XP`, 250, 225);
+    ctx.fillText(`+${achievement.xp} XP`, 250, 214);
 
     ctx.fillStyle = style.main;
     ctx.font = 'bold 22px Arial';
-    ctx.fillText(`+${achievement.points || 0} AP`, 390, 225);
+    ctx.fillText(`+${achievement.points || 0} AP`, 390, 214);
 
     ctx.fillStyle = '#C084FC';
     ctx.font = 'bold 22px Arial';
-    ctx.fillText(`+${achievement.dustReward || 0} Dust`, 510, 225);
+    ctx.fillText(`+${achievement.dustReward || 0} DUST`, 510, 214);
 
     ctx.fillStyle = '#A78BFA';
-    ctx.font = '16px Arial';
-    ctx.textAlign = 'right';
-    ctx.fillText('GAME SYNDICATE • ДОСТИЖЕНИЯ', 850, 225);
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME SYNDICATE • ДОСТИЖЕНИЯ', 550, 244);
     ctx.textAlign = 'left';
 
     return canvas.toBuffer('image/png');

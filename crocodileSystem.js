@@ -766,13 +766,6 @@ async function handleLike(api, callback, round) {
         await answer(api, callback.id, 'Ведущий не может лайкнуть себя.', true);
         return true;
     }
-    const participated = db.prepare(`
-        SELECT 1 FROM crocodile_participants WHERE round_id=? AND user_id=?
-    `).get(round.id, userId);
-    if (!participated) {
-        await answer(api, callback.id, 'Лайк доступен только участникам этого раунда.', true);
-        return true;
-    }
     const old = db.prepare(`
         SELECT 1 FROM crocodile_ratings WHERE round_id=? AND user_id=?
     `).get(round.id, userId);
@@ -791,7 +784,7 @@ async function handleLike(api, callback, round) {
         const changed = db.prepare(`
             UPDATE crocodile_rounds
             SET successful_awarded=1
-            WHERE id=? AND successful_awarded=0 AND ? >= 3
+            WHERE id=? AND successful_awarded=0 AND ? >= 2
         `).run(round.id, likes);
         if (changed.changes) {
             db.prepare(`
@@ -815,7 +808,7 @@ async function handleLike(api, callback, round) {
         api,
         callback.id,
         awarded
-            ? '🏆 Третий лайк! Ведущему начислено успешное объяснение.'
+            ? '🏆 Второй лайк! Ведущему начислено успешное объяснение.'
             : `💜 Лайк принят. Всего: ${likes}`,
     );
     if (awarded) {
