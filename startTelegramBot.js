@@ -6,6 +6,7 @@ const {
     resolveStartTimestamp,
 } = require('./crossGatherings');
 const { getSetting, setSetting } = require('./ecosystemDb');
+const crocodile = require('./crocodileSystem');
 
 const drafts = new Map();
 let pollingStarted = false;
@@ -268,6 +269,8 @@ async function sendLeaveLog(api, chatMemberUpdate) {
 }
 
 async function handleCommand(api, message, command) {
+    const crocHandled = await crocodile.handleCommand(api, message, command, (chatId, userId) => isChatAdmin(api, chatId, userId));
+    if (crocHandled) return true;
     const { chat, from } = message;
 
     if (command === '/start') {
@@ -392,6 +395,9 @@ async function handleText(api, message) {
         if (handled) return;
     }
 
+    const crocMessageHandled = await crocodile.handleMessage(api, message);
+    if (crocMessageHandled) return;
+
     const key = draftKey(message.chat.id, message.from.id);
     const draft = drafts.get(key);
     if (!draft || text.startsWith('/')) return;
@@ -461,6 +467,9 @@ async function handleText(api, message) {
 }
 
 async function handleCallback(api, callback) {
+    const crocCallbackHandled = await crocodile.handleCallback(api, callback);
+    if (crocCallbackHandled) return;
+
     const data = callback.data || '';
     const from = callback.from;
     const message = callback.message;
@@ -566,10 +575,16 @@ async function startTelegramBot(client) {
             { command: 'cancel', description: 'отменить создание сбора' },
             { command: 'setgatherchannel', description: 'назначить Telegram-чат сборов' },
             { command: 'setleavelog', description: 'назначить тему логов выходов' },
+            { command: 'setcrocodile', description: 'назначить тему Крокодила' },
+            { command: 'crocodile', description: 'начать игру Крокодил' },
+            { command: 'croctop', description: 'топ игроков Крокодила' },
+            { command: 'crocstats', description: 'моя статистика Крокодила' },
         ],
     }).catch(error => {
         console.error('⚠️ Не удалось установить команды Telegram:', error.message);
     });
+
+    crocodile.init(api);
 
     pollingStarted = true;
     pollingLoop(api).catch(error => {
