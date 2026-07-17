@@ -12,6 +12,7 @@ const {
     handleGameLobbyTelegramCallback,
     handleTelegramPinnedServiceMessage,
 } = require('../systems/gameLobbySystem');
+const crocodile = require('../crocodileSystem');
 
 const drafts = new Map();
 let pollingStarted = false;
@@ -235,11 +236,6 @@ async function sendLeaveLog(api, update) {
         return false;
     }
 
-    // Служебных ботов в пользовательские логи не добавляем.
-    if (member.is_bot) {
-        return false;
-    }
-
     const selfLeave = isLeft
         && String(actor?.id) === String(member.id);
 
@@ -248,18 +244,18 @@ async function sendLeaveLog(api, update) {
     let reasonLine;
 
     if (isBanned) {
-        title = 'Пользователь заблокирован';
-        icon = '🚫';
+        title = member.is_bot ? 'Бот заблокирован' : 'Пользователь заблокирован';
+        icon = member.is_bot ? '🤖' : '🚫';
         reasonLine = actor
             ? `🛡 <b>Заблокировал:</b> ${telegramUserLink(actor)}`
             : '🛡 <b>Заблокировал:</b> неизвестно';
     } else if (selfLeave) {
-        title = 'Участник покинул группу';
-        icon = '🚪';
+        title = member.is_bot ? 'Бот покинул группу' : 'Участник покинул группу';
+        icon = member.is_bot ? '🤖' : '🚪';
         reasonLine = 'ℹ️ <b>Причина:</b> вышел самостоятельно';
     } else {
-        title = 'Участник удалён из группы';
-        icon = '⛔';
+        title = member.is_bot ? 'Бот удалён из группы' : 'Участник удалён из группы';
+        icon = member.is_bot ? '🤖' : '⛔';
         reasonLine = actor
             ? `🛡 <b>Удалил:</b> ${telegramUserLink(actor)}`
             : '🛡 <b>Удалил:</b> неизвестно';
@@ -268,7 +264,7 @@ async function sendLeaveLog(api, update) {
     const lines = [
         `${icon} <b>${title}</b>`,
         '',
-        `👤 <b>Участник:</b> ${telegramUserLink(member)}`,
+        `${member.is_bot ? '🤖 <b>Бот:</b>' : '👤 <b>Участник:</b>'} ${telegramUserLink(member)}`,
         member.username
             ? `🔗 <b>Username:</b> @${escapeHtml(member.username)}`
             : '🔗 <b>Username:</b> отсутствует',
@@ -295,6 +291,14 @@ async function sendLeaveLog(api, update) {
 }
 
 async function handleCommand(api, message, command) {
+    const crocHandled = await crocodile.handleCommand(
+        api,
+        message,
+        command,
+        (chatId, userId) => isChatAdmin(api, chatId, userId)
+    );
+    if (crocHandled) return true;
+
     const { chat, from } = message;
 
     if (command === '/start') {
@@ -548,6 +552,9 @@ async function handleText(api, message) {
         if (handled) return;
     }
 
+    const crocMessageHandled = await crocodile.handleMessage(api, message);
+    if (crocMessageHandled) return;
+
     const key = draftKey(message.chat.id, message.from.id);
     const draft = drafts.get(key);
     if (!draft || text.startsWith('/')) return;
@@ -621,6 +628,9 @@ async function handleCallback(api, callback) {
     const from = callback.from;
     const message = callback.message;
     if (!message) return;
+
+    const crocCallbackHandled = await crocodile.handleCallback(api, callback);
+    if (crocCallbackHandled) return;
 
     if (data.startsWith('game_lobby_close:')) {
         const handled = await handleGameLobbyTelegramCallback(
@@ -743,10 +753,16 @@ async function startTelegramBot(client) {
             { command: 'game', description: 'создать игровое лобби' },
             { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' },
             { command: 'setleavelog', description: 'назначить тему логов выходов' },
+            { command: 'setcrocodile', description: 'назначить тему Крокодила' },
+            { command: 'crocodile', description: 'начать игру Крокодил' },
+            { command: 'croctop', description: 'топ игроков Крокодила' },
+            { command: 'crocstats', description: 'личная статистика Крокодила' },
         ],
     }).catch(error => {
         console.error('⚠️ Не удалось установить команды Telegram:', error.message);
     });
+
+    crocodile.init(api);
 
     pollingStarted = true;
     pollingLoop(api).catch(error => {
