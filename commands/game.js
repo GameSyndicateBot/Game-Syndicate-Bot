@@ -1,8 +1,89 @@
 'use strict';
-const {ActionRowBuilder,ModalBuilder,SlashCommandBuilder,TextInputBuilder,TextInputStyle,MessageFlags}=require('discord.js');
-const {publishGameLobby}=require('../systems/gameLobbySystem');
-module.exports={
- data:new SlashCommandBuilder().setName('game').setDescription('Быстро создать игровое лобби в Discord и Telegram'),
- async execute(i){const m=new ModalBuilder().setCustomId('game_create_modal').setTitle('GS Game Lobby');const a=new TextInputBuilder().setCustomId('game_name').setLabel('Название игры').setPlaceholder('Например: Goose Goose Duck').setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(60).setRequired(true);const b=new TextInputBuilder().setCustomId('game_map').setLabel('Карта / режим').setPlaceholder('Например: Basement').setStyle(TextInputStyle.Short).setMinLength(1).setMaxLength(60).setRequired(true);const c=new TextInputBuilder().setCustomId('game_code').setLabel('Код лобби').setPlaceholder('Например: ABC123').setStyle(TextInputStyle.Short).setMinLength(1).setMaxLength(40).setRequired(true);m.addComponents(new ActionRowBuilder().addComponents(a),new ActionRowBuilder().addComponents(b),new ActionRowBuilder().addComponents(c));await i.showModal(m);},
- async handleModal(i){if(!i.isModalSubmit()||i.customId!=='game_create_modal')return false;await i.deferReply({flags:MessageFlags.Ephemeral});const creatorName=i.member?.displayName||i.user.globalName||i.user.username;try{await publishGameLobby({creatorId:i.user.id,creatorName,game:i.fields.getTextInputValue('game_name').trim(),mapName:i.fields.getTextInputValue('game_map').trim(),lobbyCode:i.fields.getTextInputValue('game_code').trim()});await i.editReply({content:'✅ **GS Game Lobby опубликовано.**\nОтправлено в Discord и Telegram. Автозакрытие через 4 часа.'});}catch(e){console.error('[GameLobby] Create:',e);await i.editReply({content:`❌ Не удалось опубликовать лобби.\n\`${e.message}\``});}return true;}
+
+const {
+    ActionRowBuilder,
+    ModalBuilder,
+    SlashCommandBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    MessageFlags,
+} = require('discord.js');
+const { publishGameLobby } = require('../systems/gameLobbySystem');
+
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('game')
+        .setDescription('Быстро создать игровое лобби в Discord и Telegram'),
+
+    async execute(interaction) {
+        const modal = new ModalBuilder()
+            .setCustomId('game_create_modal')
+            .setTitle('GS Game Lobby');
+
+        const gameInput = new TextInputBuilder()
+            .setCustomId('game_name')
+            .setLabel('Название игры')
+            .setPlaceholder('Например: Гномы')
+            .setStyle(TextInputStyle.Short)
+            .setMinLength(2)
+            .setMaxLength(60)
+            .setRequired(true);
+
+        const lobbyCodeInput = new TextInputBuilder()
+            .setCustomId('game_code')
+            .setLabel('Код лобби (необязательно)')
+            .setPlaceholder('Например: ABC123')
+            .setStyle(TextInputStyle.Short)
+            .setMaxLength(40)
+            .setRequired(false);
+
+        const timeInput = new TextInputBuilder()
+            .setCustomId('game_time')
+            .setLabel('Время (необязательно)')
+            .setPlaceholder('Например: 21:00')
+            .setStyle(TextInputStyle.Short)
+            .setMaxLength(40)
+            .setRequired(false);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(gameInput),
+            new ActionRowBuilder().addComponents(lobbyCodeInput),
+            new ActionRowBuilder().addComponents(timeInput),
+        );
+
+        await interaction.showModal(modal);
+    },
+
+    async handleModal(interaction) {
+        if (!interaction.isModalSubmit() || interaction.customId !== 'game_create_modal') {
+            return false;
+        }
+
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+        const creatorName = interaction.member?.displayName
+            || interaction.user.globalName
+            || interaction.user.username;
+
+        try {
+            await publishGameLobby({
+                creatorId: interaction.user.id,
+                creatorName,
+                game: interaction.fields.getTextInputValue('game_name').trim(),
+                lobbyCode: interaction.fields.getTextInputValue('game_code').trim(),
+                timeText: interaction.fields.getTextInputValue('game_time').trim(),
+            });
+
+            await interaction.editReply({
+                content: '✅ **GS Game Lobby опубликовано.**\nОтправлено в Discord и Telegram. Автозакрытие через 4 часа.',
+            });
+        } catch (error) {
+            console.error('[GameLobby] Create:', error);
+            await interaction.editReply({
+                content: `❌ Не удалось опубликовать лобби.\n\`${error.message}\``,
+            });
+        }
+
+        return true;
+    },
 };
