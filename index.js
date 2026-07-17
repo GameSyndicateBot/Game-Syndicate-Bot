@@ -136,6 +136,13 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
+            if (interaction.customId.startsWith('packs_')) {
+                const command = client.commands.get('packs');
+                if (command?.handleComponent) {
+                    return await command.handleComponent(interaction);
+                }
+            }
+
 
             if (interaction.customId.startsWith('trade_')) {
                 const command = client.commands.get('trade');

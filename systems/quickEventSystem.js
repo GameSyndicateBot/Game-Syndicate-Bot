@@ -1460,7 +1460,7 @@ async function handleQuickEventAnswer(message){
   await message.reply({content:`## ${tierTitle} — победа!
 ${message.author} первым дал правильный ответ и получает **${reward.label}**.${packLine}${milestoneLine}
 Побед всего: **${quickStats.totalWins}** • Текущая серия: **${quickStats.currentStreak}** • Лучшая серия: **${quickStats.bestStreak}**
-📦 Паки: /packs inventory`,files:[new AttachmentBuilder(card,{name:'gs-quick-event-winner.png'})],allowedMentions:{repliedUser:false}});return true;
+📦 Паки: /packs`,files:[new AttachmentBuilder(card,{name:'gs-quick-event-winner.png'})],allowedMentions:{repliedUser:false}});return true;
 }
 
 
