@@ -162,6 +162,138 @@ async function beginGather(api, message) {
     }
 }
 
+
+function telegramFullName(user) {
+    return [user?.first_name, user?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        || 'Без имени';
+}
+
+function telegramUserLink(user) {
+    const name = escapeHtml(telegramFullName(user));
+
+    if (user?.username) {
+        return `<a href="https://t.me/${escapeHtml(user.username)}">${name}</a>`;
+    }
+
+    if (user?.id) {
+        return `<a href="tg://user?id=${user.id}">${name}</a>`;
+    }
+
+    return name;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+}
+
+function formatMoscowTime(timestampSeconds) {
+    return new Intl.DateTimeFormat('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    }).format(new Date(Number(timestampSeconds || 0) * 1000));
+}
+
+async function sendLeaveLog(api, update) {
+    const targetChatId = getSetting('telegram_leave_log_chat_id');
+    const targetThreadId = getSetting('telegram_leave_log_thread_id');
+
+    if (!targetChatId) {
+        return false;
+    }
+
+    const chatMember = update.chat_member;
+    if (!chatMember?.new_chat_member?.user) {
+        return false;
+    }
+
+    const oldStatus = chatMember.old_chat_member?.status;
+    const newStatus = chatMember.new_chat_member?.status;
+    const member = chatMember.new_chat_member.user;
+    const actor = chatMember.from;
+
+    const wasInside = [
+        'creator',
+        'administrator',
+        'member',
+        'restricted',
+    ].includes(oldStatus);
+
+    const isLeft = newStatus === 'left';
+    const isBanned = newStatus === 'kicked';
+
+    if (!wasInside || (!isLeft && !isBanned)) {
+        return false;
+    }
+
+    // Служебных ботов в пользовательские логи не добавляем.
+    if (member.is_bot) {
+        return false;
+    }
+
+    const selfLeave = isLeft
+        && String(actor?.id) === String(member.id);
+
+    let title;
+    let icon;
+    let reasonLine;
+
+    if (isBanned) {
+        title = 'Пользователь заблокирован';
+        icon = '🚫';
+        reasonLine = actor
+            ? `🛡 <b>Заблокировал:</b> ${telegramUserLink(actor)}`
+            : '🛡 <b>Заблокировал:</b> неизвестно';
+    } else if (selfLeave) {
+        title = 'Участник покинул группу';
+        icon = '🚪';
+        reasonLine = 'ℹ️ <b>Причина:</b> вышел самостоятельно';
+    } else {
+        title = 'Участник удалён из группы';
+        icon = '⛔';
+        reasonLine = actor
+            ? `🛡 <b>Удалил:</b> ${telegramUserLink(actor)}`
+            : '🛡 <b>Удалил:</b> неизвестно';
+    }
+
+    const lines = [
+        `${icon} <b>${title}</b>`,
+        '',
+        `👤 <b>Участник:</b> ${telegramUserLink(member)}`,
+        member.username
+            ? `🔗 <b>Username:</b> @${escapeHtml(member.username)}`
+            : '🔗 <b>Username:</b> отсутствует',
+        `🆔 <b>Telegram ID:</b> <code>${member.id}</code>`,
+        reasonLine,
+        `💬 <b>Группа:</b> ${escapeHtml(chatMember.chat?.title || 'Без названия')}`,
+        `🕒 <b>Время:</b> ${escapeHtml(formatMoscowTime(chatMember.date))} МСК`,
+    ];
+
+    await sendMessage(api, targetChatId, lines.join('\n'), {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        ...(targetThreadId
+            ? { message_thread_id: Number(targetThreadId) }
+            : {}),
+    });
+
+    console.log(
+        `[Telegram Leave Log] ${newStatus}: ` +
+        `${member.id} (${member.username || telegramFullName(member)})`
+    );
+
+    return true;
+}
+
 async function handleCommand(api, message, command) {
     const { chat, from } = message;
 
@@ -176,6 +308,59 @@ async function handleCommand(api, message, command) {
             '',
             'Лобби сразу появится в Telegram game-lobby и в назначенном Discord-канале.',
         ].join('\n'), { parse_mode: 'HTML' });
+        return true;
+    }
+
+    if (command === '/setleavelog') {
+        if (chat.type === 'private') {
+            await sendMessage(
+                api,
+                chat.id,
+                'Эту команду нужно выполнить внутри темы «Логи» в Telegram-группе.'
+            );
+            return true;
+        }
+
+        const admin = await isChatAdmin(api, chat.id, from.id);
+        if (!admin) {
+            await deleteMessageQuietly(api, chat.id, message.message_id);
+            return true;
+        }
+
+        setSetting('telegram_leave_log_chat_id', String(chat.id));
+        setSetting(
+            'telegram_leave_log_thread_id',
+            message.message_thread_id
+                ? String(message.message_thread_id)
+                : ''
+        );
+        setSetting(
+            'telegram_leave_log_chat_title',
+            chat.title || 'Telegram logs'
+        );
+
+        await deleteMessageQuietly(api, chat.id, message.message_id);
+
+        const confirmation = await sendMessage(api, chat.id, [
+            '✅ <b>Логи выходов настроены.</b>',
+            '',
+            'Сюда будут приходить уведомления, когда участник:',
+            '• выйдет самостоятельно;',
+            '• будет удалён администратором;',
+            '• будет заблокирован.',
+            '',
+            'Важно: Telegram-бот должен быть администратором группы.',
+        ].join('\n'), {
+            parse_mode: 'HTML',
+            ...(message.message_thread_id
+                ? { message_thread_id: message.message_thread_id }
+                : {}),
+        });
+
+        setTimeout(() => {
+            deleteMessageQuietly(api, chat.id, confirmation.message_id);
+        }, 20_000);
+
         return true;
     }
 
@@ -495,6 +680,11 @@ async function handleCallback(api, callback) {
 
 async function processUpdate(api, update) {
     try {
+        if (update.chat_member) {
+            await sendLeaveLog(api, update);
+            return;
+        }
+
         if (update.message?.pinned_message) {
             await handleTelegramPinnedServiceMessage(update.message);
             return;
@@ -516,7 +706,11 @@ async function pollingLoop(api) {
             const updates = await api('getUpdates', {
                 offset: updateOffset,
                 timeout: 30,
-                allowed_updates: ['message', 'callback_query'],
+                allowed_updates: [
+                    'message',
+                    'callback_query',
+                    'chat_member',
+                ],
             });
 
             for (const update of updates) {
@@ -548,6 +742,7 @@ async function startTelegramBot(client) {
         commands: [
             { command: 'game', description: 'создать игровое лобби' },
             { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' },
+            { command: 'setleavelog', description: 'назначить тему логов выходов' },
         ],
     }).catch(error => {
         console.error('⚠️ Не удалось установить команды Telegram:', error.message);
@@ -560,6 +755,7 @@ async function startTelegramBot(client) {
     });
 
     console.log(`✅ GS Telegram Gather Bot запущен: @${botInfo.username}`);
+    console.log('✅ Telegram leave logs: chat_member tracking enabled');
     return { api, botInfo };
 }
 
