@@ -79,23 +79,6 @@ async function publishGameLobby({creatorId,creatorName,game,mapName,lobbyCode}){
   l.id
  );
 
- await runtime.api('pinChatMessage',{
-  chat_id:tg,
-  message_id:tm.message_id,
-  disable_notification:false
- }).catch(error=>{
-  console.warn('[GameLobby] Telegram pin:',error.message);
- });
-
- const u=setTimeout(
-  ()=>runtime.api('unpinChatMessage',{
-   chat_id:tg,
-   message_id:tm.message_id
-  }).catch(()=>null),
-  60000
- );
- u.unref?.();
-
  return getLobby(l.id);
 }
 async function handleTelegramPinnedServiceMessage(message){
@@ -152,23 +135,6 @@ async function closeGameLobby(id){
  }
 
  if(runtime.api&&c.telegram_chat_id&&c.telegram_message_id){
-  await runtime.api('unpinChatMessage',{
-   chat_id:c.telegram_chat_id,
-   message_id:c.telegram_message_id
-  }).catch(()=>null);
-
-  // Telegram создаёт отдельное служебное сообщение «закрепил(а)…».
-  // Его message_id сохраняется обработчиком pinned_message и удаляется
-  // вместе с самим объявлением о лобби.
-  if(c.telegram_pin_service_message_id){
-   await runtime.api('deleteMessage',{
-    chat_id:c.telegram_chat_id,
-    message_id:c.telegram_pin_service_message_id
-   }).catch(error=>{
-    console.warn('[GameLobby] Telegram pin service delete:',error.message);
-   });
-  }
-
   await runtime.api('deleteMessage',{
    chat_id:c.telegram_chat_id,
    message_id:c.telegram_message_id
