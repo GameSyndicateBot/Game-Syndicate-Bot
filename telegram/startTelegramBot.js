@@ -13,6 +13,7 @@ const {
     handleTelegramPinnedServiceMessage,
 } = require('../systems/gameLobbySystem');
 const crocodile = require('../crocodileSystem');
+const gsCall = require('./gsCallSystem');
 
 const drafts = new Map();
 let pollingStarted = false;
@@ -300,6 +301,10 @@ async function handleCommand(api, message, command) {
     if (crocHandled) return true;
 
     const { chat, from } = message;
+
+    if (command === '/gs') {
+        return gsCall.handleGsCommand(api, message, isChatAdmin, sendMessage);
+    }
 
     if (command === '/start') {
         await sendMessage(api, chat.id, [
@@ -691,8 +696,13 @@ async function handleCallback(api, callback) {
 async function processUpdate(api, update) {
     try {
         if (update.chat_member) {
+            gsCall.rememberChatMemberUpdate(update);
             await sendLeaveLog(api, update);
             return;
+        }
+
+        if (update.message) {
+            gsCall.rememberMessage(update.message);
         }
 
         if (update.message?.pinned_message) {
@@ -750,6 +760,7 @@ async function startTelegramBot(client) {
     await api('deleteWebhook', { drop_pending_updates: false }).catch(() => null);
     await api('setMyCommands', {
         commands: [
+            { command: 'gs', description: 'призвать участников группы' },
             { command: 'game', description: 'создать игровое лобби' },
             { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' },
             { command: 'setleavelog', description: 'назначить тему логов выходов' },

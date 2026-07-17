@@ -32,6 +32,22 @@ CREATE TABLE IF NOT EXISTS telegram_gathering_members (
     PRIMARY KEY (gathering_id, user_id),
     FOREIGN KEY (gathering_id) REFERENCES telegram_gatherings(id) ON DELETE CASCADE
 );
+
+
+CREATE TABLE IF NOT EXISTS telegram_gs_members (
+    chat_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
+    username TEXT,
+    is_bot INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'member',
+    emoji TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (chat_id, user_id),
+    UNIQUE (chat_id, emoji)
+);
 `);
 
 const statements = {
