@@ -162,10 +162,37 @@ function scheduleTimeout(roundId){ const r=db.prepare("SELECT * FROM crocodile_r
 
 async function handleCommand(api,message,command,isAdmin) {
     if(command==='/setcrocodile') {
-        if(message.chat.type==='private') { await send(api,message.chat.id,'Эту команду нужно выполнить в теме Telegram-группы.'); return true; }
-        if(!await isAdmin(message.chat.id,message.from.id)) return true;
-        setSetting('telegram_crocodile_chat_id',String(message.chat.id)); setSetting('telegram_crocodile_thread_id',message.message_thread_id?String(message.message_thread_id):'');
-        await send(api,message.chat.id,'✅ <b>Тема «Крокодил» настроена.</b>\n\nЗапуск игры: /crocodile',{parse_mode:'HTML',...(message.message_thread_id?{message_thread_id:message.message_thread_id}:{})}); return true;
+        if(message.chat.type==='private') {
+            await send(api,message.chat.id,'Эту команду нужно выполнить в теме Telegram-группы.');
+            return true;
+        }
+
+        // Telegram может отправлять команды от имени группы, когда у администратора
+        // включён анонимный режим. В таком случае message.from — служебный аккаунт,
+        // а настоящая принадлежность к администрации определяется sender_chat.
+        const sentAsChat = message.sender_chat
+            && String(message.sender_chat.id) === String(message.chat.id);
+        const userIsAdmin = sentAsChat
+            || await isAdmin(message.chat.id, message.from?.id);
+
+        if(!userIsAdmin) {
+            await send(api,message.chat.id,
+                '⛔ Настроить тему «Крокодил» может только администратор группы.',
+                message.message_thread_id ? {message_thread_id:message.message_thread_id} : {}
+            );
+            return true;
+        }
+
+        setSetting('telegram_crocodile_chat_id',String(message.chat.id));
+        setSetting('telegram_crocodile_thread_id',message.message_thread_id?String(message.message_thread_id):'');
+
+        console.log(`[GS Crocodile] topic configured: chat=${message.chat.id}, thread=${message.message_thread_id || 0}`);
+
+        await send(api,message.chat.id,
+            '✅ <b>Тема «Крокодил» настроена.</b>\n\nЗапуск игры: /crocodile',
+            {parse_mode:'HTML',...(message.message_thread_id?{message_thread_id:message.message_thread_id}:{})}
+        );
+        return true;
     }
     if(!sameTopic(message)) return false;
     if(command==='/crocodile'||command==='/croc'||command==='/startgame') {
