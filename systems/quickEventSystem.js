@@ -8,14 +8,10 @@ const { getServerDisplayName } = require('../utils/displayName');
 const { checkAchievements } = require('../utils/checkAchievements');
 
 const CHANNEL_ID = '1526504061870932049';
-const MIN_INTERVAL_MS = 45 * 60 * 1000;
-const MAX_INTERVAL_MS = 75 * 60 * 1000;
-const BONUS_INTERVAL_MIN_MS = 20 * 60 * 1000;
-const BONUS_INTERVAL_MAX_MS = 30 * 60 * 1000;
-const BONUS_INTERVAL_CHANCE = 0.10;
-const LOW_ONLINE_RETRY_MIN_MS = 10 * 60 * 1000;
-const LOW_ONLINE_RETRY_MAX_MS = 15 * 60 * 1000;
-const MIN_ONLINE_MEMBERS = 4;
+const MIN_INTERVAL_MS = 40 * 60 * 1000;
+const MAX_INTERVAL_MS = 70 * 60 * 1000;
+const BONUS_INTERVAL_MS = 20 * 60 * 1000;
+const BONUS_INTERVAL_CHANCE = 0.20;
 const MAX_ATTEMPTS = 3;
 const ACTIVE_TTL_MS = 45 * 60 * 1000;
 
@@ -202,6 +198,7 @@ const TYPE_WEIGHTS = [
   ['odd',9],['color',8],['memory',8],['reaction',5],
   ['rarity',4],['avatar',3],['sequence',8],['reverse',7],
   ['emoji_riddle',6],['true_false',6],
+  ['loot_share',5],['risk',5],['dont_press',3],['royal_button',3],['dice_tournament',4],
   ['treasure_chest',6],['lucky_roll',4],['world_boss',2],
 ];
 
@@ -298,6 +295,16 @@ function initTables(){
       last_attack_at INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY(round_id,user_id)
     );
+    CREATE TABLE IF NOT EXISTS quick_event_actions (
+      round_id INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      value INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY(round_id,user_id,action)
+    );
+    CREATE INDEX IF NOT EXISTS idx_quick_event_actions_round
+      ON quick_event_actions(round_id,action);
     CREATE INDEX IF NOT EXISTS idx_quick_event_boss_round
       ON quick_event_boss_attacks(round_id);
     INSERT OR IGNORE INTO quick_event_scheduler_state(id,next_event_at,updated_at)
@@ -457,7 +464,7 @@ function randomInt(a,b){return a+Math.floor(Math.random()*(b-a+1));}
 function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
 function weightedType(){
   const recent = new Set(
-    db.prepare('SELECT type FROM quick_event_rounds ORDER BY id DESC LIMIT 5')
+    db.prepare('SELECT type FROM quick_event_rounds ORDER BY id DESC LIMIT 7')
       .all()
       .map(row => row.type)
   );
@@ -505,6 +512,11 @@ async function buildEvent(client,type,diff){
   if(type==='reverse'){const word=pick(REVERSE_WORDS);return {prompt:[...word].reverse().join(''),answers:[word]};}
   if(type==='emoji_riddle'){const item=pick(EMOJI_RIDDLES);return {prompt:item.prompt,answers:item.answers};}
   if(type==='true_false'){const item=pick(TRUE_FALSE);return {prompt:item.prompt,answers:item.answers};}
+  if(type==='loot_share')return {prompt:'Общий запас GS Dust делится между участниками.',answers:[],bank:randomInt(300,600)};
+  if(type==='risk')return {prompt:'Выбери гарантированную награду или испытай удачу.',answers:[]};
+  if(type==='dont_press')return {prompt:'Сначала зарегистрируйся, а затем не нажимай опасную кнопку.',answers:[],phase:'registration'};
+  if(type==='royal_button')return {prompt:'Последний владелец трона после 20 секунд тишины получает приз.',answers:[],holderId:null};
+  if(type==='dice_tournament')return {prompt:'Один бросок D12 на игрока. Через 5 минут победит лучший результат.',answers:[],endsAt:Date.now()+5*60*1000};
   if(type==='reaction')return {prompt:'Напиши «жми» после сигнала',answers:['жми']};
   if(type==='rarity')return rarityMedia();
   if(type==='avatar')return await avatarEvent(client) || {prompt:'Напиши Game Syndicate без ошибок',answers:['game syndicate']};
@@ -676,6 +688,189 @@ function specialEventButton(roundId, type) {
       .setEmoji(config.emoji)
       .setStyle(config.style)
   );
+}
+
+
+const quickEventRuntimeTimers = new Map();
+
+function clearRuntimeTimers(roundId) {
+  const timers = quickEventRuntimeTimers.get(Number(roundId)) || [];
+  for (const timer of timers) clearTimeout(timer);
+  quickEventRuntimeTimers.delete(Number(roundId));
+}
+
+function addRuntimeTimer(roundId, timer) {
+  const key = Number(roundId);
+  const timers = quickEventRuntimeTimers.get(key) || [];
+  timers.push(timer);
+  quickEventRuntimeTimers.set(key, timers);
+  timer.unref?.();
+  return timer;
+}
+
+function quickButton(customId,label,emoji,style=ButtonStyle.Primary,disabled=false){
+  return new ButtonBuilder().setCustomId(customId).setLabel(label).setEmoji(emoji).setStyle(style).setDisabled(disabled);
+}
+
+function multiEventComponents(roundId,type,phase='active'){
+  if(type==='loot_share') return [new ActionRowBuilder().addComponents(quickButton(`quickevent_loot_${roundId}`,'Забрать долю','💰',ButtonStyle.Success))];
+  if(type==='risk') return [new ActionRowBuilder().addComponents(
+    quickButton(`quickevent_risk_safe_${roundId}`,'Забрать 35 Dust','🟢',ButtonStyle.Success),
+    quickButton(`quickevent_risk_gamble_${roundId}`,'Рискнуть','🎰',ButtonStyle.Danger)
+  )];
+  if(type==='dont_press'&&phase==='registration') return [new ActionRowBuilder().addComponents(quickButton(`quickevent_dont_register_${roundId}`,'Я участвую','✋',ButtonStyle.Success))];
+  if(type==='dont_press'&&phase==='temptation') return [new ActionRowBuilder().addComponents(quickButton(`quickevent_dont_bomb_${roundId}`,'НЕ НАЖИМАТЬ','💣',ButtonStyle.Danger))];
+  if(type==='royal_button') return [new ActionRowBuilder().addComponents(quickButton(`quickevent_royal_${roundId}`,'Захватить трон','👑',ButtonStyle.Primary))];
+  if(type==='dice_tournament') return [new ActionRowBuilder().addComponents(quickButton(`quickevent_dice_${roundId}`,'Бросить D12','🎲',ButtonStyle.Primary))];
+  return [];
+}
+
+async function closeMultiEventMessage(channel, round, content){
+  if(!round?.message_id)return;
+  const message=await channel.messages.fetch(round.message_id).catch(()=>null);
+  if(message)await message.edit({content,components:[]}).catch(()=>{});
+}
+
+async function expireMultiEvent(channel,roundId,text){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND status='active'").get(roundId);
+  if(!round)return;
+  db.prepare("UPDATE quick_event_rounds SET status='expired',solved_at=? WHERE id=? AND status='active'").run(Date.now(),roundId);
+  clearRuntimeTimers(roundId);
+  await closeMultiEventMessage(channel,round,text);
+}
+
+async function handleLootShare(interaction,roundId){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='loot_share' AND status='active'").get(roundId);
+  if(!round){await interaction.reply({content:'❌ Добыча уже закончилась.',ephemeral:true});return true;}
+  const used=db.prepare("SELECT 1 FROM quick_event_actions WHERE round_id=? AND user_id=? AND action='loot'").get(roundId,interaction.user.id);
+  if(used){await interaction.reply({content:'❌ Ты уже получил свою долю.',ephemeral:true});return true;}
+  const payload=JSON.parse(round.payload_json||'{}');
+  const bank=Math.max(0,Number(payload.bank||0));
+  if(bank<=0){await interaction.reply({content:'❌ Добыча уже закончилась.',ephemeral:true});return true;}
+  const amount=Math.min(bank,randomInt(15,60));
+  payload.bank=bank-amount;
+  db.transaction(()=>{
+    db.prepare("INSERT INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?)").run(roundId,interaction.user.id,'loot',amount,Date.now());
+    db.prepare("UPDATE quick_event_rounds SET payload_json=? WHERE id=? AND status='active'").run(JSON.stringify(payload),roundId);
+    addCardDust(interaction.user.id,amount);
+    markParticipation(roundId,interaction.user.id);
+  })();
+  await interaction.reply({content:`💰 Ты забрал **${amount} GS Dust**. В запасе осталось **${payload.bank}**.`,ephemeral:true});
+  if(payload.bank<=0){
+    db.prepare("UPDATE quick_event_rounds SET status='solved',solved_at=?,reward_type='shared_dust',reward_amount=? WHERE id=? AND status='active'").run(Date.now(),Number(JSON.parse(round.payload_json||'{}').bank||0),roundId);
+    clearRuntimeTimers(roundId);
+    await interaction.message.edit({content:'## 💰 ДЕЛЁЖ ДОБЫЧИ — запас разобран!\nВесь GS Dust успешно поделён между участниками.',components:[]}).catch(()=>{});
+  }else{
+    await interaction.message.edit({content:`## 💰 ДЕЛЁЖ ДОБЫЧИ\nВ общем запасе осталось **${payload.bank} GS Dust**.\nОдин участник может забрать долю только один раз.`,components:multiEventComponents(roundId,'loot_share')}).catch(()=>{});
+  }
+  return true;
+}
+
+async function handleRisk(interaction,roundId,mode){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='risk' AND status='active'").get(roundId);
+  if(!round){await interaction.reply({content:'❌ Событие уже завершено.',ephemeral:true});return true;}
+  const used=db.prepare("SELECT 1 FROM quick_event_actions WHERE round_id=? AND user_id=? AND action='risk'").get(roundId,interaction.user.id);
+  if(used){await interaction.reply({content:'❌ Ты уже сделал выбор.',ephemeral:true});return true;}
+  let reward;
+  if(mode==='safe') reward={type:'dust',amount:35,label:'35 GS Dust'};
+  else {
+    const roll=Math.random()*100;
+    if(roll<50) reward={type:'dust',amount:80,label:'80 GS Dust'};
+    else if(roll<80) reward={type:'dust',amount:120,label:'120 GS Dust'};
+    else if(roll<95) reward={type:'pack',packType:'base',amount:1,label:'Base Pack'};
+    else reward={type:'none',amount:0,label:'ничего'};
+  }
+  db.prepare("INSERT INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?)").run(roundId,interaction.user.id,'risk',reward.amount||0,Date.now());
+  markParticipation(roundId,interaction.user.id);
+  if(reward.type!=='none') grantSpecialReward(interaction.user,reward,roundId);
+  await interaction.reply({content:reward.type==='none'?'🎰 Риск не оправдался — на этот раз без награды.':`🎉 Ты получаешь **${reward.label}**!`,ephemeral:true});
+  return true;
+}
+
+async function startDontPressTemptation(channel,roundId){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='dont_press' AND status='active'").get(roundId);
+  if(!round)return;
+  const registered=db.prepare("SELECT COUNT(*) count FROM quick_event_actions WHERE round_id=? AND action='dont_register'").get(roundId)?.count||0;
+  if(!registered){return expireMultiEvent(channel,roundId,'## 💣 НЕ НАЖИМАЙ!\nНикто не зарегистрировался — событие завершено.');}
+  const payload=JSON.parse(round.payload_json||'{}');payload.phase='temptation';
+  db.prepare("UPDATE quick_event_rounds SET payload_json=? WHERE id=?").run(JSON.stringify(payload),roundId);
+  const message=await channel.messages.fetch(round.message_id).catch(()=>null);
+  if(message)await message.edit({content:`## 💣 НЕ НАЖИМАЙ!\nЗарегистрировано: **${registered}**.\nТеперь **20 секунд не нажимайте кнопку**. Нажавший выбывает.`,components:multiEventComponents(roundId,'dont_press','temptation')}).catch(()=>{});
+  addRuntimeTimer(roundId,setTimeout(()=>resolveDontPress(channel,roundId).catch(console.error),20*1000));
+}
+
+async function resolveDontPress(channel,roundId){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='dont_press' AND status='active'").get(roundId);
+  if(!round)return;
+  const eligible=db.prepare(`SELECT r.user_id FROM quick_event_actions r LEFT JOIN quick_event_actions p ON p.round_id=r.round_id AND p.user_id=r.user_id AND p.action='dont_pressed' WHERE r.round_id=? AND r.action='dont_register' AND p.user_id IS NULL`).all(roundId);
+  if(!eligible.length)return expireMultiEvent(channel,roundId,'## 💣 НЕ НАЖИМАЙ!\nВсе участники сорвались и нажали кнопку. Победителя нет.');
+  const winner=pick(eligible); const member=await channel.guild.members.fetch(winner.user_id).catch(()=>null);
+  if(!member)return expireMultiEvent(channel,roundId,'## 💣 НЕ НАЖИМАЙ!\nНе удалось определить победителя.');
+  const reward=grantSpecialReward(member.user,pickSpecialReward('lucky'),roundId);
+  db.prepare("UPDATE quick_event_rounds SET status='solved',winner_id=?,solved_at=?,reward_type=?,reward_amount=?,reward_details=? WHERE id=? AND status='active'").run(member.id,Date.now(),reward.type,reward.amount||1,reward.details,roundId);
+  recordQuickEventWin(member.id,'dont_press',roundId); clearRuntimeTimers(roundId);
+  await closeMultiEventMessage(channel,round,`## 💣 НЕ НАЖИМАЙ! — завершено\n${member} выдержал испытание и получает **${reward.label}**.`);
+}
+
+async function handleDontPress(interaction,roundId,action){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='dont_press' AND status='active'").get(roundId);
+  if(!round){await interaction.reply({content:'❌ Событие уже завершено.',ephemeral:true});return true;}
+  const payload=JSON.parse(round.payload_json||'{}');
+  if(action==='register'){
+    if(payload.phase!=='registration'){await interaction.reply({content:'❌ Регистрация уже закрыта.',ephemeral:true});return true;}
+    const result=db.prepare("INSERT OR IGNORE INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?)").run(roundId,interaction.user.id,'dont_register',1,Date.now());
+    if(!result.changes){await interaction.reply({content:'✅ Ты уже зарегистрирован.',ephemeral:true});return true;}
+    markParticipation(roundId,interaction.user.id);await interaction.reply({content:'✋ Ты участвуешь. Когда появится бомба — не нажимай её.',ephemeral:true});return true;
+  }
+  const registered=db.prepare("SELECT 1 FROM quick_event_actions WHERE round_id=? AND user_id=? AND action='dont_register'").get(roundId,interaction.user.id);
+  if(!registered){await interaction.reply({content:'Ты не был зарегистрирован и не участвуешь.',ephemeral:true});return true;}
+  const result=db.prepare("INSERT OR IGNORE INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?)").run(roundId,interaction.user.id,'dont_pressed',1,Date.now());
+  await interaction.reply({content:result.changes?'💥 Ты нажал кнопку и выбыл!':'❌ Ты уже выбыл.',ephemeral:true});return true;
+}
+
+async function resolveRoyalButton(channel,roundId){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='royal_button' AND status='active'").get(roundId);if(!round)return;
+  const last=db.prepare("SELECT user_id FROM quick_event_actions WHERE round_id=? AND action='royal' ORDER BY created_at DESC LIMIT 1").get(roundId);
+  if(!last)return expireMultiEvent(channel,roundId,'## 👑 КОРОЛЕВСКАЯ КНОПКА\nНикто не захватил трон.');
+  const member=await channel.guild.members.fetch(last.user_id).catch(()=>null);if(!member)return;
+  const reward=grantSpecialReward(member.user,pickSpecialReward('lucky'),roundId);
+  db.prepare("UPDATE quick_event_rounds SET status='solved',winner_id=?,solved_at=?,reward_type=?,reward_amount=?,reward_details=? WHERE id=? AND status='active'").run(member.id,Date.now(),reward.type,reward.amount||1,reward.details,roundId);
+  recordQuickEventWin(member.id,'royal_button',roundId);clearRuntimeTimers(roundId);
+  await closeMultiEventMessage(channel,round,`## 👑 КОРОЛЕВСКАЯ КНОПКА\n${member} удержал трон и получает **${reward.label}**.`);
+}
+
+async function handleRoyalButton(interaction,roundId){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='royal_button' AND status='active'").get(roundId);if(!round){await interaction.reply({content:'❌ Трон уже определил владельца.',ephemeral:true});return true;}
+  db.prepare("INSERT INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?) ON CONFLICT(round_id,user_id,action) DO UPDATE SET created_at=excluded.created_at").run(roundId,interaction.user.id,'royal',1,Date.now());
+  markParticipation(roundId,interaction.user.id);
+  clearRuntimeTimers(roundId);
+  addRuntimeTimer(roundId,setTimeout(()=>resolveRoyalButton(interaction.channel,roundId).catch(console.error),20*1000));
+  addRuntimeTimer(roundId,setTimeout(()=>resolveRoyalButton(interaction.channel,roundId).catch(console.error),5*60*1000));
+  await interaction.update({content:`## 👑 КОРОЛЕВСКАЯ КНОПКА\nТекущий владелец трона: ${interaction.user}\nЕсли **20 секунд** никто не перехватит кнопку — он победит.`,components:multiEventComponents(roundId,'royal_button')});return true;
+}
+
+function diceLeaderboard(roundId){
+  return db.prepare("SELECT user_id,value FROM quick_event_actions WHERE round_id=? AND action='dice' ORDER BY value DESC,created_at ASC LIMIT 10").all(roundId);
+}
+
+async function resolveDiceTournament(channel,roundId){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='dice_tournament' AND status='active'").get(roundId);if(!round)return;
+  const rolls=diceLeaderboard(roundId);if(!rolls.length)return expireMultiEvent(channel,roundId,'## 🎲 ТУРНИР D12\nНикто не сделал бросок.');
+  const max=rolls[0].value;const leaders=db.prepare("SELECT user_id FROM quick_event_actions WHERE round_id=? AND action='dice' AND value=?").all(roundId,max);const winner=pick(leaders);
+  const member=await channel.guild.members.fetch(winner.user_id).catch(()=>null);if(!member)return;
+  const reward=grantSpecialReward(member.user,pickSpecialReward('lucky'),roundId);
+  db.prepare("UPDATE quick_event_rounds SET status='solved',winner_id=?,solved_at=?,reward_type=?,reward_amount=?,reward_details=? WHERE id=? AND status='active'").run(member.id,Date.now(),reward.type,reward.amount||1,reward.details,roundId);
+  recordQuickEventWin(member.id,'dice_tournament',roundId);clearRuntimeTimers(roundId);
+  await closeMultiEventMessage(channel,round,`## 🎲 ТУРНИР D12 — завершён\nПобедитель: ${member} с результатом **${max}**.\nНаграда: **${reward.label}**.`);
+}
+
+async function handleDiceTournament(interaction,roundId){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='dice_tournament' AND status='active'").get(roundId);if(!round){await interaction.reply({content:'❌ Турнир уже завершён.',ephemeral:true});return true;}
+  const value=randomInt(1,12);const result=db.prepare("INSERT OR IGNORE INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?)").run(roundId,interaction.user.id,'dice',value,Date.now());
+  if(!result.changes){await interaction.reply({content:'❌ У тебя уже был один бросок.',ephemeral:true});return true;}
+  markParticipation(roundId,interaction.user.id);await interaction.reply({content:`🎲 Твой результат: **${value}**`,ephemeral:true});
+  const board=diceLeaderboard(roundId);const lines=board.map((r,i)=>`${i+1}. <@${r.user_id}> — 🎲 **${r.value}**`);
+  await interaction.message.edit({content:['## 🎲 ТУРНИР D12','Один бросок на игрока. Турнир длится **5 минут**.','','### Текущий топ',...lines].join('\n'),components:multiEventComponents(roundId,'dice_tournament'),allowedMentions:{parse:[]}}).catch(()=>{});return true;
 }
 
 async function getLuckyRollCandidates(channel) {
@@ -990,19 +1185,8 @@ async function handleWorldBoss(interaction, roundId) {
 }
 
 function randomDelay(){
-  if(Math.random()<BONUS_INTERVAL_CHANCE){
-    return BONUS_INTERVAL_MIN_MS+Math.floor(Math.random()*(BONUS_INTERVAL_MAX_MS-BONUS_INTERVAL_MIN_MS+1));
-  }
-  return MIN_INTERVAL_MS+Math.floor(Math.random()*(MAX_INTERVAL_MS-MIN_INTERVAL_MS+1));
-}
-function lowOnlineRetryDelay(){
-  return LOW_ONLINE_RETRY_MIN_MS+Math.floor(Math.random()*(LOW_ONLINE_RETRY_MAX_MS-LOW_ONLINE_RETRY_MIN_MS+1));
-}
-function getVisibleOnlineCount(guild){
-  const members=[...guild.members.cache.values()].filter(member=>!member.user.bot);
-  const withPresence=members.filter(member=>member.presence);
-  if(!withPresence.length) return null;
-  return withPresence.filter(member=>member.presence.status && member.presence.status!=='offline').length;
+  if(Math.random()<BONUS_INTERVAL_CHANCE)return BONUS_INTERVAL_MS;
+  return randomInt(MIN_INTERVAL_MS,MAX_INTERVAL_MS);
 }
 function milestoneReward(userId,totalWins,currentStreak){
   const rewards=[];
@@ -1092,6 +1276,13 @@ async function handleQuickEventComponent(interaction){
     const roundId=Number(interaction.customId.slice('quickevent_boss_'.length));
     return handleWorldBoss(interaction,roundId);
   }
+  if(interaction.customId.startsWith('quickevent_loot_')) return handleLootShare(interaction,Number(interaction.customId.slice('quickevent_loot_'.length)));
+  if(interaction.customId.startsWith('quickevent_risk_safe_')) return handleRisk(interaction,Number(interaction.customId.slice('quickevent_risk_safe_'.length)),'safe');
+  if(interaction.customId.startsWith('quickevent_risk_gamble_')) return handleRisk(interaction,Number(interaction.customId.slice('quickevent_risk_gamble_'.length)),'gamble');
+  if(interaction.customId.startsWith('quickevent_dont_register_')) return handleDontPress(interaction,Number(interaction.customId.slice('quickevent_dont_register_'.length)),'register');
+  if(interaction.customId.startsWith('quickevent_dont_bomb_')) return handleDontPress(interaction,Number(interaction.customId.slice('quickevent_dont_bomb_'.length)),'bomb');
+  if(interaction.customId.startsWith('quickevent_royal_')) return handleRoyalButton(interaction,Number(interaction.customId.slice('quickevent_royal_'.length)));
+  if(interaction.customId.startsWith('quickevent_dice_')) return handleDiceTournament(interaction,Number(interaction.customId.slice('quickevent_dice_'.length)));
 
   if(!interaction.customId.startsWith('quickevent_memory_'))return false;
 
@@ -1143,6 +1334,26 @@ async function postQuickEvent(client){
   );
 
   const roundId=Number(info.lastInsertRowid);
+
+  if(['loot_share','risk','dont_press','royal_button','dice_tournament'].includes(type)){
+    const titles={loot_share:'💰 ДЕЛЁЖ ДОБЫЧИ',risk:'🎰 РИСК',dont_press:'💣 НЕ НАЖИМАЙ!',royal_button:'👑 КОРОЛЕВСКАЯ КНОПКА',dice_tournament:'🎲 ТУРНИР D12'};
+    const descriptions={
+      loot_share:`В общем запасе **${event.bank} GS Dust**. Один участник может забрать долю только один раз.`,
+      risk:'Выбери: гарантированные **35 Dust** или риск ради более крупной награды. Один выбор на игрока.',
+      dont_press:'Регистрация длится **20 секунд**. После неё появится кнопка, которую нельзя нажимать.',
+      royal_button:'Нажми кнопку и захвати трон. Если **20 секунд** никто не перебьёт — ты победил.',
+      dice_tournament:'Один бросок **D12** на игрока. Через **5 минут** лучший результат заберёт приз.',
+    };
+    const message=await channel.send({content:`## ${titles[type]}
+${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont_press'?'registration':'active')});
+    db.prepare("UPDATE quick_event_rounds SET message_id=?,status='active',activated_at=? WHERE id=?").run(message.id,Date.now(),roundId);
+    if(type==='loot_share') addRuntimeTimer(roundId,setTimeout(()=>expireMultiEvent(channel,roundId,'## 💰 ДЕЛЁЖ ДОБЫЧИ — время вышло').catch(console.error),2*60*1000));
+    if(type==='risk') addRuntimeTimer(roundId,setTimeout(()=>expireMultiEvent(channel,roundId,'## 🎰 РИСК — время выбора вышло').catch(console.error),90*1000));
+    if(type==='dont_press') addRuntimeTimer(roundId,setTimeout(()=>startDontPressTemptation(channel,roundId).catch(console.error),20*1000));
+    if(type==='royal_button') addRuntimeTimer(roundId,setTimeout(()=>resolveRoyalButton(channel,roundId).catch(console.error),5*60*1000));
+    if(type==='dice_tournament') addRuntimeTimer(roundId,setTimeout(()=>resolveDiceTournament(channel,roundId).catch(console.error),5*60*1000));
+    return;
+  }
 
   if(type==='lucky_roll'){
     const card=await createQuickEventCard(event,'active');
@@ -1347,18 +1558,6 @@ function scheduleNextQuickEvent(delay = randomDelay()) {
     try {
       await awardPreviousWeek(quickEventClient);
 
-      const channel = await quickEventClient.channels
-        .fetch(CHANNEL_ID)
-        .catch(() => null);
-
-      const online = channel?.guild
-        ? getVisibleOnlineCount(channel.guild)
-        : null;
-
-      if (online !== null && online < MIN_ONLINE_MEMBERS) {
-        return scheduleNextQuickEvent(lowOnlineRetryDelay());
-      }
-
       await postQuickEvent(quickEventClient);
     } catch (error) {
       console.error('[QuickEvent]', error);
@@ -1481,8 +1680,8 @@ function startQuickEventScheduler(client) {
   weeklyTimer.unref?.();
 
   console.log(
-    '[QuickEvent] Запущено: 45–75 минут, ' +
-    '10% шанс 20–30 минут, Golden раз в сутки'
+    '[QuickEvent] Запущено: 40–70 минут, ' +
+    '20% шанс ровно через 20 минут, Golden раз в сутки'
   );
 }
 
