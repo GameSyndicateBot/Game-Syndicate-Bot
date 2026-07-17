@@ -579,6 +579,8 @@ async function startTelegramBot(client) {
             { command: 'crocodile', description: 'начать игру Крокодил' },
             { command: 'croctop', description: 'топ игроков Крокодила' },
             { command: 'crocstats', description: 'моя статистика Крокодила' },
+            { command: 'crocstop', description: 'остановить текущий раунд' },
+            { command: 'crocreset', description: 'сбросить зависшие раунды' },
         ],
     }).catch(error => {
         console.error('⚠️ Не удалось установить команды Telegram:', error.message);

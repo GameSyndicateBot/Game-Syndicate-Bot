@@ -115,6 +115,7 @@ function ensureColumn(table, column, definition) {
 ensureColumn('crocodile_stats', 'three_heart_ratings', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('crocodile_stats', 'successful_explains', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('crocodile_rounds', 'successful_awarded', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('crocodile_participants', 'attempts', 'INTEGER NOT NULL DEFAULT 0');
 
 function esc(value) {
     return String(value ?? '')
@@ -434,31 +435,63 @@ async function handleCommand(api, message, command, checkAdmin) {
         await showStats(api, message);
         return true;
     }
-    if (command === '/crocstop') {
+    if (command === '/crocstop' || command === '/crocreset') {
         const sentAsChat = message.sender_chat
             && String(message.sender_chat.id) === String(message.chat.id);
         const userIsAdmin = sentAsChat
             || await checkAdminSafely(checkAdmin, message.chat.id, message.from?.id);
         if (!userIsAdmin) {
-            await send(api, message.chat.id, '⛔ Остановить раунд может только администратор.', {
+            await send(api, message.chat.id, '⛔ Эта команда доступна только администратору.', {
                 ...(message.message_thread_id
                     ? { message_thread_id: message.message_thread_id }
                     : {}),
             });
             return true;
         }
-        const round = activeRound(message.chat.id, message.message_thread_id);
-        if (round) {
+
+        const chatId = String(message.chat.id);
+        const threadId = message.message_thread_id || null;
+        const rounds = command === '/crocreset'
+            ? db.prepare(`
+                SELECT * FROM crocodile_rounds
+                WHERE chat_id=? AND COALESCE(thread_id,0)=COALESCE(?,0)
+                  AND status IN ('active','guessed','timeout')
+            `).all(chatId, threadId)
+            : (() => {
+                const round = activeRound(chatId, threadId);
+                return round ? [round] : [];
+            })();
+
+        for (const round of rounds) {
             db.prepare(`UPDATE crocodile_rounds SET status='stopped' WHERE id=?`).run(round.id);
             clearTimeout(timers.get(round.id));
-            await edit(
-                api,
-                round.chat_id,
-                round.message_id,
-                '🐊 <b>Раунд остановлен администратором.</b>',
-                { parse_mode: 'HTML' },
-            ).catch(() => null);
+            timers.delete(round.id);
+            if (round.message_id) {
+                await api('editMessageReplyMarkup', {
+                    chat_id: round.chat_id,
+                    message_id: round.message_id,
+                    reply_markup: { inline_keyboard: [] },
+                }).catch(() => null);
+            }
+            if (round.result_message_id) {
+                await api('editMessageReplyMarkup', {
+                    chat_id: round.chat_id,
+                    message_id: round.result_message_id,
+                    reply_markup: { inline_keyboard: [] },
+                }).catch(() => null);
+            }
         }
+
+        await send(api, message.chat.id, command === '/crocreset'
+            ? '♻️ <b>Состояние Крокодила сброшено.</b>\n\nВсе зависшие раунды закрыты. Можно запускать новый: /crocodile'
+            : (rounds.length
+                ? '🛑 <b>Раунд Крокодила остановлен.</b>\n\nМожно запускать новый: /crocodile'
+                : 'ℹ️ Активного раунда сейчас нет.'), {
+            parse_mode: 'HTML',
+            ...(message.message_thread_id
+                ? { message_thread_id: message.message_thread_id }
+                : {}),
+        });
         return true;
     }
     return false;
@@ -520,14 +553,34 @@ async function handleMessage(api, message) {
     if (!round || !message.from?.id || String(message.from.id) === String(round.host_id)) return false;
 
     // Участником считается тот, кто отправил хотя бы одну попытку во время раунда.
-    db.prepare(`
-        INSERT OR IGNORE INTO crocodile_participants(round_id,user_id,created_at)
-        VALUES(?,?,?)
-    `).run(round.id, String(message.from.id), Date.now());
-
-    if (normalize(message.text) !== normalize(round.word)) return false;
-
     ensureStats(message.from);
+    const userId = String(message.from.id);
+    const isCorrect = normalize(message.text) === normalize(round.word);
+
+    db.prepare(`
+        INSERT OR IGNORE INTO crocodile_participants(round_id,user_id,created_at,attempts)
+        VALUES(?,?,?,0)
+    `).run(round.id, userId, Date.now());
+
+    if (!isCorrect) {
+        const attempt = db.prepare(`
+            UPDATE crocodile_participants
+            SET attempts=attempts+1
+            WHERE round_id=? AND user_id=?
+            RETURNING attempts
+        `).get(round.id, userId);
+
+        // Серия сохраняется при первой и второй ошибке, но сгорает на третьей.
+        if (Number(attempt?.attempts || 0) === 3) {
+            db.prepare(`
+                UPDATE crocodile_stats
+                SET current_streak=0,updated_at=?
+                WHERE user_id=? AND current_streak>0
+            `).run(Date.now(), userId);
+        }
+        return false;
+    }
+
     const now = Date.now();
     db.transaction(() => {
         db.prepare(`
@@ -553,11 +606,6 @@ async function handleMessage(api, message) {
             SET explained=explained+1,updated_at=?
             WHERE user_id=?
         `).run(now, String(round.host_id));
-        db.prepare(`
-            UPDATE crocodile_stats
-            SET current_streak=0,updated_at=?
-            WHERE user_id<>? AND current_streak>0
-        `).run(now, String(message.from.id));
     })();
 
     clearTimeout(timers.get(round.id));
@@ -748,6 +796,18 @@ async function handleCallback(api, callback) {
 }
 function init(api) {
     apiRef = api;
+
+    // Старые активные раунды после долгого простоя не должны блокировать игру.
+    const staleBefore = Date.now() - (2 * 60 * 60 * 1000);
+    const recovered = db.prepare(`
+        UPDATE crocodile_rounds
+        SET status='stopped'
+        WHERE status='active' AND started_at<?
+    `).run(staleBefore).changes;
+    if (recovered) {
+        console.log(`♻️ Crocodile: recovered ${recovered} stale round(s).`);
+    }
+
     for (const round of db.prepare(`
         SELECT id FROM crocodile_rounds WHERE status='active'
     `).all()) {
