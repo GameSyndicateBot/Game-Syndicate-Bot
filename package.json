@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
-    "deploy": "node deploy-commands.js",
+    "deploy": "node deploy-commands.js prod",
     "cards:all": "node scripts/build-all.js input/000003.png",
     "cards:build": "node scripts/build-card.js",
     "cards:reference": "node scripts/build-reference-collection.js",
@@ -17,7 +17,11 @@
     "cards:v2:all": "node scripts/cards-v2-build-all.js",
     "cards:create": "node scripts/createCard.js",
     "cards:create-all": "node scripts/createCardAllRarities.js",
-    "telegram:setup": "node telegram/setup-token.js"
+    "telegram:setup": "node telegram/setup-token.js",
+    "deploy:dev": "node deploy-commands.js dev",
+    "deploy:prod": "node deploy-commands.js prod",
+    "deploy:all": "node deploy-commands.js all",
+    "deploy:global": "node deploy-commands.js global"
   },
   "engines": {
     "node": ">=22"
