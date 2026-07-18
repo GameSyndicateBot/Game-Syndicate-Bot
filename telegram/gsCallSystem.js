@@ -2,7 +2,7 @@ const { db } = require('./database');
 
 const EMOJIS = [
     // Животные и персонажи
-    '🦊','👻','🤖','🐸','🐼','👑','🥷','🐧','🦁','🐺','🦄','😎','🐻','🐨','⚡','🎯',
+    '🦊','👻','😈','👿','🤖','🐸','🐼','👑','🥷','🐧','🦁','🐺','🦄','😎','🐻','🐨','⚡','🎯',
     '🐯','🦝','🦉','🐙','🦈','🐲','🦋','🐝','🦖','🐬','🦅','🐢','🐱','🐶','🦇','🦜',
     '🐹','🐰','🦔','🦦','🦥','🦘','🦬','🦣','🐗','🦏','🦛','🐊','🐍','🦎','🐉','🦕',
     '🐳','🐋','🐟','🐠','🐡','🦀','🦞','🦐','🦑','🪼','🐚','🦭','🐓','🦃','🦚','🦩',
@@ -24,10 +24,10 @@ const ACTIVE_STATUSES = new Set(['creator', 'administrator', 'member', 'restrict
 const upsertMember = db.prepare(`
     INSERT INTO telegram_gs_members (
         chat_id, user_id, first_name, last_name, username,
-        is_bot, status, emoji, updated_at
+        is_bot, status, emoji, registered, updated_at
     ) VALUES (
         @chat_id, @user_id, @first_name, @last_name, @username,
-        @is_bot, @status, @emoji, CURRENT_TIMESTAMP
+        @is_bot, @status, @emoji, @registered, CURRENT_TIMESTAMP
     )
     ON CONFLICT(chat_id, user_id) DO UPDATE SET
         first_name = excluded.first_name,
@@ -43,28 +43,31 @@ const getMember = db.prepare(`
     WHERE chat_id = ? AND user_id = ?
 `);
 
-const listActiveMembers = db.prepare(`
+const listRegisteredMembers = db.prepare(`
     SELECT * FROM telegram_gs_members
     WHERE chat_id = ?
       AND is_bot = 0
+      AND registered = 1
+      AND emoji IS NOT NULL
+      AND emoji <> ''
       AND status IN ('creator', 'administrator', 'member', 'restricted')
-    ORDER BY CASE WHEN emoji IS NULL OR emoji = '' THEN 1 ELSE 0 END, created_at ASC, user_id ASC
+    ORDER BY created_at ASC, user_id ASC
 `);
 
 const listUsedEmojis = db.prepare(`
     SELECT emoji FROM telegram_gs_members
-    WHERE chat_id = ? AND emoji IS NOT NULL AND emoji <> ''
+    WHERE chat_id = ? AND registered = 1 AND emoji IS NOT NULL AND emoji <> ''
 `);
 
 const setEmoji = db.prepare(`
     UPDATE telegram_gs_members
-    SET emoji = ?, updated_at = CURRENT_TIMESTAMP
+    SET emoji = ?, registered = 1, updated_at = CURRENT_TIMESTAMP
     WHERE chat_id = ? AND user_id = ?
 `);
 
 const getEmojiOwner = db.prepare(`
     SELECT user_id FROM telegram_gs_members
-    WHERE chat_id = ? AND emoji = ?
+    WHERE chat_id = ? AND emoji = ? AND registered = 1
 `);
 
 const EMOJIS_PER_PAGE = 16;
@@ -86,6 +89,7 @@ function normalizeUser(user, status = 'member') {
         is_bot: user.is_bot ? 1 : 0,
         status,
         emoji: null,
+        registered: 0,
     };
 }
 
@@ -96,6 +100,7 @@ function rememberUser(chatId, user, status = 'member') {
     const record = normalizeUser(user, status);
     record.chat_id = String(chatId);
     record.emoji = existing?.emoji || null;
+    record.registered = existing?.registered ? 1 : 0;
     upsertMember.run(record);
 }
 
@@ -171,7 +176,7 @@ function chunkMentions(members, maxLength = 3200) {
 
 
 function registrationText(member) {
-    const current = member?.emoji
+    const current = member?.registered && member?.emoji
         ? `\n\nТвой текущий эмодзи: <b>${escapeHtml(member.emoji)}</b>`
         : '';
 
@@ -197,7 +202,7 @@ function emojiKeyboard(chatId, userId, page = 0) {
         rows.push(pageEmojis.slice(i, i + 4).map((emoji, offset) => {
             const index = start + i + offset;
             const owner = getEmojiOwner.get(String(chatId), emoji);
-            const isMine = member?.emoji === emoji;
+            const isMine = Boolean(member?.registered) && member?.emoji === emoji;
             const isTaken = owner && String(owner.user_id) !== String(userId);
             return {
                 text: isMine ? `✅ ${emoji}` : isTaken ? `🔒 ${emoji}` : emoji,
@@ -380,11 +385,11 @@ async function handleGsCommand(api, message, isChatAdmin, sendMessage) {
     rememberUser(chat.id, from, 'administrator');
     await syncAdministrators(api, chat.id);
 
-    const members = listActiveMembers.all(String(chat.id));
-    for (const member of members) ensureEmoji(chat.id, member);
+    const members = listRegisteredMembers.all(String(chat.id));
 
     if (!members.length) {
-        await sendMessage(api, chat.id, '⚠️ Не удалось найти участников для призыва.', {
+        await sendMessage(api, chat.id, '⚠️ Пока никто не зарегистрирован для GS-созыва. Участникам нужно один раз выбрать эмодзи через <code>/gsregister</code>.', {
+            parse_mode: 'HTML',
             ...(message.message_thread_id ? { message_thread_id: message.message_thread_id } : {}),
         });
         return true;
