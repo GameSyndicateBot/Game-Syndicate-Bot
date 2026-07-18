@@ -1,6 +1,7 @@
 const { createCanvas, loadImage } = require('canvas');
 const { getRequiredXP } = require('../../utils/levelSystem');
 const achievements = require('../../data/achievements.json');
+const { getEffectiveJoinedTimestamp, getEffectiveJoinedAt } = require('../../utils/memberJoinOverrides');
 
 const { installIconRenderer, drawIcon: drawGsIcon } = require('../ui/icons');
 function roundRect(ctx, x, y, w, h, r) {
@@ -115,8 +116,10 @@ async function createProfileCard(player, user, member) {
     const requiredXP = getRequiredXP(player.level);
     const progress = Math.min(player.xp / requiredXP, 1);
     const rank = getRank(player.level);
-    const timeOnServer = formatTimeOnServer(member.joinedTimestamp);
-    const joinedDate = member.joinedAt ? member.joinedAt.toLocaleDateString('ru-RU') : '—';
+    const effectiveJoinedTimestamp = getEffectiveJoinedTimestamp(member);
+    const effectiveJoinedAt = getEffectiveJoinedAt(member);
+    const timeOnServer = formatTimeOnServer(effectiveJoinedTimestamp);
+    const joinedDate = effectiveJoinedAt ? effectiveJoinedAt.toLocaleDateString('ru-RU') : '—';
 
     const totalAchievements = achievements.length;
     const achievementsText = `${player.achievements ?? 0} / ${totalAchievements}`;

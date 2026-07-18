@@ -1,7 +1,9 @@
 const { startQuickEventScheduler } = require('../systems/quickEventSystem');
 const { startLuckyDayScheduler } = require('../services/luckyDay');
 const { startAutomaticBackups } = require('../services/automaticBackups');
-const { db, getOrCreatePlayer } = require('../database/db');
+const { db, getOrCreatePlayer, updatePlayer } = require('../database/db');
+const { checkAchievements } = require('../utils/checkAchievements');
+const { getJoinDateOverrideEntries } = require('../utils/memberJoinOverrides');
 const {
     isExcludedVoiceChannel,
     startVoiceSession,
@@ -30,6 +32,35 @@ module.exports = {
                 if (isExcludedVoiceChannel(member.voice.channelId)) continue;
 
                 startVoiceSession(member, member.voice.channelId);
+            }
+        }
+
+        // Пересчитываем стаж и связанные достижения для участников,
+        // которых временно кикали во время тестов. Их реальная дата вступления
+        // хранится в memberJoinOverrides.js и не зависит от текущего joinedAt Discord.
+        for (const [userId] of getJoinDateOverrideEntries()) {
+            for (const guild of client.guilds.cache.values()) {
+                const member = await guild.members.fetch(userId).catch(() => null);
+                if (!member || member.user.bot) continue;
+
+                let player = getOrCreatePlayer(member.user);
+                const result = await checkAchievements({
+                    message: {
+                        author: member.user,
+                        guild,
+                    },
+                    player,
+                    member,
+                });
+
+                player = result.player;
+                updatePlayer(player);
+
+                console.log(
+                    `[Join date restore] ${member.user.tag} (${userId}): ` +
+                    `${result.unlockedAchievements.length} достижений пересчитано.`
+                );
+                break;
             }
         }
 

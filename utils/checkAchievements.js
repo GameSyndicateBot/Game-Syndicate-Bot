@@ -20,6 +20,7 @@ const { addXP } = require('./levelSystem');
 const { createAchievementCard } = require('../images/achievements/createAchievementCard');
 const { grantAchievementRoles } = require('./grantAchievementRoles');
 const { grantCategoryRoles } = require('./grantCategoryRoles');
+const { getEffectiveJoinedTimestamp } = require('./memberJoinOverrides');
 
 try {
     const migration = rebalancePreviouslyUnlockedAchievements();
@@ -36,9 +37,10 @@ try {
 }
 
 function getServerDays(member) {
-    if (!member || !member.joinedTimestamp) return 0;
+    const joinedTimestamp = getEffectiveJoinedTimestamp(member);
+    if (!joinedTimestamp) return 0;
 
-    const diffMs = Date.now() - member.joinedTimestamp;
+    const diffMs = Date.now() - joinedTimestamp;
     return Math.floor(diffMs / 1000 / 60 / 60 / 24);
 }
 

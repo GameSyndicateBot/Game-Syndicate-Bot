@@ -2,6 +2,7 @@ const { createCanvas, loadImage } = require('canvas');
 const colors = require('../ui/colors');
 const { getServerDisplayName } = require('../../utils/displayName');
 const { installIconRenderer, drawIcon: drawGsIcon } = require('../ui/icons');
+const { getEffectiveJoinedTimestamp, getEffectiveJoinedAt } = require('../../utils/memberJoinOverrides');
 const {
     drawBackground,
     drawFrame,
@@ -220,8 +221,10 @@ async function createGsProfilePanel(user, member, data = {}) {
     ctx.font = 'bold 32px Arial';
     ctx.fillText('СТАТИСТИКА', 700, 645);
 
-    drawRightStat(ctx, 700, 700, 'calendar', 'ВСТУПИЛ', formatDate(member?.joinedAt));
-    drawRightStat(ctx, 700, 760, 'clock', 'НА СЕРВЕРЕ', formatTimeOnServer(member?.joinedTimestamp));
+    const effectiveJoinedAt = getEffectiveJoinedAt(member);
+    const effectiveJoinedTimestamp = getEffectiveJoinedTimestamp(member);
+    drawRightStat(ctx, 700, 700, 'calendar', 'ВСТУПИЛ', formatDate(effectiveJoinedAt));
+    drawRightStat(ctx, 700, 760, 'clock', 'НА СЕРВЕРЕ', formatTimeOnServer(effectiveJoinedTimestamp));
 
     drawRightStat(ctx, 1085, 700, 'reactions', 'РЕАКЦИЙ ПОСТАВИЛ', String(player.given_reactions ?? 0));
     drawRightStat(ctx, 1085, 760, 'reactions', 'РЕАКЦИЙ ПОЛУЧИЛ', String(player.received_reactions ?? 0));
