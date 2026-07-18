@@ -1,4 +1,50 @@
-const { db } = require('./database');
+const { db: telegramDb } = require('./database');
+const { db } = require('../database/db');
+
+let discordClient = null;
+const DISCORD_GS_CHANNEL_ID = process.env.GS_CALL_DISCORD_CHANNEL_ID || '1526531339149512754';
+const GS_MESSAGE_TTL_MS = 5 * 60 * 1000;
+
+// GS-регистрация хранится в основной БД Discord, которая попадает в резервные копии.
+db.exec(`
+CREATE TABLE IF NOT EXISTS telegram_gs_members (
+    chat_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
+    username TEXT,
+    is_bot INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'member',
+    emoji TEXT,
+    registered INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (chat_id, user_id),
+    UNIQUE (chat_id, emoji)
+);
+`);
+
+// Однократно переносим прежние регистрации из отдельной Telegram-БД.
+try {
+    const oldRows = telegramDb.prepare('SELECT * FROM telegram_gs_members').all();
+    const migrate = db.prepare(`
+        INSERT OR IGNORE INTO telegram_gs_members (
+            chat_id,user_id,first_name,last_name,username,is_bot,status,emoji,registered,created_at,updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    `);
+    const tx = db.transaction(rows => {
+        for (const row of rows) {
+            migrate.run(
+                row.chat_id,row.user_id,row.first_name,row.last_name,row.username,row.is_bot,row.status,
+                row.emoji,row.registered ?? 1,row.created_at,row.updated_at
+            );
+        }
+    });
+    tx(oldRows);
+} catch (error) {
+    console.warn(`⚠️ Не удалось перенести старые GS-регистрации: ${error.message}`);
+}
+
 
 const EMOJIS = [
     // Животные и персонажи
@@ -89,7 +135,7 @@ function normalizeUser(user, status = 'member') {
         is_bot: user.is_bot ? 1 : 0,
         status,
         emoji: null,
-        registered: 0,
+        registered: 1,
     };
 }
 
@@ -100,8 +146,13 @@ function rememberUser(chatId, user, status = 'member') {
     const record = normalizeUser(user, status);
     record.chat_id = String(chatId);
     record.emoji = existing?.emoji || null;
-    record.registered = existing?.registered ? 1 : 0;
+    record.registered = 1;
     upsertMember.run(record);
+
+    if (!record.is_bot && ACTIVE_STATUSES.has(status)) {
+        const member = getMember.get(String(chatId), String(user.id));
+        if (member && !member.emoji) ensureEmoji(chatId, member);
+    }
 }
 
 function rememberMessage(message) {
@@ -354,6 +405,36 @@ async function handleGsRegisterCallback(api, callback, answerCallback) {
     return false;
 }
 
+function setDiscordClient(client) {
+    discordClient = client;
+}
+
+async function deleteTelegramMessage(api, chatId, messageId) {
+    if (!messageId) return;
+    await api('deleteMessage', { chat_id: chatId, message_id: messageId }).catch(() => null);
+}
+
+async function publishDiscordGs(game) {
+    if (!discordClient) return null;
+    const channel = await discordClient.channels.fetch(DISCORD_GS_CHANNEL_ID).catch(() => null);
+    if (!channel?.isTextBased()) return null;
+
+    const sentMessage = await channel.send({
+        content: `@everyone
+
+🎮 **GAME SYNDICATE — СБОР**
+Игра: **${String(game).slice(0, 1000)}**`,
+        allowedMentions: { parse: ['everyone'] },
+    });
+
+    // Сбор должен исчезнуть одновременно в Telegram и Discord.
+    setTimeout(() => {
+        sentMessage.delete().catch(() => null);
+    }, GS_MESSAGE_TTL_MS).unref?.();
+
+    return sentMessage;
+}
+
 async function handleGsCommand(api, message, isChatAdmin, sendMessage) {
     const { chat, from } = message;
 
@@ -385,11 +466,22 @@ async function handleGsCommand(api, message, isChatAdmin, sendMessage) {
     rememberUser(chat.id, from, 'administrator');
     await syncAdministrators(api, chat.id);
 
+    // Команда не должна оставаться в Telegram-чате.
+    await deleteTelegramMessage(api, chat.id, message.message_id);
+
+    // Всем уже известным активным участникам автоматически назначается эмодзи.
+    const knownMembers = db.prepare(`
+        SELECT * FROM telegram_gs_members
+        WHERE chat_id = ? AND is_bot = 0
+          AND status IN ('creator','administrator','member','restricted')
+        ORDER BY created_at ASC, user_id ASC
+    `).all(String(chat.id));
+    for (const member of knownMembers) ensureEmoji(chat.id, member);
+
     const members = listRegisteredMembers.all(String(chat.id));
 
     if (!members.length) {
-        await sendMessage(api, chat.id, '⚠️ Пока никто не зарегистрирован для GS-созыва. Участникам нужно один раз выбрать эмодзи через <code>/gsregister</code>.', {
-            parse_mode: 'HTML',
+        await sendMessage(api, chat.id, '⚠️ Бот ещё не видел участников группы. После любого сообщения участник автоматически получит эмодзи.', {
             ...(message.message_thread_id ? { message_thread_id: message.message_thread_id } : {}),
         });
         return true;
@@ -408,15 +500,27 @@ async function handleGsCommand(api, message, isChatAdmin, sendMessage) {
         '',
     ].join('\n');
 
+    const sentMessages = [];
     const mentionChunks = chunkMentions(members);
     for (let index = 0; index < mentionChunks.length; index += 1) {
         const body = index === 0 ? `${header}${mentionChunks[index]}` : mentionChunks[index];
-        await sendMessage(api, chat.id, body, {
+        const sent = await sendMessage(api, chat.id, body, {
             parse_mode: 'HTML',
             disable_web_page_preview: true,
             ...(message.message_thread_id ? { message_thread_id: message.message_thread_id } : {}),
         });
+        if (sent?.message_id) sentMessages.push(sent.message_id);
     }
+
+    setTimeout(() => {
+        for (const messageId of sentMessages) {
+            deleteTelegramMessage(api, chat.id, messageId).catch(() => null);
+        }
+    }, GS_MESSAGE_TTL_MS).unref?.();
+
+    await publishDiscordGs(text).catch(error => {
+        console.error(`❌ Не удалось опубликовать /gs в Discord: ${error.message}`);
+    });
 
     return true;
 }
@@ -429,4 +533,5 @@ module.exports = {
     rememberChatMemberUpdate,
     rememberMessage,
     rememberUser,
+    setDiscordClient,
 };

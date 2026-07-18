@@ -515,7 +515,7 @@ async function buildEvent(client,type,diff){
   if(type==='loot_share')return {prompt:'Общий запас GS Dust делится между участниками.',answers:[],bank:randomInt(300,600)};
   if(type==='risk')return {prompt:'Выбери гарантированную награду или испытай удачу.',answers:[]};
   if(type==='dont_press')return {prompt:'Сначала зарегистрируйся, а затем не нажимай опасную кнопку.',answers:[],phase:'registration'};
-  if(type==='royal_button')return {prompt:'Последний владелец трона после 20 секунд тишины получает приз.',answers:[],holderId:null};
+  if(type==='royal_button')return {prompt:'За 2 минуты удерживай трон дольше остальных.',answers:[],holderId:null,holderSince:null,holdTotals:{},lastCaptureAt:{}};
   if(type==='dice_tournament')return {prompt:'Один бросок D12 на игрока. Через 5 минут победит лучший результат.',answers:[],endsAt:Date.now()+5*60*1000};
   if(type==='reaction')return {prompt:'Напиши «жми» после сигнала',answers:['жми']};
   if(type==='rarity')return rarityMedia();
@@ -830,23 +830,54 @@ async function handleDontPress(interaction,roundId,action){
 
 async function resolveRoyalButton(channel,roundId){
   const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='royal_button' AND status='active'").get(roundId);if(!round)return;
-  const last=db.prepare("SELECT user_id FROM quick_event_actions WHERE round_id=? AND action='royal' ORDER BY created_at DESC LIMIT 1").get(roundId);
-  if(!last)return expireMultiEvent(channel,roundId,'## 👑 КОРОЛЕВСКАЯ КНОПКА\nНикто не захватил трон.');
-  const member=await channel.guild.members.fetch(last.user_id).catch(()=>null);if(!member)return;
+  const now=Date.now();
+  const payload=JSON.parse(round.payload_json||'{}');
+  payload.holdTotals=payload.holdTotals||{};
+  if(payload.holderId&&payload.holderSince){
+    payload.holdTotals[payload.holderId]=(payload.holdTotals[payload.holderId]||0)+Math.max(0,now-payload.holderSince);
+  }
+  const standings=Object.entries(payload.holdTotals).sort((a,b)=>b[1]-a[1]);
+  if(!standings.length)return expireMultiEvent(channel,roundId,'## 👑 КОРОЛЕВСКАЯ КНОПКА\nНикто не захватил трон.');
+  const [winnerId,winnerMs]=standings[0];
+  const member=await channel.guild.members.fetch(winnerId).catch(()=>null);if(!member)return expireMultiEvent(channel,roundId,'## 👑 КОРОЛЕВСКАЯ КНОПКА\nПобедитель больше не доступен на сервере.');
   const reward=grantSpecialReward(member.user,pickSpecialReward('lucky'),roundId);
-  db.prepare("UPDATE quick_event_rounds SET status='solved',winner_id=?,solved_at=?,reward_type=?,reward_amount=?,reward_details=? WHERE id=? AND status='active'").run(member.id,Date.now(),reward.type,reward.amount||1,reward.details,roundId);
+  db.prepare("UPDATE quick_event_rounds SET status='solved',winner_id=?,solved_at=?,reward_type=?,reward_amount=?,reward_details=?,payload_json=? WHERE id=? AND status='active'").run(member.id,now,reward.type,reward.amount||1,reward.details,JSON.stringify(payload),roundId);
   recordQuickEventWin(member.id,'royal_button',roundId);clearRuntimeTimers(roundId);
-  await closeMultiEventMessage(channel,round,`## 👑 КОРОЛЕВСКАЯ КНОПКА\n${member} удержал трон и получает **${reward.label}**.`);
+  const top=standings.slice(0,5).map(([id,ms],i)=>`${i+1}. <@${id}> — **${(ms/1000).toFixed(1)} сек.**`).join('\n');
+  await closeMultiEventMessage(channel,round,`## 👑 КОРОЛЕВСКАЯ КНОПКА — завершена\nПобедитель: ${member}\nВремя владения: **${(winnerMs/1000).toFixed(1)} сек.**\nНаграда: **${reward.label}**\n\n### Топ владения\n${top}`);
 }
 
 async function handleRoyalButton(interaction,roundId){
-  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='royal_button' AND status='active'").get(roundId);if(!round){await interaction.reply({content:'❌ Трон уже определил владельца.',ephemeral:true});return true;}
-  db.prepare("INSERT INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?) ON CONFLICT(round_id,user_id,action) DO UPDATE SET created_at=excluded.created_at").run(roundId,interaction.user.id,'royal',1,Date.now());
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='royal_button' AND status='active'").get(roundId);if(!round){await interaction.reply({content:'❌ Ивент уже завершён.',ephemeral:true});return true;}
+  const now=Date.now();
+  const payload=JSON.parse(round.payload_json||'{}');
+  payload.holdTotals=payload.holdTotals||{};
+  payload.lastCaptureAt=payload.lastCaptureAt||{};
+
+  if(String(payload.holderId||'')===String(interaction.user.id)){
+    await interaction.reply({content:'👑 Трон уже у тебя. Повторный клик ничего не даёт.',ephemeral:true});return true;
+  }
+  const lastClick=Number(payload.lastCaptureAt[interaction.user.id]||0);
+  if(now-lastClick<1000){
+    await interaction.reply({content:'⏱️ Перехватывать трон можно не чаще одного раза в секунду.',ephemeral:true});return true;
+  }
+
+  if(payload.holderId&&payload.holderSince){
+    payload.holdTotals[payload.holderId]=(payload.holdTotals[payload.holderId]||0)+Math.max(0,now-payload.holderSince);
+  }
+  payload.holderId=interaction.user.id;
+  payload.holderSince=now;
+  payload.lastCaptureAt[interaction.user.id]=now;
+  db.prepare("UPDATE quick_event_rounds SET payload_json=? WHERE id=? AND status='active'").run(JSON.stringify(payload),roundId);
   markParticipation(roundId,interaction.user.id);
-  clearRuntimeTimers(roundId);
-  addRuntimeTimer(roundId,setTimeout(()=>resolveRoyalButton(interaction.channel,roundId).catch(console.error),20*1000));
-  addRuntimeTimer(roundId,setTimeout(()=>resolveRoyalButton(interaction.channel,roundId).catch(console.error),5*60*1000));
-  await interaction.update({content:`## 👑 КОРОЛЕВСКАЯ КНОПКА\nТекущий владелец трона: ${interaction.user}\nЕсли **20 секунд** никто не перехватит кнопку — он победит.`,components:multiEventComponents(roundId,'royal_button')});return true;
+
+  const elapsed=Math.max(0,now-Number(round.activated_at||now));
+  const remaining=Math.max(0,120000-elapsed);
+  await interaction.update({
+    content:`## 👑 КОРОЛЕВСКАЯ КНОПКА\nТекущий владелец трона: ${interaction.user}\nДо конца: **${Math.ceil(remaining/1000)} сек.**\n\nПобедит тот, кто суммарно удерживал трон дольше всех. Повторные клики владельца и клики чаще 1 раза/сек. игнорируются.`,
+    components:multiEventComponents(roundId,'royal_button'),
+    allowedMentions:{parse:[]},
+  });return true;
 }
 
 function diceLeaderboard(roundId){
@@ -1341,7 +1372,7 @@ async function postQuickEvent(client){
       loot_share:`В общем запасе **${event.bank} GS Dust**. Один участник может забрать долю только один раз.`,
       risk:'Выбери: гарантированные **35 Dust** или риск ради более крупной награды. Один выбор на игрока.',
       dont_press:'Регистрация длится **20 секунд**. После неё появится кнопка, которую нельзя нажимать.',
-      royal_button:'Нажми кнопку и захвати трон. Если **20 секунд** никто не перебьёт — ты победил.',
+      royal_button:'Ивент длится **2 минуты**. Перехватывай трон и удерживай его суммарно дольше остальных. Повторный клик владельца не считается, захват доступен не чаще раза в секунду.',
       dice_tournament:'Один бросок **D12** на игрока. Через **5 минут** лучший результат заберёт приз.',
     };
     const message=await channel.send({content:`## ${titles[type]}
@@ -1350,7 +1381,7 @@ ${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont
     if(type==='loot_share') addRuntimeTimer(roundId,setTimeout(()=>expireMultiEvent(channel,roundId,'## 💰 ДЕЛЁЖ ДОБЫЧИ — время вышло').catch(console.error),2*60*1000));
     if(type==='risk') addRuntimeTimer(roundId,setTimeout(()=>expireMultiEvent(channel,roundId,'## 🎰 РИСК — время выбора вышло').catch(console.error),90*1000));
     if(type==='dont_press') addRuntimeTimer(roundId,setTimeout(()=>startDontPressTemptation(channel,roundId).catch(console.error),20*1000));
-    if(type==='royal_button') addRuntimeTimer(roundId,setTimeout(()=>resolveRoyalButton(channel,roundId).catch(console.error),5*60*1000));
+    if(type==='royal_button') addRuntimeTimer(roundId,setTimeout(()=>resolveRoyalButton(channel,roundId).catch(console.error),2*60*1000));
     if(type==='dice_tournament') addRuntimeTimer(roundId,setTimeout(()=>resolveDiceTournament(channel,roundId).catch(console.error),5*60*1000));
     return;
   }

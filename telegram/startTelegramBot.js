@@ -763,12 +763,13 @@ async function startTelegramBot(client) {
     const botInfo = await api('getMe');
     setRuntime(api, client);
     setGameLobbyRuntime(api, client);
+    gsCall.setDiscordClient(client);
 
     await api('deleteWebhook', { drop_pending_updates: false }).catch(() => null);
     await api('setMyCommands', {
         commands: [
             { command: 'gs', description: 'призвать участников группы' },
-            { command: 'gsregister', description: 'зарегистрироваться и выбрать эмодзи' },
+            { command: 'gsregister', description: 'изменить личный эмодзи для GS-созыва' },
             { command: 'game', description: 'создать игровое лобби' },
             { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' },
             { command: 'setleavelog', description: 'назначить тему логов выходов' },
