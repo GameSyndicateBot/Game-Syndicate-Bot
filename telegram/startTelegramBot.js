@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const {
     setRuntime,
     createGathering,
@@ -64,11 +66,49 @@ function createTelegramApi(token) {
     const baseUrl = `https://api.telegram.org/bot${token}`;
 
     return async function telegramApi(method, payload = {}) {
-        const response = await fetch(`${baseUrl}/${method}`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
+        const fileFields = payload.__fileFields || null;
+        const cleanPayload = { ...payload };
+        delete cleanPayload.__fileFields;
+
+        let requestOptions;
+
+        if (fileFields && Object.keys(fileFields).length > 0) {
+            const form = new FormData();
+
+            for (const [key, value] of Object.entries(cleanPayload)) {
+                if (value === undefined || value === null) continue;
+                form.append(
+                    key,
+                    typeof value === 'object' ? JSON.stringify(value) : String(value),
+                );
+            }
+
+            for (const [field, file] of Object.entries(fileFields)) {
+                const filePath = typeof file === 'string' ? file : file.path;
+                const filename = typeof file === 'string'
+                    ? path.basename(filePath)
+                    : (file.filename || path.basename(filePath));
+                const contentType = typeof file === 'string'
+                    ? 'application/octet-stream'
+                    : (file.contentType || 'application/octet-stream');
+
+                const buffer = fs.readFileSync(filePath);
+                form.append(field, new Blob([buffer], { type: contentType }), filename);
+            }
+
+            requestOptions = {
+                method: 'POST',
+                body: form,
+            };
+        } else {
+            requestOptions = {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(cleanPayload),
+            };
+        }
+
+        const response = await fetch(`${baseUrl}/${method}`, requestOptions);
 
         const data = await response.json().catch(() => null);
         if (!response.ok || !data?.ok) {
@@ -275,12 +315,28 @@ async function sendLeaveLog(api, update) {
         `🕒 <b>Время:</b> ${escapeHtml(formatMoscowTime(chatMember.date))} МСК`,
     ];
 
-    await sendMessage(api, targetChatId, lines.join('\n'), {
+    const farewellImagePath = path.join(
+        __dirname,
+        '..',
+        'assets',
+        'leave',
+        'gs-telegram-farewell.png',
+    );
+
+    await api('sendPhoto', {
+        chat_id: targetChatId,
+        caption: lines.join('\n'),
         parse_mode: 'HTML',
-        disable_web_page_preview: true,
         ...(targetThreadId
             ? { message_thread_id: Number(targetThreadId) }
             : {}),
+        __fileFields: {
+            photo: {
+                path: farewellImagePath,
+                filename: 'gs-telegram-farewell.png',
+                contentType: 'image/png',
+            },
+        },
     });
 
     console.log(
