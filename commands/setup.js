@@ -5,7 +5,7 @@ module.exports = {
     const owner=interaction.user.id;
     const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('🚀 Game Syndicate • Первый запуск')
       .setDescription('Настройка занимает несколько минут. Сначала назначьте каналы, затем запустите диагностику.')
-      .addFields({name:'Шаг 1',value:'Откройте Control Panel и назначьте каналы.'},{name:'Шаг 2',value:'Проверьте соединения и права через Diagnostics.'},{name:'Шаг 3',value:'Зарегистрируйте slash-команды командой `npm run deploy` после обновления.'});
+      .addFields({name:'Шаг 1',value:'Откройте Control Panel и назначьте каналы.'},{name:'Шаг 2',value:'Проверьте соединения и права через Diagnostics.'},{name:'Шаг 3',value:'После обновления зарегистрируйте команды: `node deploy-commands.js dev` для DEV или `node deploy-commands.js prod` для основного сервера.'});
     const row=new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`control:channels:${owner}`).setLabel('Начать настройку').setEmoji('⚙️').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`control:diagnostics:${owner}`).setLabel('Диагностика').setEmoji('🩺').setStyle(ButtonStyle.Secondary),

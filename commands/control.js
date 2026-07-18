@@ -10,8 +10,7 @@ const CHANNELS = {
   welcome_channel_id: ['👋 Приветствия', 'Приветствие новых участников'],
   quick_event_channel_id: ['⚡ Quick Event', 'Канал быстрых событий'],
   lucky_day_channel_id: ['🎁 Lucky Day', 'Ежедневный розыгрыш'],
-  riddle_channel_id: ['🧩 Загадки', 'Канал системы загадок'],
-  gatherings_channel_id: ['🎮 Сборы', 'Discord + Telegram Game Lobby'],
+  gatherings_channel_id: ['🎮 Game Lobby', 'Канал публикации игровых лобби из Discord и Telegram'],
   backup_channel_id: ['🛡️ Бэкапы', 'Канал резервных копий базы'],
 };
 

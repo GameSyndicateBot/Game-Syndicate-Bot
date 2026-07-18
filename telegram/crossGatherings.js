@@ -652,7 +652,7 @@ function startReminderScheduler() {
         });
     }, 5_000);
 
-    console.log('✅ Сборы: напоминания за 30/10 минут и при старте включены');
+    console.log('✅ Game Lobby: напоминания за 30/10 минут и при старте включены');
 }
 
 function isCreator(gathering, platform, platformId) {

@@ -58,7 +58,7 @@ function buildInventoryEmbed(user, inventory, notice = null) {
                 ? `${notice}\n\nВыбери пак, который хочешь открыть.`
                 : total > 0
                     ? 'Выбери пак, который хочешь открыть.'
-                    : 'Сейчас в инвентаре нет паков. Их можно получить в событиях, загадках, Lucky Day и за мирового босса.'
+                    : 'Сейчас в инвентаре нет паков. Их можно получить в Quick Event, Lucky Day и других игровых наградах.'
         )
         .setAuthor({
             name: user.globalName || user.username,
