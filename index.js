@@ -63,7 +63,12 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        if (interaction.isStringSelectMenu() || interaction.isButton()) {
+        if (interaction.isStringSelectMenu() || interaction.isChannelSelectMenu() || interaction.isButton()) {
+
+            if (interaction.customId.startsWith('control:')) {
+                const command = client.commands.get('control');
+                if (command?.handleComponent) return await command.handleComponent(interaction);
+            }
 
             if (interaction.customId.startsWith('game_copy:')) {
                 const { handleGameLobbyButton } = require('./systems/gameLobbySystem');

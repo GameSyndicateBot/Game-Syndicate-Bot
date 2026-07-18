@@ -1,4 +1,5 @@
 const { EmbedBuilder } = require('discord.js');
+const { getGuildSetting } = require('./guildSettings');
 
 function cutText(value, max = 900) {
     const text = String(value ?? '').trim();
@@ -47,8 +48,10 @@ async function sendLog(guild, options, legacyDescription, legacyColor) {
             };
         }
 
-        if (!guild || !process.env.LOG_CHANNEL_ID) return null;
-        const channel = await guild.channels.fetch(process.env.LOG_CHANNEL_ID).catch(() => null);
+        if (!guild) return null;
+        const channelId = getGuildSetting(guild.id, 'logs_channel_id', process.env.LOG_CHANNEL_ID);
+        if (!channelId) return null;
+        const channel = await guild.channels.fetch(channelId).catch(() => null);
         if (!channel?.isTextBased?.() || typeof channel.send !== 'function') return null;
 
         const embed = new EmbedBuilder()

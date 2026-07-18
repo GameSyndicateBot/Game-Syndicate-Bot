@@ -2,6 +2,7 @@ const path = require('path');
 const { AttachmentBuilder } = require('discord.js');
 const { databasePath } = require('../database/db');
 const { backupDatabase } = require('../utils/backupDatabase');
+const { getGuildSetting } = require('../utils/guildSettings');
 
 const DEFAULT_INTERVAL_MINUTES = 360;
 const DEFAULT_DISCORD_RETENTION = 30;
@@ -75,9 +76,12 @@ async function cleanupDiscordBackups(channel) {
 }
 
 async function uploadBackupToDiscord(client, backupPath, reason) {
-    const channelId = String(
-        process.env.BACKUP_CHANNEL_ID || ''
-    ).trim();
+    let configuredChannelId = process.env.BACKUP_CHANNEL_ID || '';
+    for (const guild of client.guilds.cache.values()) {
+        const saved = getGuildSetting(guild.id, 'backup_channel_id');
+        if (saved) { configuredChannelId = saved; break; }
+    }
+    const channelId = String(configuredChannelId).trim();
 
     if (!channelId) {
         throw new Error(

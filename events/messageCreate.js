@@ -1,4 +1,5 @@
 const { handleQuickEventAnswer } = require('../systems/quickEventSystem');
+const { getGuildSetting } = require('../utils/guildSettings');
 const {
     AttachmentBuilder,
 } = require('discord.js');
@@ -43,7 +44,7 @@ async function sendLevelUpMessage(message, player, level) {
         VALUES (?, ?, ?)
     `).run(message.author.id, level, Date.now());
 
-    const channelId = process.env.ACHIEVEMENTS_CHANNEL_ID;
+    const channelId = getGuildSetting(message.guild.id, 'achievements_channel_id', process.env.ACHIEVEMENTS_CHANNEL_ID);
 
     const channel = channelId
         ? await message.guild.channels.fetch(channelId).catch(() => null)

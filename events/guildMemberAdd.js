@@ -1,6 +1,7 @@
 const path = require('path');
 const { AttachmentBuilder } = require('discord.js');
 const { sendLog, formatUser } = require('../utils/sendLog');
+const { getGuildSetting } = require('../utils/guildSettings');
 
 module.exports = {
     name: 'guildMemberAdd',
@@ -21,7 +22,7 @@ module.exports = {
 
         try {
             const channel = await member.guild.channels.fetch(
-                process.env.WELCOME_CHANNEL_ID
+                getGuildSetting(member.guild.id, 'welcome_channel_id', process.env.WELCOME_CHANNEL_ID)
             );
 
             if (channel && typeof channel.send === 'function') {

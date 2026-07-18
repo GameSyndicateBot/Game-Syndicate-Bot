@@ -201,15 +201,15 @@ function emojiKeyboard(chatId, userId, page = 0) {
             const isTaken = owner && String(owner.user_id) !== String(userId);
             return {
                 text: isMine ? `✅ ${emoji}` : isTaken ? `🔒 ${emoji}` : emoji,
-                callback_data: `gsreg_pick:${index}:${safePage}`,
+                callback_data: `gsreg_pick:${userId}:${index}:${safePage}`,
             };
         }));
     }
 
     const nav = [];
-    if (safePage > 0) nav.push({ text: '⬅️', callback_data: `gsreg_page:${safePage - 1}` });
-    nav.push({ text: `${safePage + 1}/${totalPages}`, callback_data: 'gsreg_noop' });
-    if (safePage < totalPages - 1) nav.push({ text: '➡️', callback_data: `gsreg_page:${safePage + 1}` });
+    if (safePage > 0) nav.push({ text: '⬅️', callback_data: `gsreg_page:${userId}:${safePage - 1}` });
+    nav.push({ text: `${safePage + 1}/${totalPages}`, callback_data: `gsreg_noop:${userId}` });
+    if (safePage < totalPages - 1) nav.push({ text: '➡️', callback_data: `gsreg_page:${userId}:${safePage + 1}` });
     rows.push(nav);
 
     return { inline_keyboard: rows };
@@ -235,6 +235,24 @@ async function handleGsRegisterCommand(api, message, sendMessage) {
     return true;
 }
 
+async function safeEditRegistrationMessage(api, params) {
+    try {
+        await api('editMessageText', params);
+        return true;
+    } catch (error) {
+        const message = String(error?.message || error || '');
+
+        // Telegram возвращает 400, когда текст и клавиатура уже совпадают.
+        // Для интерфейса регистрации это нормальная ситуация, а не ошибка.
+        if (message.includes('message is not modified')) return false;
+
+        // Не создаём лавину повторных editMessageText при быстром клике.
+        if (message.includes('Too Many Requests') || message.includes('retry after')) return false;
+
+        throw error;
+    }
+}
+
 async function handleGsRegisterCallback(api, callback, answerCallback) {
     const data = callback.data || '';
     if (!data.startsWith('gsreg_')) return false;
@@ -246,27 +264,51 @@ async function handleGsRegisterCallback(api, callback, answerCallback) {
     const chatId = message.chat.id;
     rememberUser(chatId, from, 'member');
 
-    if (data === 'gsreg_noop') {
+    if (data.startsWith('gsreg_noop')) {
+        const ownerId = data.split(':')[1];
+        if (ownerId && String(ownerId) !== String(from.id)) {
+            await answerCallback(api, callback.id, 'Открой свою регистрацию командой /gsregister', true);
+            return true;
+        }
         await answerCallback(api, callback.id, 'Выбери эмодзи');
         return true;
     }
 
     if (data.startsWith('gsreg_page:')) {
-        const page = Number(data.split(':')[1]) || 0;
+        const parts = data.split(':');
+        const ownerId = parts.length >= 3 ? parts[1] : String(from.id);
+        const page = Number(parts.length >= 3 ? parts[2] : parts[1]) || 0;
+
+        if (String(ownerId) !== String(from.id)) {
+            await answerCallback(api, callback.id, 'Это меню другого участника. Вызови /gsregister', true);
+            return true;
+        }
+
+        // Сначала закрываем callback, чтобы Telegram не присылал повторные нажатия.
+        await answerCallback(api, callback.id);
         const member = getMember.get(String(chatId), String(from.id));
-        await api('editMessageText', {
+        await safeEditRegistrationMessage(api, {
             chat_id: chatId,
             message_id: message.message_id,
             text: registrationText(member),
             parse_mode: 'HTML',
             reply_markup: emojiKeyboard(chatId, from.id, page),
         });
-        await answerCallback(api, callback.id);
         return true;
     }
 
     if (data.startsWith('gsreg_pick:')) {
-        const [, indexRaw, pageRaw] = data.split(':');
+        const parts = data.split(':');
+        const hasOwner = parts.length >= 4;
+        const ownerId = hasOwner ? parts[1] : String(from.id);
+        const indexRaw = hasOwner ? parts[2] : parts[1];
+        const pageRaw = hasOwner ? parts[3] : parts[2];
+
+        if (String(ownerId) !== String(from.id)) {
+            await answerCallback(api, callback.id, 'Это меню другого участника. Вызови /gsregister', true);
+            return true;
+        }
+
         const index = Number(indexRaw);
         const page = Number(pageRaw) || 0;
         const emoji = EMOJIS[index];
@@ -289,7 +331,8 @@ async function handleGsRegisterCallback(api, callback, answerCallback) {
         }
 
         const member = getMember.get(String(chatId), String(from.id));
-        await api('editMessageText', {
+        await answerCallback(api, callback.id, `Выбран эмодзи ${emoji}`);
+        await safeEditRegistrationMessage(api, {
             chat_id: chatId,
             message_id: message.message_id,
             text: [
@@ -300,7 +343,6 @@ async function handleGsRegisterCallback(api, callback, answerCallback) {
             parse_mode: 'HTML',
             reply_markup: emojiKeyboard(chatId, from.id, page),
         });
-        await answerCallback(api, callback.id, `Выбран эмодзи ${emoji}`);
         return true;
     }
 
