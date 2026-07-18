@@ -41,7 +41,7 @@ function field(ctx, x, y, w, label, value, accent) {
 
 async function createGameLobbyCard({
     game,
-    timeText = '',
+    mapName = '',
     code = '',
     creatorName,
     createdAt = Date.now(),
@@ -99,22 +99,20 @@ async function createGameLobbyCard({
     ctx.strokeStyle = 'rgba(151,116,255,.32)';
     ctx.stroke();
 
-    const hasTime = Boolean(String(timeText).trim());
+    const hasMap = Boolean(String(mapName).trim());
     const hasCode = Boolean(String(code).trim());
 
-    if (hasTime) {
-        field(ctx, 105, 235, 440, 'Игра', game, '#9b7cff');
-        field(ctx, 625, 235, 440, 'Время', timeText, '#63e8ff');
-    } else {
-        field(ctx, 105, 235, 960, 'Игра', game, '#9b7cff');
+    field(ctx, 105, 220, 960, 'Игра', game, '#9b7cff');
+    if (hasMap) {
+        field(ctx, 105, 305, 960, 'Карта / лобби', mapName, '#63e8ff');
     }
 
     if (hasCode) {
         ctx.fillStyle = '#aeb0c7';
         ctx.font = '700 19px Arial';
-        ctx.fillText('КОД ЛОББИ', 105, 365);
+        ctx.fillText('КОД / ПАРОЛЬ', 105, 390);
 
-        rr(ctx, 105, 384, 960, 58, 15);
+        rr(ctx, 105, 407, 960, 43, 13);
         ctx.fillStyle = 'rgba(3,3,9,.78)';
         ctx.fill();
         ctx.strokeStyle = 'rgba(99,232,255,.56)';
@@ -125,12 +123,12 @@ async function createGameLobbyCard({
         ctx.fillStyle = '#63e8ff';
         ctx.font = `900 ${codeFit.size}px monospace`;
         ctx.textAlign = 'center';
-        ctx.fillText(codeFit.text, 585, 423);
+        ctx.fillText(codeFit.text, 585, 438);
         ctx.textAlign = 'left';
     } else {
         ctx.fillStyle = '#7f819a';
         ctx.font = '700 20px Arial';
-        ctx.fillText('Код лобби не указан', 105, 405);
+        ctx.fillText('Код / пароль не указан', 105, 430);
     }
 
     const format = (timestamp, options) => new Intl.DateTimeFormat('ru-RU', {

@@ -29,26 +29,27 @@ module.exports = {
             .setMaxLength(60)
             .setRequired(true);
 
+        const mapInput = new TextInputBuilder()
+            .setCustomId('game_map')
+            .setLabel('Название карты или лобби')
+            .setPlaceholder('Например: Basement или Lobby 1')
+            .setStyle(TextInputStyle.Short)
+            .setMinLength(1)
+            .setMaxLength(60)
+            .setRequired(true);
+
         const lobbyCodeInput = new TextInputBuilder()
             .setCustomId('game_code')
-            .setLabel('Код лобби (необязательно)')
+            .setLabel('Код лобби или пароль')
             .setPlaceholder('Например: ABC123')
             .setStyle(TextInputStyle.Short)
             .setMaxLength(40)
-            .setRequired(false);
-
-        const timeInput = new TextInputBuilder()
-            .setCustomId('game_time')
-            .setLabel('Время (необязательно)')
-            .setPlaceholder('Например: 21:00')
-            .setStyle(TextInputStyle.Short)
-            .setMaxLength(40)
-            .setRequired(false);
+            .setRequired(true);
 
         modal.addComponents(
             new ActionRowBuilder().addComponents(gameInput),
+            new ActionRowBuilder().addComponents(mapInput),
             new ActionRowBuilder().addComponents(lobbyCodeInput),
-            new ActionRowBuilder().addComponents(timeInput),
         );
 
         await interaction.showModal(modal);
@@ -70,8 +71,8 @@ module.exports = {
                 creatorId: interaction.user.id,
                 creatorName,
                 game: interaction.fields.getTextInputValue('game_name').trim(),
+                mapName: interaction.fields.getTextInputValue('game_map').trim(),
                 lobbyCode: interaction.fields.getTextInputValue('game_code').trim(),
-                timeText: interaction.fields.getTextInputValue('game_time').trim(),
             });
 
             await interaction.editReply({

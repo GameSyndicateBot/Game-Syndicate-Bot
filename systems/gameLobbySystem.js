@@ -13,8 +13,8 @@ if(!gameLobbyColumns.some(column=>column.name==='telegram_pin_service_message_id
 
 const getLobby=id=>db.prepare('SELECT * FROM game_lobbies WHERE id=?').get(Number(id));
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
-function rows(l){return l.status==='open'&&String(l.lobby_code||'').trim()?[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`game_copy:${l.id}`).setLabel('Скопировать код').setEmoji('📋').setStyle(ButtonStyle.Primary))]:[];}
-function tgText(l){const open=l.status==='open';const lines=['<b>🎮 GS GAME LOBBY</b>','',`<b>Игра:</b> ${esc(l.game)}`];if(String(l.lobby_code||'').trim())lines.push('','<b>Код лобби:</b>',`<code>${esc(l.lobby_code)}</code>`);if(String(l.map_name||'').trim())lines.push('',`<b>Время:</b> ${esc(l.map_name)}`);lines.push('',`<b>Создал:</b> ${esc(l.creator_name)}`,'',open?'🟢 <b>ЛОББИ ОТКРЫТО</b>':'🔴 <b>ЛОББИ ЗАКРЫТО</b>',open?'Автоматически закроется через 4 часа.':'Время действия лобби истекло.');return lines.join('\n');}
+function rows(l){return l.status==='open'&&String(l.lobby_code||'').trim()?[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`game_copy:${l.id}`).setLabel('Скопировать код / пароль').setEmoji('📋').setStyle(ButtonStyle.Primary))]:[];}
+function tgText(l){const open=l.status==='open';const lines=['<b>🎮 GS GAME LOBBY</b>','',`<b>Игра:</b> ${esc(l.game)}`,`<b>Карта / лобби:</b> ${esc(l.map_name)}`];if(String(l.lobby_code||'').trim())lines.push('<b>Код / пароль:</b>',`<code>${esc(l.lobby_code)}</code>`);lines.push('',`<b>Создал:</b> ${esc(l.creator_name)}`,'',open?'🟢 <b>ЛОББИ ОТКРЫТО</b>':'🔴 <b>ЛОББИ ЗАКРЫТО</b>',open?'Автоматически закроется через 4 часа.':'Время действия лобби истекло.');return lines.join('\n');}
 function tgKeyboard(l){return {inline_keyboard:[[{text:'❌ Закрыть лобби',callback_data:`game_lobby_close:${l.id}`}]]};}
 function setGameLobbyRuntime(api,client){
  // Не затираем Telegram API значением null при событии Discord ready.
@@ -39,13 +39,13 @@ function setGameLobbyRuntime(api,client){
  );
  console.log('✅ GS Game Lobby: автозакрытие через 4 часа включено');
 }
-async function publishGameLobby({creatorId,creatorName,game,timeText='',lobbyCode=''}){
+async function publishGameLobby({creatorId,creatorName,game,mapName='',lobbyCode=''}){
  const createdAt=Date.now(),closesAt=createdAt+AUTO_CLOSE_MS;
- const info=db.prepare('INSERT INTO game_lobbies(creator_discord_id,creator_name,game,map_name,lobby_code,created_at,closes_at) VALUES(?,?,?,?,?,?,?)').run(String(creatorId),creatorName,game,timeText,lobbyCode,createdAt,closesAt);
+ const info=db.prepare('INSERT INTO game_lobbies(creator_discord_id,creator_name,game,map_name,lobby_code,created_at,closes_at) VALUES(?,?,?,?,?,?,?)').run(String(creatorId),creatorName,game,mapName,lobbyCode,createdAt,closesAt);
  let l=getLobby(info.lastInsertRowid);
  const channelId=getSetting('discord_gatherings_channel_id');if(!channelId)throw new Error('Discord game-lobby не настроен. Выполни /setgatherchannel в нужном канале.');
  const ch=await runtime.client?.channels.fetch(channelId).catch(()=>null);if(!ch?.isTextBased?.())throw new Error('Discord game-lobby не найден.');
- const card=await createGameLobbyCard({game,timeText,code:lobbyCode,creatorName,createdAt,closesAt,status:'open'});
+ const card=await createGameLobbyCard({game,mapName,code:lobbyCode,creatorName,createdAt,closesAt,status:'open'});
  const msg=await ch.send({content:'@everyone',files:[new AttachmentBuilder(card,{name:`gs-game-lobby-${l.id}.png`})],components:rows(l),allowedMentions:{parse:['everyone']}});
  db.prepare('UPDATE game_lobbies SET discord_channel_id=?,discord_message_id=? WHERE id=?').run(channelId,msg.id,l.id);
  const tg=getSetting('telegram_gatherings_chat_id'),thread=getSetting('telegram_gatherings_thread_id');
@@ -144,7 +144,7 @@ async function closeGameLobby(id){
  return true;
 }
 async function closeExpiredGameLobbies(){for(const r of db.prepare("SELECT id FROM game_lobbies WHERE status='open' AND closes_at<=?").all(Date.now()))await closeGameLobby(r.id);}
-async function handleGameLobbyButton(i){if(!i.isButton()||!i.customId.startsWith('game_copy:'))return false;const l=getLobby(i.customId.split(':')[1]);if(!l||l.status!=='open'){await i.reply({content:'❌ Это лобби уже закрыто.',flags:MessageFlags.Ephemeral});return true;}if(!String(l.lobby_code||'').trim()){await i.reply({content:'ℹ️ Для этого лобби код не указан.',flags:MessageFlags.Ephemeral});return true;}await i.reply({content:`🔑 **Код лобби**\n\`\`\`${l.lobby_code}\`\`\`\nНажми на код, чтобы скопировать.`,flags:MessageFlags.Ephemeral});return true;}
+async function handleGameLobbyButton(i){if(!i.isButton()||!i.customId.startsWith('game_copy:'))return false;const l=getLobby(i.customId.split(':')[1]);if(!l||l.status!=='open'){await i.reply({content:'❌ Это лобби уже закрыто.',flags:MessageFlags.Ephemeral});return true;}if(!String(l.lobby_code||'').trim()){await i.reply({content:'ℹ️ Для этого лобби код не указан.',flags:MessageFlags.Ephemeral});return true;}await i.reply({content:`🔑 **Код / пароль**\n\`\`\`${l.lobby_code}\`\`\`\nНажми на значение, чтобы скопировать.`,flags:MessageFlags.Ephemeral});return true;}
 
 async function handleGameLobbyTelegramCallback(api,callback,answerCallback){
  const data=callback?.data||'';
