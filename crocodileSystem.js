@@ -742,9 +742,6 @@ async function handleMessage(api, message) {
         '',
         `🎭 Ведущий: <b>${esc(finished.host_name)}</b>`,
         '',
-        `⏳ Первые 5 секунд стать новым ведущим может только <b>${esc(finished.winner_name)}</b>.`,
-        'Остальным при попытке появится предупреждение. Затем кнопка станет доступна всем.',
-        '',
         'Если объяснение понравилось — поставьте 💜.',
         '',
         '━━━━━━━━━━━━━━━━━━',
@@ -900,7 +897,12 @@ async function handleCallback(api, callback) {
             && Date.now() < Number(round.claim_open_at)
             && userId !== String(round.winner_id)
         ) {
-            await answer(api, callback.id, 'Первые 5 секунд право у угадавшего.', true);
+            await answer(
+                api,
+                callback.id,
+                `⏳ Первые 5 секунд стать новым ведущим может только ${round.winner_name}.`,
+                true,
+            );
             return true;
         }
         const changed = db.prepare(`
