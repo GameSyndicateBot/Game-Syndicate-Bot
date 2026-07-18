@@ -36,8 +36,9 @@ const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('
 for (const file of commandFiles) {
     const command = require(`./commands/${file}`);
 
-    if (!command.data || !command.execute) {
-        console.log(`⚠️ Команда ${file} пропущена: нет data или execute`);
+    // В папке commands могут оставаться служебные/устаревшие файлы после
+    // обновления поверх старой сборки. Они не являются slash-командами.
+    if (!command?.data || typeof command.execute !== 'function') {
         continue;
     }
 
@@ -196,8 +197,8 @@ const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'
 for (const file of eventFiles) {
     const event = require(`./events/${file}`);
 
-    if (!event.name || !event.execute) {
-        console.log(`⚠️ Событие ${file} пропущено: нет name или execute`);
+    // Служебные и устаревшие файлы не считаются Discord-событиями.
+    if (!event?.name || typeof event.execute !== 'function') {
         continue;
     }
 

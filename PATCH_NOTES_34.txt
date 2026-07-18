@@ -1,0 +1,11 @@
+Game Syndicate Bot 34 — startup cleanup
+
+- На старте удаляются устаревшие файлы, которые Bothost мог сохранить при обновлении поверх старой сборки:
+  commands/linktelegram.js
+  events/interactionCreate.js
+  startTelegramBot.js
+  crossGatherings.js
+  старые файлы загадок
+- Загрузчики команд и событий больше не выводят жёлтые предупреждения для служебных файлов без Discord-интерфейса.
+- Добавлен маркер запуска: GS BUILD 34 COMMERCIAL CLEANUP.
+- Актуальное название системы: Game Lobby.
