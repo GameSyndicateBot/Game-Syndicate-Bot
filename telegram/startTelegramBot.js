@@ -306,6 +306,10 @@ async function handleCommand(api, message, command) {
         return gsCall.handleGsCommand(api, message, isChatAdmin, sendMessage);
     }
 
+    if (command === '/gsregister') {
+        return gsCall.handleGsRegisterCommand(api, message, sendMessage);
+    }
+
     if (command === '/start') {
         await sendMessage(api, chat.id, [
             '🎮 <b>GAME SYNDICATE — СБОРЫ</b>',
@@ -637,6 +641,9 @@ async function handleCallback(api, callback) {
     const crocCallbackHandled = await crocodile.handleCallback(api, callback);
     if (crocCallbackHandled) return;
 
+    const gsRegisterHandled = await gsCall.handleGsRegisterCallback(api, callback, answerCallback);
+    if (gsRegisterHandled) return;
+
     if (data.startsWith('game_lobby_close:')) {
         const handled = await handleGameLobbyTelegramCallback(
             api,
@@ -761,6 +768,7 @@ async function startTelegramBot(client) {
     await api('setMyCommands', {
         commands: [
             { command: 'gs', description: 'призвать участников группы' },
+            { command: 'gsregister', description: 'зарегистрироваться и выбрать эмодзи' },
             { command: 'game', description: 'создать игровое лобби' },
             { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' },
             { command: 'setleavelog', description: 'назначить тему логов выходов' },

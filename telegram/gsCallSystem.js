@@ -50,6 +50,13 @@ const setEmoji = db.prepare(`
     WHERE chat_id = ? AND user_id = ?
 `);
 
+const getEmojiOwner = db.prepare(`
+    SELECT user_id FROM telegram_gs_members
+    WHERE chat_id = ? AND emoji = ?
+`);
+
+const EMOJIS_PER_PAGE = 16;
+
 function escapeHtml(value) {
     return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -150,6 +157,144 @@ function chunkMentions(members, maxLength = 3200) {
     return chunks;
 }
 
+
+function registrationText(member) {
+    const current = member?.emoji
+        ? `\n\nТвой текущий эмодзи: <b>${escapeHtml(member.emoji)}</b>`
+        : '';
+
+    return [
+        '🎮 <b>РЕГИСТРАЦИЯ В GS-СОЗЫВЕ</b>',
+        '',
+        'Выбери личный эмодзи. Именно им бот будет отмечать тебя при команде <code>/gs</code>.',
+        '',
+        'Эмодзи можно поменять в любой момент, снова вызвав <code>/gsregister</code>.',
+        current,
+    ].join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function emojiKeyboard(chatId, userId, page = 0) {
+    const totalPages = Math.ceil(EMOJIS.length / EMOJIS_PER_PAGE);
+    const safePage = Math.max(0, Math.min(Number(page) || 0, totalPages - 1));
+    const member = getMember.get(String(chatId), String(userId));
+    const start = safePage * EMOJIS_PER_PAGE;
+    const pageEmojis = EMOJIS.slice(start, start + EMOJIS_PER_PAGE);
+    const rows = [];
+
+    for (let i = 0; i < pageEmojis.length; i += 4) {
+        rows.push(pageEmojis.slice(i, i + 4).map((emoji, offset) => {
+            const index = start + i + offset;
+            const owner = getEmojiOwner.get(String(chatId), emoji);
+            const isMine = member?.emoji === emoji;
+            const isTaken = owner && String(owner.user_id) !== String(userId);
+            return {
+                text: isMine ? `✅ ${emoji}` : isTaken ? `🔒 ${emoji}` : emoji,
+                callback_data: `gsreg_pick:${index}:${safePage}`,
+            };
+        }));
+    }
+
+    const nav = [];
+    if (safePage > 0) nav.push({ text: '⬅️', callback_data: `gsreg_page:${safePage - 1}` });
+    nav.push({ text: `${safePage + 1}/${totalPages}`, callback_data: 'gsreg_noop' });
+    if (safePage < totalPages - 1) nav.push({ text: '➡️', callback_data: `gsreg_page:${safePage + 1}` });
+    rows.push(nav);
+
+    return { inline_keyboard: rows };
+}
+
+async function handleGsRegisterCommand(api, message, sendMessage) {
+    const { chat, from } = message;
+    if (chat.type === 'private') {
+        await sendMessage(api, chat.id, '⛔ Команду <code>/gsregister</code> нужно использовать в группе Game Syndicate.', {
+            parse_mode: 'HTML',
+        });
+        return true;
+    }
+
+    rememberUser(chat.id, from, 'member');
+    const member = getMember.get(String(chat.id), String(from.id));
+
+    await sendMessage(api, chat.id, registrationText(member), {
+        parse_mode: 'HTML',
+        reply_markup: emojiKeyboard(chat.id, from.id, 0),
+        ...(message.message_thread_id ? { message_thread_id: message.message_thread_id } : {}),
+    });
+    return true;
+}
+
+async function handleGsRegisterCallback(api, callback, answerCallback) {
+    const data = callback.data || '';
+    if (!data.startsWith('gsreg_')) return false;
+
+    const message = callback.message;
+    const from = callback.from;
+    if (!message || !from) return true;
+
+    const chatId = message.chat.id;
+    rememberUser(chatId, from, 'member');
+
+    if (data === 'gsreg_noop') {
+        await answerCallback(api, callback.id, 'Выбери эмодзи');
+        return true;
+    }
+
+    if (data.startsWith('gsreg_page:')) {
+        const page = Number(data.split(':')[1]) || 0;
+        const member = getMember.get(String(chatId), String(from.id));
+        await api('editMessageText', {
+            chat_id: chatId,
+            message_id: message.message_id,
+            text: registrationText(member),
+            parse_mode: 'HTML',
+            reply_markup: emojiKeyboard(chatId, from.id, page),
+        });
+        await answerCallback(api, callback.id);
+        return true;
+    }
+
+    if (data.startsWith('gsreg_pick:')) {
+        const [, indexRaw, pageRaw] = data.split(':');
+        const index = Number(indexRaw);
+        const page = Number(pageRaw) || 0;
+        const emoji = EMOJIS[index];
+        if (!emoji) {
+            await answerCallback(api, callback.id, 'Эмодзи не найден.', true);
+            return true;
+        }
+
+        const owner = getEmojiOwner.get(String(chatId), emoji);
+        if (owner && String(owner.user_id) !== String(from.id)) {
+            await answerCallback(api, callback.id, 'Этот эмодзи уже занят другим участником.', true);
+            return true;
+        }
+
+        try {
+            setEmoji.run(emoji, String(chatId), String(from.id));
+        } catch (error) {
+            await answerCallback(api, callback.id, 'Этот эмодзи уже успели выбрать. Попробуй другой.', true);
+            return true;
+        }
+
+        const member = getMember.get(String(chatId), String(from.id));
+        await api('editMessageText', {
+            chat_id: chatId,
+            message_id: message.message_id,
+            text: [
+                registrationText(member),
+                '',
+                `✅ <b>Готово!</b> Твой эмодзи для созыва: ${escapeHtml(emoji)}`,
+            ].join('\n'),
+            parse_mode: 'HTML',
+            reply_markup: emojiKeyboard(chatId, from.id, page),
+        });
+        await answerCallback(api, callback.id, `Выбран эмодзи ${emoji}`);
+        return true;
+    }
+
+    return false;
+}
+
 async function handleGsCommand(api, message, isChatAdmin, sendMessage) {
     const { chat, from } = message;
 
@@ -220,6 +365,8 @@ async function handleGsCommand(api, message, isChatAdmin, sendMessage) {
 module.exports = {
     ACTIVE_STATUSES,
     handleGsCommand,
+    handleGsRegisterCommand,
+    handleGsRegisterCallback,
     rememberChatMemberUpdate,
     rememberMessage,
     rememberUser,
