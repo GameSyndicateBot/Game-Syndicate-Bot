@@ -68,7 +68,10 @@ async function createQuickEventCard(event, phase='active'){
     glowText(ctx,'ЖМИ!',700,425,110,accent,'center');
   } else {
     ctx.font='700 48px Arial';ctx.fillStyle='#fff';ctx.textAlign='center';
-    const lines=wrap(ctx,event.prompt||event.display||'',1050);let yy=330-(lines.length-1)*30;for(const line of lines){ctx.fillText(line,700,yy);yy+=68;}
+    const cardPrompt=event.type==='emoji_riddle'
+      ?'ЭМОДЗИ ПОКАЗАНЫ В СООБЩЕНИИ DISCORD'
+      :(event.prompt||event.display||'');
+    const lines=wrap(ctx,cardPrompt,1050);let yy=330-(lines.length-1)*30;for(const line of lines){ctx.fillText(line,700,yy);yy+=68;}
     if(event.options?.length){ctx.font='600 30px Arial';ctx.fillStyle='#cbbbe0';ctx.fillText(event.options.join('    •    '),700,520);}
   }
   ctx.textAlign='left';ctx.fillStyle='#bcb0d0';ctx.font='24px Arial';

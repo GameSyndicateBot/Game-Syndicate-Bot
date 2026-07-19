@@ -1284,8 +1284,14 @@ async function awardPreviousWeek(client){
   }
 }
 function roundKey(){return `quick-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;}
+function eventMessageContent(event, fallback = 'Событие начинается!'){
+  if(event?.type === 'emoji_riddle'){
+    return `## ⚡ GS Quick Event\nОтгадайте слово или словосочетание:\n\n# ${event.prompt}`;
+  }
+  return `## ⚡ GS Quick Event\n${fallback}`;
+}
 async function activateRound(channel,message,id,event,phase='active'){
-  const card=await createQuickEventCard(event,phase);await message.edit({content:'## ⚡ GS Quick Event\nПервый правильный ответ получает награду.',files:[new AttachmentBuilder(card,{name:'gs-quick-event.png'})],attachments:[]});
+  const card=await createQuickEventCard(event,phase);await message.edit({content:eventMessageContent(event,'Первый правильный ответ получает награду.'),files:[new AttachmentBuilder(card,{name:'gs-quick-event.png'})],attachments:[]});
   db.prepare("UPDATE quick_event_rounds SET status='active',activated_at=? WHERE id=? AND status='pending'").run(Date.now(),id);
 }
 
@@ -1445,7 +1451,7 @@ ${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont
   const components=type==='memory'?[memoryButton(roundId)]:[];
   const content=type==='memory'
     ?'## ⚡ GS Quick Event\nНажми кнопку, запомни последовательность и отправь её в чат.'
-    :'## ⚡ GS Quick Event\nСобытие начинается!';
+    :eventMessageContent(event);
   const message=await channel.send({
     content,
     files:[new AttachmentBuilder(card,{name:'gs-quick-event.png'})],
