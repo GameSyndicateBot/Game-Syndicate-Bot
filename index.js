@@ -1,9 +1,20 @@
 require('dotenv').config();
 
-const RUNTIME_BUILD = 'GS BUILD 38 PRODUCTION STARTUP HARDENING';
+const RUNTIME_BUILD = 'GS BUILD 39 COMMERCIAL STABILITY';
 console.log(`🏷️ Runtime: ${RUNTIME_BUILD}`);
-console.log(`🧭 Runtime entry: ${__filename}`);
-console.log(`🗄️ Runtime database: ${process.env.DATABASE_PATH || '/app/shared/database.sqlite'}`);
+const storageStatusPath = pathForStorageStatus();
+
+function pathForStorageStatus() {
+    const databasePath = process.env.DATABASE_PATH || '/app/shared/database.sqlite';
+    return require('path').join(require('path').dirname(databasePath), '.gs-storage-status.json');
+}
+
+try {
+    const storage = JSON.parse(require('fs').readFileSync(storageStatusPath, 'utf8'));
+    console.log(`🛡️ Storage: ${storage.mode || 'UNKNOWN'} | Database: ${storage.databasePresent ? 'ONLINE' : 'INITIALIZING'}`);
+} catch {
+    console.log('🛡️ Storage: INITIALIZING');
+}
 
 const { startTelegramBot } = require('./telegram/startTelegramBot');
 

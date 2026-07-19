@@ -20,25 +20,15 @@ if (configuredDatabasePath !== bundledDatabasePath && !fs.existsSync(configuredD
 
 const db = new Database(configuredDatabasePath);
 
-// Bothost может жёстко перезапускать контейнер и не сохранять WAL-файл.
-// Поэтому используем обычный журнал DELETE: изменения сразу фиксируются
-// в основном database.sqlite, который лежит в /app/shared.
+// WAL даёт лучшую устойчивость при одновременных чтениях и записях.
+// Резервные копии создаются через better-sqlite3 backup(), поэтому они
+// остаются целостными и при включённом WAL.
 try {
-    const currentJournalMode = String(
-        db.pragma('journal_mode', { simple: true }) ?? ''
-    ).toLowerCase();
-
-    if (currentJournalMode === 'wal') {
-        try {
-            db.pragma('wal_checkpoint(TRUNCATE)');
-        } catch (error) {
-            console.warn('⚠️ Не удалось выполнить WAL checkpoint:', error.message);
-        }
-    }
-
-    db.pragma('journal_mode = DELETE');
-    db.pragma('synchronous = FULL');
-    db.pragma('busy_timeout = 5000');
+    db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL');
+    db.pragma('busy_timeout = 10000');
+    db.pragma('foreign_keys = ON');
+    db.pragma('temp_store = MEMORY');
 } catch (error) {
     console.error('❌ Ошибка настройки SQLite:', error);
     throw error;
@@ -46,16 +36,10 @@ try {
 
 const databasePath = configuredDatabasePath;
 
-console.log('📁 Database path:', configuredDatabasePath);
-console.log('🧾 SQLite journal mode:', db.pragma('journal_mode', { simple: true }));
-console.log(
-    '📦 DB exists:',
-    fs.existsSync(configuredDatabasePath),
-    'size:',
-    fs.existsSync(configuredDatabasePath)
-        ? fs.statSync(configuredDatabasePath).size
-        : 0
-);
+const databaseSize = fs.existsSync(configuredDatabasePath)
+    ? fs.statSync(configuredDatabasePath).size
+    : 0;
+console.log(`🗄️ SQLite: ONLINE | WAL | ${databaseSize} bytes | busy timeout 10s`);
 
 db.prepare(`
     CREATE TABLE IF NOT EXISTS players (

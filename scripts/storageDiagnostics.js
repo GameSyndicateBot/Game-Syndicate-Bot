@@ -5,21 +5,36 @@ const crypto = require('crypto');
 const databasePath = path.resolve(process.env.DATABASE_PATH || '/app/shared/database.sqlite');
 const sharedDir = path.dirname(databasePath);
 const markerPath = path.join(sharedDir, '.gs-storage-marker');
+const statusPath = path.join(sharedDir, '.gs-storage-status.json');
 
 fs.mkdirSync(sharedDir, { recursive: true });
 
+let environment = 'EXISTING';
+let marker;
+
 if (fs.existsSync(markerPath)) {
-    const marker = fs.readFileSync(markerPath, 'utf8').trim();
-    console.log(`✅ Persistent storage marker found: ${marker || 'present'}`);
+    marker = fs.readFileSync(markerPath, 'utf8').trim() || 'present';
 } else {
-    const marker = `${new Date().toISOString()}-${crypto.randomBytes(4).toString('hex')}`;
+    environment = 'NEW';
+    marker = `${new Date().toISOString()}-${crypto.randomBytes(4).toString('hex')}`;
     fs.writeFileSync(markerPath, marker, { mode: 0o666 });
-    console.warn('⚠️ Persistent storage marker отсутствовал. Каталог /app/shared новый или был очищен платформой.');
-    console.warn(`🧭 Создан storage marker: ${marker}`);
 }
 
-if (fs.existsSync(databasePath)) {
-    console.log(`✅ Storage database present before restore: ${databasePath} (${fs.statSync(databasePath).size} bytes)`);
-} else {
-    console.warn(`⚠️ Storage database missing before restore: ${databasePath}`);
-}
+const databasePresent = fs.existsSync(databasePath);
+const databaseSize = databasePresent ? fs.statSync(databasePath).size : 0;
+
+const status = {
+    checkedAt: new Date().toISOString(),
+    environment,
+    marker,
+    databasePath,
+    databasePresent,
+    databaseSize,
+    mode: databasePresent ? 'LOCAL' : 'PENDING',
+};
+
+fs.writeFileSync(statusPath, `${JSON.stringify(status, null, 2)}\n`, { mode: 0o666 });
+
+console.log('🔄 Проверка постоянного хранилища...');
+console.log(`📦 Окружение: ${environment === 'NEW' ? 'NEW (первый запуск или новый контейнер)' : 'EXISTING'}`);
+console.log(`🗄️ Локальная база: ${databasePresent ? `найдена (${databaseSize} bytes)` : 'не найдена — проверяется облачная копия'}`);
