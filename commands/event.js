@@ -143,23 +143,31 @@ module.exports = {
             let joinedNow = 0;
 
             if (voiceChannel && voiceChannel.members.size > 0) {
-                for (const member of voiceChannel.members.values()) {
-                    if (member.user.bot) continue;
-
-                    joinedNow++;
-
-                    db.prepare(`
-                        INSERT OR IGNORE INTO game_event_participants
-                        (event_id, user_id, username, joined_at)
-                        VALUES (?, ?, ?, ?)
-                    `).run(event.id, member.user.id, require('../utils/displayName').getServerDisplayName(member, member.user), Date.now());
-
-                    db.prepare(`
-                        UPDATE game_event_participants
-                        SET joined_at = ?
-                        WHERE event_id = ? AND user_id = ? AND joined_at IS NULL
-                    `).run(Date.now(), event.id, member.user.id);
-                }
+                const insertParticipant = db.prepare(`
+                    INSERT OR IGNORE INTO game_event_participants
+                    (event_id, user_id, username, joined_at)
+                    VALUES (?, ?, ?, ?)
+                `);
+                const resumeParticipant = db.prepare(`
+                    UPDATE game_event_participants
+                    SET joined_at = ?
+                    WHERE event_id = ? AND user_id = ? AND joined_at IS NULL
+                `);
+                const startedAt = Date.now();
+                const addCurrentMembers = db.transaction((members) => {
+                    for (const member of members) {
+                        if (member.user.bot) continue;
+                        joinedNow++;
+                        insertParticipant.run(
+                            event.id,
+                            member.user.id,
+                            require('../utils/displayName').getServerDisplayName(member, member.user),
+                            startedAt
+                        );
+                        resumeParticipant.run(startedAt, event.id, member.user.id);
+                    }
+                });
+                addCurrentMembers(voiceChannel.members.values());
             }
 
             const card = await createEventCard('started', {
@@ -203,15 +211,18 @@ module.exports = {
                 WHERE event_id = ? AND joined_at IS NOT NULL
             `).all(event.id);
 
-            for (const participant of activeParticipants) {
-                const sessionSeconds = Math.floor((now - participant.joined_at) / 1000);
-
-                db.prepare(`
-                    UPDATE game_event_participants
-                    SET total_seconds = total_seconds + ?, joined_at = NULL
-                    WHERE event_id = ? AND user_id = ?
-                `).run(sessionSeconds, event.id, participant.user_id);
-            }
+            const closeParticipantSession = db.prepare(`
+                UPDATE game_event_participants
+                SET total_seconds = total_seconds + ?, joined_at = NULL
+                WHERE event_id = ? AND user_id = ?
+            `);
+            const closeActiveSessions = db.transaction((participantsToClose) => {
+                for (const participant of participantsToClose) {
+                    const sessionSeconds = Math.max(0, Math.floor((now - participant.joined_at) / 1000));
+                    closeParticipantSession.run(sessionSeconds, event.id, participant.user_id);
+                }
+            });
+            closeActiveSessions(activeParticipants);
 
             const participants = db.prepare(`
                 SELECT *

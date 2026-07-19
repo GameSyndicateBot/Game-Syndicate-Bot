@@ -11,7 +11,7 @@ const {
 
 const { normalizeServerNickname } = require('../utils/displayName');
 const { db, getCardDust } = require('../database/db');
-const { getUserCards, getUserCardByInventoryId } = require('../utils/cardSystem');
+const { getUserCards, getUserCardByInventoryId, hydrateCardRow } = require('../utils/cardSystem');
 const { createAuctionPanel } = require('../images/auction/createAuctionPanel');
 const { createAuctionHistoryCard } = require('../images/history/createAuctionHistoryCard');
 
@@ -195,9 +195,19 @@ module.exports={
                 .run(new Date().toISOString());
 
             const rows=db.prepare(`
-                SELECT * FROM card_auction_listings
-                WHERE seller_id=? OR buyer_id=?
-                ORDER BY COALESCE(sold_at, created_at) DESC, id DESC
+                SELECT
+                    l.*,
+                    pc.user_id AS card_owner_id,
+                    pc.card_id AS card_id,
+                    pc.rarity AS card_rarity,
+                    pc.edition AS card_edition,
+                    pc.copy_number AS card_copy_number,
+                    pc.obtained_from AS card_obtained_from,
+                    pc.obtained_at AS card_obtained_at
+                FROM card_auction_listings AS l
+                LEFT JOIN player_cards AS pc ON pc.id = l.inventory_id
+                WHERE l.seller_id=? OR l.buyer_id=?
+                ORDER BY COALESCE(l.sold_at, l.created_at) DESC, l.id DESC
                 LIMIT 15
             `).all(interaction.user.id,interaction.user.id);
 
@@ -210,8 +220,16 @@ module.exports={
                 day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit',
             });
             const entries = rows.map(l => {
-                const cardRow=db.prepare('SELECT * FROM player_cards WHERE id=?').get(l.inventory_id);
-                const card=cardRow?getUserCardByInventoryId(cardRow.user_id,l.inventory_id):null;
+                const card = l.card_id == null ? null : hydrateCardRow({
+                    id: l.inventory_id,
+                    user_id: l.card_owner_id,
+                    card_id: l.card_id,
+                    rarity: l.card_rarity,
+                    edition: l.card_edition,
+                    copy_number: l.card_copy_number,
+                    obtained_from: l.card_obtained_from,
+                    obtained_at: l.card_obtained_at,
+                });
                 return {
                     id:l.id,
                     status:l.status,

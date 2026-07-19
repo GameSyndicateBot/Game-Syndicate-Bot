@@ -42,18 +42,29 @@ module.exports = {
             FROM player_achievements
         `).all();
 
+        const deleteOldAchievement = db.prepare(`
+            DELETE FROM player_achievements
+            WHERE user_id = ? AND achievement_id = ?
+        `);
+
         let removedOld = 0;
+        const achievementsByUser = new Map();
 
-        for (const row of allUnlocked) {
-            if (!validIds.has(row.achievement_id)) {
-                db.prepare(`
-                    DELETE FROM player_achievements
-                    WHERE user_id = ? AND achievement_id = ?
-                `).run(row.user_id, row.achievement_id);
+        const cleanupTransaction = db.transaction(() => {
+            for (const row of allUnlocked) {
+                if (!validIds.has(row.achievement_id)) {
+                    deleteOldAchievement.run(row.user_id, row.achievement_id);
+                    removedOld++;
+                    continue;
+                }
 
-                removedOld++;
+                if (!achievementsByUser.has(row.user_id)) {
+                    achievementsByUser.set(row.user_id, []);
+                }
+                achievementsByUser.get(row.user_id).push(row.achievement_id);
             }
-        }
+        });
+        cleanupTransaction();
 
         const players = db.prepare(`
             SELECT *
@@ -64,13 +75,7 @@ module.exports = {
         let skippedPlayers = 0;
 
         for (let player of players) {
-            const unlockedRows = db.prepare(`
-                SELECT achievement_id
-                FROM player_achievements
-                WHERE user_id = ?
-            `).all(player.user_id);
-
-            const achievementIds = unlockedRows.map(row => row.achievement_id);
+            const achievementIds = achievementsByUser.get(player.user_id) ?? [];
 
             player.achievements = achievementIds.length;
             player.achievement_points = achievementIds.reduce((sum, id) => {

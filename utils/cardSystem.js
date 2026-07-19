@@ -157,13 +157,13 @@ function openDailyPack(userId) {
     markDailyPackOpened(userId);
     return { ok:true, drop };
 }
-function hydrate(row) {
+function hydrateCardRow(row) {
     const card = getCardById(row.card_id);
     return { ...row, card, name: card?.name ?? `Карточка #${row.card_id}`, type: card?.type ?? 'unknown',
         collection: card?.collection ?? 'unknown', series: card?.series ?? 'UNKNOWN', base_rarity: card?.base_rarity ?? 'common',
         image: card ? getCardImage(card, row.rarity) : null, description: card?.description ?? '', code: card?.code ?? String(row.card_id).padStart(3,'0') };
 }
-function getUserCards(userId) { return db.prepare('SELECT * FROM player_cards WHERE user_id=? ORDER BY obtained_at DESC,id DESC').all(userId).map(hydrate); }
+function getUserCards(userId) { return db.prepare('SELECT * FROM player_cards WHERE user_id=? ORDER BY obtained_at DESC,id DESC').all(userId).map(hydrateCardRow); }
 function getAvailableVariantCount() { return cards.reduce((n,c) => n + (c.drop_rarities ?? [c.base_rarity]).length, 0); }
 function getUserCardStats(userId) {
     const rows = db.prepare('SELECT card_id,rarity FROM player_cards WHERE user_id=?').all(userId);
@@ -171,7 +171,7 @@ function getUserCardStats(userId) {
     const score = rows.reduce((sum,r) => sum + (COLLECTION_SCORE[r.rarity] ?? 0), 0);
     return { unique, total: rows.length, available: getAvailableVariantCount(), score, duplicates: Math.max(0, rows.length - unique) };
 }
-function getUserCardByInventoryId(userId, inventoryId) { const r=db.prepare('SELECT * FROM player_cards WHERE id=? AND user_id=?').get(inventoryId,userId); return r?hydrate(r):null; }
+function getUserCardByInventoryId(userId, inventoryId) { const r=db.prepare('SELECT * FROM player_cards WHERE id=? AND user_id=?').get(inventoryId,userId); return r?hydrateCardRow(r):null; }
 function getDuplicateGroups(userId) {
     const groups=new Map();
     for(const owned of getUserCards(userId)){ const k=`${owned.card_id}:${owned.rarity}`; if(!groups.has(k))groups.set(k,[]); groups.get(k).push(owned); }
@@ -215,5 +215,5 @@ FROM player_cards GROUP BY user_id ORDER BY score DESC,unique_variants DESC LIMI
 
 module.exports={RARITY_CHANCES,TREASURE_CHANCE,EDITION_CHANCES,RARITY_NAMES,EDITION_NAMES,DISMANTLE_DUST,COLLECTION_SCORE,RANDOM_CARD_DUST_COST,PACK_TYPES,
 getAllCards,getCardById,getCardsByRarity,getCardImage,getRandomCard,getNextCopyNumber,giveCardToUser,openRandomCard,hasOpenedDailyPack,markDailyPackOpened,openDailyPack,
-getUserCards,getUserCardStats,getUserCardByInventoryId,getDuplicateGroups,getDismantleDustForRarity,canDismantleCard,dismantleCard,buyRandomCardWithDust,syncCardsCatalog,
+getUserCards,getUserCardStats,getUserCardByInventoryId,hydrateCardRow,getDuplicateGroups,getDismantleDustForRarity,canDismantleCard,dismantleCard,buyRandomCardWithDust,syncCardsCatalog,
 isTreasureAvailable,getCollectionLeaderboard,getAvailableVariantCount};

@@ -281,6 +281,20 @@ db.prepare(`
     ON player_cards(user_id, card_id, rarity, edition)
 `).run();
 
+// Индексы для наиболее частых выборок игровых событий и ежедневной истории.
+// PRIMARY KEY покрывает точечные запросы, а эти индексы ускоряют фильтрацию
+// по статусу/дате и массовое завершение игровых сессий.
+db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_game_events_status_id
+    ON game_events(status, id DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_game_event_participants_active
+    ON game_event_participants(event_id, joined_at);
+
+    CREATE INDEX IF NOT EXISTS idx_daily_history_user_date
+    ON daily_history(user_id, date DESC);
+`);
+
 function getTodayDate() {
     return new Date().toISOString().slice(0, 10);
 }
