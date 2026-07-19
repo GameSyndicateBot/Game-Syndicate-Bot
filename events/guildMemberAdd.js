@@ -1,7 +1,8 @@
 const path = require('path');
 const { AttachmentBuilder } = require('discord.js');
-const { sendLog, formatUser } = require('../utils/sendLog');
+const { sendLog } = require('../utils/sendLog');
 const { getGuildSetting } = require('../utils/guildSettings');
+const { optionalDiscordId, optionalUrl } = require('../utils/env');
 
 module.exports = {
     name: 'guildMemberAdd',
@@ -21,9 +22,19 @@ module.exports = {
         }
 
         try {
-            const channel = await member.guild.channels.fetch(
-                getGuildSetting(member.guild.id, 'welcome_channel_id', process.env.WELCOME_CHANNEL_ID)
+            const welcomeChannelId = getGuildSetting(
+                member.guild.id,
+                'welcome_channel_id',
+                optionalDiscordId('WELCOME_CHANNEL_ID')
             );
+
+            if (!welcomeChannelId) {
+                console.warn(`⚠️ Канал приветствия не настроен для сервера ${member.guild.id}.`);
+            }
+
+            const channel = welcomeChannelId
+                ? await member.guild.channels.fetch(welcomeChannelId)
+                : null;
 
             if (channel && typeof channel.send === 'function') {
                 const welcomeImagePath = path.join(
@@ -38,18 +49,29 @@ module.exports = {
                     name: 'welcome.png',
                 });
 
+                const rulesChannelId = optionalDiscordId('RULES_CHANNEL_ID', '1493230619218542733');
+                const announcementsChannelId = optionalDiscordId('ANNOUNCEMENTS_CHANNEL_ID', '1493231288277274865');
+                const telegramInviteUrl = optionalUrl('TELEGRAM_INVITE_URL', 'https://t.me/+bY_b9gO_EkJiNDhi');
+
+                const rulesLine = rulesChannelId
+                    ? `📜 Первым делом загляни в <#${rulesChannelId}>`
+                    : '📜 Первым делом ознакомься с правилами сервера.';
+                const announcementsLine = announcementsChannelId
+                    ? `📢 Не забывай следить за <#${announcementsChannelId}> — там публикуются все анонсы, события и игровые вечера.`
+                    : '📢 Следи за каналом анонсов, чтобы не пропускать события и игровые вечера.';
+                const telegramBlock = telegramInviteUrl
+                    ? `\n\n📱 Наш Telegram:\n${telegramInviteUrl}`
+                    : '';
+
                 await channel.send({
                     content:
 `👋 ${member}, добро пожаловать в **Game Syndicate!**
 
 🤝 Ты стал частью нашего Синдиката.
 
-📜 Первым делом загляни в <#1493230619218542733>
-📢 Не забывай следить за <#1493231288277274865> — там публикуются все анонсы, события и игровые вечера.
-🎙 Заходи в голосовые каналы и присоединяйся к другим участникам.
-
-📱 Наш Telegram:
-https://t.me/+bY_b9gO_EkJiNDhi
+${rulesLine}
+${announcementsLine}
+🎙 Заходи в голосовые каналы и присоединяйся к другим участникам.${telegramBlock}
 
 🎮 Хорошей игры и добро пожаловать в семью Game Syndicate! 💜`,
                     files: [attachment],

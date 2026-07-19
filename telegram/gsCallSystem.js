@@ -1,8 +1,9 @@
 const { db: telegramDb } = require('./database');
 const { db } = require('../database/db');
+const { optionalDiscordId } = require('../utils/env');
 
 let discordClient = null;
-const DISCORD_GS_CHANNEL_ID = process.env.GS_CALL_DISCORD_CHANNEL_ID || '1526531339149512754';
+const DISCORD_GS_CHANNEL_ID = optionalDiscordId('GS_CALL_DISCORD_CHANNEL_ID', '1526531339149512754');
 const GS_MESSAGE_TTL_MS = 5 * 60 * 1000;
 
 // GS-регистрация хранится в основной БД Discord, которая попадает в резервные копии.
@@ -49,7 +50,7 @@ try {
 const EMOJIS = [
     // Животные и персонажи
     '🦊','👻','😈','👿','🤖','🐸','🐼','👑','🥷','🐧','🦁','🐺','🦄','😎','🐻','🐨','⚡','🎯',
-    '🐯','🦝','🦉','🐙','🦈','🐲','🦋','🐝','🦖','🐬','🦅','🐢','🐱','🐈','🐶','🦇','🦜',
+    '🐯','🦝','🦉','🐙','🦈','🐲','🦋','🐝','🦖','🐬','🦅','🐢','🐱','🐶','🦇','🦜',
     '🐹','🐰','🦔','🦦','🦥','🦘','🦬','🦣','🐗','🦏','🦛','🐊','🐍','🦎','🐉','🦕',
     '🐳','🐋','🐟','🐠','🐡','🦀','🦞','🦐','🦑','🪼','🐚','🦭','🐓','🦃','🦚','🦩',
 

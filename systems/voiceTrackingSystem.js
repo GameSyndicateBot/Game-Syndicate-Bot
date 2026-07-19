@@ -10,10 +10,13 @@ const {
 
 const { addXP } = require('../utils/levelSystem');
 const { checkAchievements } = require('../utils/checkAchievements');
+const { discordIdList } = require('../utils/env');
 
-const EXCLUDED_VOICE_CHANNEL_IDS = new Set([
-    '1522551995444105267', // «Сигарная» / AFK
-]);
+const EXCLUDED_VOICE_CHANNEL_IDS = new Set(
+    discordIdList('EXCLUDED_VOICE_CHANNEL_IDS', [
+        '1522551995444105267', // «Сигарная» / AFK — fallback для текущего сервера
+    ])
+);
 
 const TICK_INTERVAL_MS = 60_000;
 let ticker = null;

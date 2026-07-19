@@ -21,7 +21,11 @@
     "deploy:dev": "node deploy-commands.js dev",
     "deploy:prod": "node deploy-commands.js prod",
     "deploy:all": "node deploy-commands.js all",
-    "deploy:global": "node deploy-commands.js global"
+    "deploy:global": "node deploy-commands.js global",
+    "check": "node --check index.js && node scripts/check-syntax.js",
+    "release:audit": "node scripts/release-audit.js",
+    "update:audit": "node scripts/update-safety-audit.js",
+    "preflight": "npm run check && npm run update:audit && npm run release:audit"
   },
   "engines": {
     "node": ">=22"

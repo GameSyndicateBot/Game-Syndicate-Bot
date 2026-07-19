@@ -6,8 +6,9 @@ const { addPack } = require('../utils/packInventory');
 const { createQuickEventCard, createQuickEventWinnerCard } = require('../images/quickEvent/createQuickEventCard');
 const { getServerDisplayName } = require('../utils/displayName');
 const { checkAchievements } = require('../utils/checkAchievements');
+const { optionalDiscordId } = require('../utils/env');
 
-const CHANNEL_ID = '1526504061870932049';
+const CHANNEL_ID = optionalDiscordId('QUICK_EVENT_CHANNEL_ID', '1526504061870932049');
 const MIN_INTERVAL_MS = 40 * 60 * 1000;
 const MAX_INTERVAL_MS = 70 * 60 * 1000;
 const BONUS_INTERVAL_MS = 20 * 60 * 1000;
@@ -326,16 +327,21 @@ function initTables(){
 
   backfillQuickEventStats();
 
-  db.prepare(`
-    INSERT INTO quick_event_player_stats(
-      user_id,total_wins,current_streak,best_streak,types_json,last_win_round_id,updated_at
-    ) VALUES(?,2,2,2,'[]',NULL,?)
-    ON CONFLICT(user_id) DO UPDATE SET
-      total_wins = MAX(total_wins, 2),
-      current_streak = MAX(current_streak, 2),
-      best_streak = MAX(best_streak, 2),
-      updated_at = excluded.updated_at
-  `).run('830515570377097259', Date.now());
+  // Не изменяем статистику конкретных участников при обычном запуске.
+  // Одноразовое заполнение разрешено только явно через переменную окружения.
+  const seedUserId = optionalDiscordId('QUICK_EVENT_SEED_USER_ID');
+  if (seedUserId) {
+    db.prepare(`
+      INSERT INTO quick_event_player_stats(
+        user_id,total_wins,current_streak,best_streak,types_json,last_win_round_id,updated_at
+      ) VALUES(?,2,2,2,'[]',NULL,?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        total_wins = MAX(total_wins, 2),
+        current_streak = MAX(current_streak, 2),
+        best_streak = MAX(best_streak, 2),
+        updated_at = excluded.updated_at
+    `).run(seedUserId, Date.now());
+  }
 }
 
 function parseTypes(value) {
@@ -1284,14 +1290,8 @@ async function awardPreviousWeek(client){
   }
 }
 function roundKey(){return `quick-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;}
-function eventMessageContent(event, fallback = 'Событие начинается!'){
-  if(event?.type === 'emoji_riddle'){
-    return `## ⚡ GS Quick Event\nОтгадайте слово или словосочетание:\n\n# ${event.prompt}`;
-  }
-  return `## ⚡ GS Quick Event\n${fallback}`;
-}
 async function activateRound(channel,message,id,event,phase='active'){
-  const card=await createQuickEventCard(event,phase);await message.edit({content:eventMessageContent(event,'Первый правильный ответ получает награду.'),files:[new AttachmentBuilder(card,{name:'gs-quick-event.png'})],attachments:[]});
+  const card=await createQuickEventCard(event,phase);await message.edit({content:'## ⚡ GS Quick Event\nПервый правильный ответ получает награду.',files:[new AttachmentBuilder(card,{name:'gs-quick-event.png'})],attachments:[]});
   db.prepare("UPDATE quick_event_rounds SET status='active',activated_at=? WHERE id=? AND status='pending'").run(Date.now(),id);
 }
 
@@ -1451,7 +1451,7 @@ ${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont
   const components=type==='memory'?[memoryButton(roundId)]:[];
   const content=type==='memory'
     ?'## ⚡ GS Quick Event\nНажми кнопку, запомни последовательность и отправь её в чат.'
-    :eventMessageContent(event);
+    :'## ⚡ GS Quick Event\nСобытие начинается!';
   const message=await channel.send({
     content,
     files:[new AttachmentBuilder(card,{name:'gs-quick-event.png'})],

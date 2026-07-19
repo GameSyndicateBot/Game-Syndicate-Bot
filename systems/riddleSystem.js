@@ -3,8 +3,9 @@ const { db, getOrCreatePlayer, updatePlayer, addCardDust } = require('../databas
 const { addXP } = require('../utils/levelSystem');
 const { openRandomCard, PACK_TYPES } = require('../utils/cardSystem');
 const { createRiddleCard, createRiddleWinnerCard } = require('../images/riddle/createRiddleCard');
+const { optionalDiscordId } = require('../utils/env');
 
-const RIDDLE_CHANNEL_ID = '1493225844519207064';
+const RIDDLE_CHANNEL_ID = optionalDiscordId('RIDDLE_CHANNEL_ID', '1493225844519207064');
 const MOSCOW_OFFSET_MS = 3 * 60 * 60 * 1000;
 const MIN_INTERVAL_MS = 2 * 60 * 60 * 1000;
 const MAX_INTERVAL_MS = 3 * 60 * 60 * 1000;
