@@ -5,6 +5,7 @@ const {
     ButtonBuilder,
     ButtonStyle,
     StringSelectMenuBuilder,
+    MessageFlags
 } = require('discord.js');
 
 const achievementsList = require('../data/achievements.json');
@@ -543,7 +544,7 @@ module.exports = {
         if (interaction.user.id !== ownerId) {
             await interaction.reply({
                 content: 'Это меню GS Hub открыто не для тебя.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
 
             return true;

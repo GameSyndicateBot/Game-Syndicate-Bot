@@ -1,6 +1,6 @@
 'use strict';
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags} = require('discord.js');
 const {
     createGathering,
     publish,
@@ -43,7 +43,7 @@ module.exports = {
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
             return interaction.reply({
                 content: 'Время нужно указать в формате `ЧЧ:ММ`, например `20:00`.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -64,7 +64,7 @@ module.exports = {
             discordUserId: interaction.user.id,
         });
 
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await publish(gathering);
 
         return interaction.editReply(

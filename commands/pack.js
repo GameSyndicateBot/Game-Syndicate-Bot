@@ -4,6 +4,7 @@ const {
     ButtonBuilder,
     ButtonStyle,
     AttachmentBuilder,
+    MessageFlags
 } = require('discord.js');
 
 const {
@@ -174,7 +175,7 @@ module.exports = {
         if (!ownerId || interaction.user.id !== ownerId) {
             await interaction.reply({
                 content: 'Этот пак открыт не для тебя.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return true;
         }

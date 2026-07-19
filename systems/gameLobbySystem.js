@@ -25,19 +25,23 @@ function setGameLobbyRuntime(api,client){
   client:client||runtime.client,
  };
 
- if(timer)clearInterval(timer);
- closeExpiredGameLobbies().catch(console.error);
- timer=setInterval(
-  ()=>closeExpiredGameLobbies().catch(console.error),
-  60000
- );
- timer.unref?.();
+ // Инициализация может прийти отдельно от Discord ready и Telegram startup.
+ // Таймер создаём только один раз, чтобы не было двойных циклов и логов.
+ if(!timer){
+  closeExpiredGameLobbies().catch(console.error);
+  timer=setInterval(
+   ()=>closeExpiredGameLobbies().catch(console.error),
+   60000
+  );
+  timer.unref?.();
+
+  console.log('✅ GS Game Lobby: автозакрытие через 4 часа включено');
+ }
 
  console.log(
-  `✅ GS Game Lobby runtime: Discord=${Boolean(runtime.client)}, `+
+  `✅ GS Game Lobby runtime обновлён: Discord=${Boolean(runtime.client)}, `+
   `Telegram=${Boolean(runtime.api)}`
  );
- console.log('✅ GS Game Lobby: автозакрытие через 4 часа включено');
 }
 async function publishGameLobby({creatorId,creatorName,game,mapName='',lobbyCode=''}){
  const createdAt=Date.now(),closesAt=createdAt+AUTO_CLOSE_MS;

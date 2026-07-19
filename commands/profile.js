@@ -1,5 +1,6 @@
 const {
     SlashCommandBuilder,
+    MessageFlags
 } = require('discord.js');
 
 const {
@@ -28,7 +29,7 @@ module.exports = {
         if (targetUser.bot) {
             return interaction.reply({
                 content: '❌ У ботов нет профиля.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 

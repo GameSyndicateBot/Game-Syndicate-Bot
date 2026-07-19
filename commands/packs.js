@@ -5,6 +5,7 @@ const {
     ButtonStyle,
     AttachmentBuilder,
     EmbedBuilder,
+    MessageFlags
 } = require('discord.js');
 
 const {
@@ -271,7 +272,7 @@ module.exports = {
             if (interaction.user.id !== ownerId) {
                 await interaction.reply({
                     content: 'Это не твой инвентарь паков.',
-                    ephemeral: true,
+                    flags: MessageFlags.Ephemeral,
                 });
                 return true;
             }
@@ -293,7 +294,7 @@ module.exports = {
         if (!ownerId || interaction.user.id !== ownerId) {
             await interaction.reply({
                 content: 'Этот инвентарь паков открыт не для тебя.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return true;
         }
@@ -301,7 +302,7 @@ module.exports = {
         if (!CARD_PACK_TYPES[packId]) {
             await interaction.reply({
                 content: '❌ Неизвестный тип пака.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return true;
         }

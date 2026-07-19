@@ -123,7 +123,20 @@ async function main() {
         return;
     }
 
-    console.log('🔎 Постоянная база отсутствует. Ищу последний Discord-бэкап...');
+    const databaseExists = fs.existsSync(databasePath);
+    if (databaseExists) {
+        const stat = fs.statSync(databasePath);
+        const quarantinePath = `${databasePath}.invalid-${Date.now()}`;
+        fs.renameSync(databasePath, quarantinePath);
+        console.warn(
+            `⚠️ Постоянная база найдена, но не прошла SQLite-проверку ` +
+            `(${stat.size} bytes). Файл сохранён: ${quarantinePath}`
+        );
+    } else {
+        console.log(`ℹ️ Файл постоянной базы не найден: ${databasePath}`);
+    }
+
+    console.log('🔎 Ищу последний Discord-бэкап для аварийного восстановления...');
 
     try {
         const messages = await fetchMessages(channelId, token);

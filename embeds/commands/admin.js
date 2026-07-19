@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags} = require('discord.js');
 
 const {
     db,
@@ -16,7 +16,7 @@ function isBotOwner(interaction) {
 async function denyOwnerOnly(interaction) {
     const payload = {
         content: '❌ Эта команда доступна только владельцу бота.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
     };
 
     if (interaction.replied || interaction.deferred) {
@@ -119,7 +119,7 @@ module.exports = {
         if (group !== 'dust') {
             return interaction.reply({
                 content: '❌ Неизвестная группа admin-команд.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -130,7 +130,7 @@ module.exports = {
             const balance = getCardDust(target.id);
             return interaction.reply({
                 content: `💠 Баланс **${target.username}**: **${balance.toLocaleString('ru-RU')} GS Dust**.`,
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -142,7 +142,7 @@ module.exports = {
                 content:
                     `✅ **${target.username}** получил **${amount.toLocaleString('ru-RU')} GS Dust**.\n` +
                     `Новый баланс: **${balance.toLocaleString('ru-RU')} GS Dust**.`,
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -154,7 +154,7 @@ module.exports = {
                     content:
                         `❌ У **${target.username}** недостаточно Dust.\n` +
                         `Текущий баланс: **${result.balance.toLocaleString('ru-RU')} GS Dust**.`,
-                    ephemeral: true,
+                    flags: MessageFlags.Ephemeral,
                 });
             }
 
@@ -162,7 +162,7 @@ module.exports = {
                 content:
                     `✅ У **${target.username}** снято **${amount.toLocaleString('ru-RU')} GS Dust**.\n` +
                     `Новый баланс: **${result.balance.toLocaleString('ru-RU')} GS Dust**.`,
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -175,13 +175,13 @@ module.exports = {
 
             return interaction.reply({
                 content: `✅ Баланс **${target.username}** установлен на **${amount.toLocaleString('ru-RU')} GS Dust**.`,
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
         return interaction.reply({
             content: '❌ Неизвестная admin-команда.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     },
 };

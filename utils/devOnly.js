@@ -1,3 +1,5 @@
+const { MessageFlags } = require('discord.js');
+
 function isDeveloper(userId) {
     return userId === process.env.DEVELOPER_ID;
 }
@@ -17,7 +19,7 @@ async function checkDeveloper(interaction) {
 
     const reply = {
         content: '🚧 Эта функция пока находится в разработке и временно доступна только разработчику.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
     };
 
     if (interaction.deferred || interaction.replied) {

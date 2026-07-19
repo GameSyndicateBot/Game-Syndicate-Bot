@@ -4,6 +4,7 @@ const {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    MessageFlags
 } = require('discord.js');
 
 const {
@@ -453,7 +454,7 @@ data: new SlashCommandBuilder()
         if (interaction.user.id !== ownerId) {
             await interaction.reply({
                 content: 'Эти ежедневные задания открыты не для тебя.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
 
             return true;

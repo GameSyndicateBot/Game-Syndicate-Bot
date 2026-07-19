@@ -9,6 +9,7 @@ const {
     Collection,
     GatewayIntentBits,
     Partials,
+    MessageFlags
 } = require('discord.js');
 
 const client = new Client({
@@ -180,12 +181,12 @@ client.on('interactionCreate', async interaction => {
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({
                 content: 'Произошла ошибка.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             }).catch(() => {});
         } else {
             await interaction.reply({
                 content: 'Произошла ошибка.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             }).catch(() => {});
         }
     }

@@ -5,6 +5,7 @@ const {
     ButtonStyle,
     StringSelectMenuBuilder,
     AttachmentBuilder,
+    MessageFlags
 } = require('discord.js');
 
 const {
@@ -667,7 +668,7 @@ module.exports = {
             await interaction.reply({
                 content:
                     'Это меню Dust открыто не для тебя.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return true;
         }
@@ -821,7 +822,7 @@ module.exports = {
             await interaction.reply({
                 content:
                     '🔒 Защищённые карточки отмечены в списке. Выбери карточку, чтобы снять защиту.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return true;
         }

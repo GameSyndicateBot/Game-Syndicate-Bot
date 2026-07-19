@@ -6,6 +6,7 @@ const {
     StringSelectMenuBuilder,
     EmbedBuilder,
     AttachmentBuilder,
+    MessageFlags
 } = require('discord.js');
 
 const { normalizeServerNickname } = require('../utils/displayName');
@@ -173,21 +174,21 @@ module.exports={
         const sub=interaction.options.getSubcommand();
         if(sub==='sell'){
             const price=interaction.options.getInteger('цена',true);const picker=buildSellPicker(interaction.user.id,price,1);
-            if(!picker)return interaction.reply({content:'❌ У тебя нет карточек, доступных для продажи.',ephemeral:true});
-            return interaction.reply({content:`Выбери карточку. Цена: **${price.toLocaleString('ru-RU')} GS Dust**. Доступно: **${picker.totalItems}**.`,components:picker.components,ephemeral:true});
+            if(!picker)return interaction.reply({content:'❌ У тебя нет карточек, доступных для продажи.',flags: MessageFlags.Ephemeral});
+            return interaction.reply({content:`Выбери карточку. Цена: **${price.toLocaleString('ru-RU')} GS Dust**. Доступно: **${picker.totalItems}**.`,components:picker.components,flags: MessageFlags.Ephemeral});
         }
         if(sub==='browse'){
             const rows=db.prepare("SELECT * FROM card_auction_listings WHERE status='active' AND expires_at>? ORDER BY id DESC LIMIT 25").all(new Date().toISOString());
-            if(!rows.length)return interaction.reply({content:'На аукционе пока нет активных карточек.',ephemeral:true});
+            if(!rows.length)return interaction.reply({content:'На аукционе пока нет активных карточек.',flags: MessageFlags.Ephemeral});
             const opts=rows.map(l=>{const c=ownedFromListing(l);return{label:`#${l.id} • ${c?.name??'Карточка'}`.slice(0,100),value:String(l.id),description:`${l.price} Dust • ${c?.rarity??'unknown'}`.slice(0,100),emoji:'🏷️'};});
             const menu=new StringSelectMenuBuilder().setCustomId('auction_view_select').setPlaceholder('Выбери объявление').addOptions(opts);
-            return interaction.reply({content:`# 🏷️ Аукцион Game Syndicate\nТвой баланс: **${getCardDust(interaction.user.id)} GS Dust**`,components:[new ActionRowBuilder().addComponents(menu)],ephemeral:true});
+            return interaction.reply({content:`# 🏷️ Аукцион Game Syndicate\nТвой баланс: **${getCardDust(interaction.user.id)} GS Dust**`,components:[new ActionRowBuilder().addComponents(menu)],flags: MessageFlags.Ephemeral});
         }
         if(sub==='my'){
             const rows=db.prepare("SELECT * FROM card_auction_listings WHERE seller_id=? AND status='active' ORDER BY id DESC").all(interaction.user.id);
-            if(!rows.length)return interaction.reply({content:'У тебя нет активных объявлений.',ephemeral:true});
+            if(!rows.length)return interaction.reply({content:'У тебя нет активных объявлений.',flags: MessageFlags.Ephemeral});
             const shown=rows.slice(0,20);
-            return interaction.reply({content:`# Мои объявления (${rows.length})\n${shown.map(l=>`**#${l.id}** • ${ownedFromListing(l)?.name??'карточка'} • **${l.price} Dust**`).join('\n')}${rows.length>20?'\n\nПоказаны последние 20. Остальные доступны через /auction browse.':''}`,ephemeral:true});
+            return interaction.reply({content:`# Мои объявления (${rows.length})\n${shown.map(l=>`**#${l.id}** • ${ownedFromListing(l)?.name??'карточка'} • **${l.price} Dust**`).join('\n')}${rows.length>20?'\n\nПоказаны последние 20. Остальные доступны через /auction browse.':''}`,flags: MessageFlags.Ephemeral});
         }
         if(sub==='history'){
             db.prepare("UPDATE card_auction_listings SET status='expired' WHERE status='active' AND expires_at<=?")
@@ -228,12 +229,12 @@ module.exports={
             });
             return interaction.reply({
                 files:[new AttachmentBuilder(image,{name:'auction-history.png'})],
-                ephemeral:true,
+                flags: MessageFlags.Ephemeral,
             });
         }
         if(sub==='cancel'){
-            const id=interaction.options.getInteger('номер',true),l=getListing(id);if(!l||l.seller_id!==interaction.user.id||l.status!=='active')return interaction.reply({content:'❌ Активное объявление не найдено.',ephemeral:true});
-            db.prepare("UPDATE card_auction_listings SET status='cancelled' WHERE id=?").run(id);await refresh(interaction.client,id);return interaction.reply({content:`✅ Объявление #${id} снято с продажи.`,ephemeral:true});
+            const id=interaction.options.getInteger('номер',true),l=getListing(id);if(!l||l.seller_id!==interaction.user.id||l.status!=='active')return interaction.reply({content:'❌ Активное объявление не найдено.',flags: MessageFlags.Ephemeral});
+            db.prepare("UPDATE card_auction_listings SET status='cancelled' WHERE id=?").run(id);await refresh(interaction.client,id);return interaction.reply({content:`✅ Объявление #${id} снято с продажи.`,flags: MessageFlags.Ephemeral});
         }
     },
 
@@ -265,15 +266,15 @@ module.exports={
         if(action==='view'){
             const id=Number(interaction.values[0]),l=getListing(id);if(!l)return interaction.update({content:'❌ Объявление не найдено.',components:[]});return interaction.update({...(await renderListing(l, interaction.client)),content:`# 🏷️ Аукцион #${l.id}\nТвой баланс: **${getCardDust(interaction.user.id)} GS Dust**`});
         }
-        const id=Number(raw),l=getListing(id);if(!l)return interaction.reply({content:'❌ Объявление не найдено.',ephemeral:true});
+        const id=Number(raw),l=getListing(id);if(!l)return interaction.reply({content:'❌ Объявление не найдено.',flags: MessageFlags.Ephemeral});
         if(action==='buy'){
-            try{buyListing(id,interaction.user.id);}catch(error){return interaction.reply({content:`❌ ${error.message}`,ephemeral:true});}
+            try{buyListing(id,interaction.user.id);}catch(error){return interaction.reply({content:`❌ ${error.message}`,flags: MessageFlags.Ephemeral});}
             await interaction.deferUpdate();await refresh(interaction.client,id);
-            await interaction.followUp({content:`✅ Покупка завершена! Карточка перешла к тебе. Остаток: **${getCardDust(interaction.user.id)} GS Dust**.`,ephemeral:true});return true;
+            await interaction.followUp({content:`✅ Покупка завершена! Карточка перешла к тебе. Остаток: **${getCardDust(interaction.user.id)} GS Dust**.`,flags: MessageFlags.Ephemeral});return true;
         }
         if(action==='cancel'){
-            if(l.seller_id!==interaction.user.id)return interaction.reply({content:'❌ Снять объявление может только продавец.',ephemeral:true});
-            if(l.status!=='active')return interaction.reply({content:'❌ Объявление уже закрыто.',ephemeral:true});
+            if(l.seller_id!==interaction.user.id)return interaction.reply({content:'❌ Снять объявление может только продавец.',flags: MessageFlags.Ephemeral});
+            if(l.status!=='active')return interaction.reply({content:'❌ Объявление уже закрыто.',flags: MessageFlags.Ephemeral});
             db.prepare("UPDATE card_auction_listings SET status='cancelled' WHERE id=?").run(id);await interaction.deferUpdate();await refresh(interaction.client,id);return true;
         }
         return false;

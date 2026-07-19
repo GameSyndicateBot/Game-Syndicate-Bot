@@ -6,6 +6,7 @@ const {
     StringSelectMenuBuilder,
     EmbedBuilder,
     AttachmentBuilder,
+    MessageFlags
 } = require('discord.js');
 
 const { normalizeServerNickname, getServerDisplayName } = require('../utils/displayName');
@@ -233,11 +234,11 @@ module.exports = {
         const sub = interaction.options.getSubcommand();
         if (sub === 'start') {
             const target = interaction.options.getUser('участник', true);
-            if (target.id === interaction.user.id) return interaction.reply({ content: '❌ Нельзя обмениваться с собой.', ephemeral: true });
-            if (target.bot) return interaction.reply({ content: '❌ С ботами обмениваться нельзя.', ephemeral: true });
+            if (target.id === interaction.user.id) return interaction.reply({ content: '❌ Нельзя обмениваться с собой.', flags: MessageFlags.Ephemeral });
+            if (target.bot) return interaction.reply({ content: '❌ С ботами обмениваться нельзя.', flags: MessageFlags.Ephemeral });
 
             const cards = tradeableCards(interaction.user.id);
-            if (!cards.length) return interaction.reply({ content: '❌ У тебя нет доступных для обмена карточек.', ephemeral: true });
+            if (!cards.length) return interaction.reply({ content: '❌ У тебя нет доступных для обмена карточек.', flags: MessageFlags.Ephemeral });
 
             const menu = new StringSelectMenuBuilder()
                 .setCustomId(`trade_startpick_${target.id}`)
@@ -246,7 +247,7 @@ module.exports = {
             return interaction.reply({
                 content: `Выбери карточку для предложения участнику ${target}. Показываются последние 25 доступных экземпляров.`,
                 components: [new ActionRowBuilder().addComponents(menu)],
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -256,10 +257,10 @@ module.exports = {
                 WHERE (initiator_id=? OR target_id=?) AND status IN ('selecting','pending') AND expires_at>?
                 ORDER BY id DESC LIMIT 20
             `).all(interaction.user.id, interaction.user.id, new Date().toISOString());
-            if (!rows.length) return interaction.reply({ content: 'У тебя нет активных сделок.', ephemeral: true });
+            if (!rows.length) return interaction.reply({ content: 'У тебя нет активных сделок.', flags: MessageFlags.Ephemeral });
             return interaction.reply({
                 content: rows.map(t => `**#${t.id}** • <@${t.initiator_id}> ⇄ <@${t.target_id}> • ${t.status === 'selecting' ? 'выбор карточки' : 'подтверждение'}`).join('\n'),
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -302,7 +303,7 @@ module.exports = {
             });
             return interaction.reply({
                 files: [new AttachmentBuilder(image, { name: 'trade-history.png' })],
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -310,12 +311,12 @@ module.exports = {
             const id = interaction.options.getInteger('номер', true);
             const trade = getTrade(id);
             if (!trade || ![trade.initiator_id, trade.target_id].includes(interaction.user.id)) {
-                return interaction.reply({ content: '❌ Сделка не найдена.', ephemeral: true });
+                return interaction.reply({ content: '❌ Сделка не найдена.', flags: MessageFlags.Ephemeral });
             }
-            if (!['selecting', 'pending'].includes(trade.status)) return interaction.reply({ content: '❌ Сделка уже закрыта.', ephemeral: true });
+            if (!['selecting', 'pending'].includes(trade.status)) return interaction.reply({ content: '❌ Сделка уже закрыта.', flags: MessageFlags.Ephemeral });
             db.prepare("UPDATE card_trades SET status='cancelled' WHERE id=?").run(id);
             await refreshPublicMessage(interaction.client, id);
-            return interaction.reply({ content: `✅ Сделка #${id} отменена.`, ephemeral: true });
+            return interaction.reply({ content: `✅ Сделка #${id} отменена.`, flags: MessageFlags.Ephemeral });
         }
     },
 
@@ -346,15 +347,15 @@ module.exports = {
         try { trade = validateTrade(getTrade(tradeId)); }
         catch (error) {
             await refreshPublicMessage(interaction.client, tradeId);
-            return interaction.reply({ content: `❌ ${error.message}`, ephemeral: true });
+            return interaction.reply({ content: `❌ ${error.message}`, flags: MessageFlags.Ephemeral });
         }
 
         if (action === 'changeinit') {
             if (interaction.user.id !== trade.initiator_id) {
-                return interaction.reply({ content: '❌ Изменить эту карточку может только автор сделки.', ephemeral: true });
+                return interaction.reply({ content: '❌ Изменить эту карточку может только автор сделки.', flags: MessageFlags.Ephemeral });
             }
             const cards = tradeableCards(interaction.user.id, trade.id);
-            if (!cards.length) return interaction.reply({ content: '❌ У тебя нет доступных карточек для обмена.', ephemeral: true });
+            if (!cards.length) return interaction.reply({ content: '❌ У тебя нет доступных карточек для обмена.', flags: MessageFlags.Ephemeral });
             const menu = new StringSelectMenuBuilder()
                 .setCustomId(`trade_initpick_${trade.id}`)
                 .setPlaceholder('Выбери новую карточку автора')
@@ -362,17 +363,17 @@ module.exports = {
             await interaction.reply({
                 content: `Выбери новую карточку для сделки #${trade.id}. После замены оба подтверждения будут сброшены.`,
                 components: [new ActionRowBuilder().addComponents(menu)],
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return true;
         }
 
         if (action === 'changetarget') {
             if (interaction.user.id !== trade.target_id) {
-                return interaction.reply({ content: '❌ Изменить эту карточку может только второй участник.', ephemeral: true });
+                return interaction.reply({ content: '❌ Изменить эту карточку может только второй участник.', flags: MessageFlags.Ephemeral });
             }
             const cards = tradeableCards(interaction.user.id, trade.id);
-            if (!cards.length) return interaction.reply({ content: '❌ У тебя нет доступных карточек для обмена.', ephemeral: true });
+            if (!cards.length) return interaction.reply({ content: '❌ У тебя нет доступных карточек для обмена.', flags: MessageFlags.Ephemeral });
             const menu = new StringSelectMenuBuilder()
                 .setCustomId(`trade_targetpick_${trade.id}`)
                 .setPlaceholder('Выбери новую карточку участника')
@@ -380,13 +381,13 @@ module.exports = {
             await interaction.reply({
                 content: `Выбери новую карточку для сделки #${trade.id}. После замены оба подтверждения будут сброшены.`,
                 components: [new ActionRowBuilder().addComponents(menu)],
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
             return true;
         }
 
         if (action === 'initpick') {
-            if (interaction.user.id !== trade.initiator_id) return interaction.reply({ content: '❌ Это не твоя сторона сделки.', ephemeral: true });
+            if (interaction.user.id !== trade.initiator_id) return interaction.reply({ content: '❌ Это не твоя сторона сделки.', flags: MessageFlags.Ephemeral });
             const inventoryId = Number(interaction.values[0]);
             const owned = getUserCardByInventoryId(interaction.user.id, inventoryId);
             if (!owned || owned.rarity === 'treasure' || isCardLocked(inventoryId, trade.id)) {
@@ -402,16 +403,16 @@ module.exports = {
         }
 
         if (action === 'pick') {
-            if (interaction.user.id !== trade.target_id) return interaction.reply({ content: 'Эту карточку должен выбрать второй участник сделки.', ephemeral: true });
+            if (interaction.user.id !== trade.target_id) return interaction.reply({ content: 'Эту карточку должен выбрать второй участник сделки.', flags: MessageFlags.Ephemeral });
             const cards = tradeableCards(interaction.user.id, trade.id);
-            if (!cards.length) return interaction.reply({ content: '❌ У тебя нет доступных карточек для обмена.', ephemeral: true });
+            if (!cards.length) return interaction.reply({ content: '❌ У тебя нет доступных карточек для обмена.', flags: MessageFlags.Ephemeral });
             const menu = new StringSelectMenuBuilder().setCustomId(`trade_targetpick_${trade.id}`).setPlaceholder('Что ты отдаёшь?').addOptions(cardOptions(cards));
-            await interaction.reply({ content: `Выбери карточку для сделки #${trade.id}.`, components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+            await interaction.reply({ content: `Выбери карточку для сделки #${trade.id}.`, components: [new ActionRowBuilder().addComponents(menu)], flags: MessageFlags.Ephemeral });
             return true;
         }
 
         if (action === 'targetpick') {
-            if (interaction.user.id !== trade.target_id) return interaction.reply({ content: '❌ Это не твоя сделка.', ephemeral: true });
+            if (interaction.user.id !== trade.target_id) return interaction.reply({ content: '❌ Это не твоя сделка.', flags: MessageFlags.Ephemeral });
             const inventoryId = Number(interaction.values[0]);
             const owned = getUserCardByInventoryId(interaction.user.id, inventoryId);
             if (!owned || owned.rarity === 'treasure' || isCardLocked(inventoryId, trade.id)) {
@@ -425,14 +426,14 @@ module.exports = {
         }
 
         if (action === 'confirm') {
-            if (![trade.initiator_id, trade.target_id].includes(interaction.user.id)) return interaction.reply({ content: '❌ Ты не участвуешь в этой сделке.', ephemeral: true });
-            if (trade.status !== 'pending' || !trade.target_card_id) return interaction.reply({ content: '❌ Вторая карточка ещё не выбрана.', ephemeral: true });
+            if (![trade.initiator_id, trade.target_id].includes(interaction.user.id)) return interaction.reply({ content: '❌ Ты не участвуешь в этой сделке.', flags: MessageFlags.Ephemeral });
+            if (trade.status !== 'pending' || !trade.target_card_id) return interaction.reply({ content: '❌ Вторая карточка ещё не выбрана.', flags: MessageFlags.Ephemeral });
             const field = interaction.user.id === trade.initiator_id ? 'initiator_confirmed' : 'target_confirmed';
             db.prepare(`UPDATE card_trades SET ${field}=1 WHERE id=?`).run(trade.id);
             trade = getTrade(trade.id);
             if (trade.initiator_confirmed && trade.target_confirmed) {
                 try { completeTrade(trade.id); }
-                catch (error) { return interaction.reply({ content: `❌ Обмен не выполнен: ${error.message}`, ephemeral: true }); }
+                catch (error) { return interaction.reply({ content: `❌ Обмен не выполнен: ${error.message}`, flags: MessageFlags.Ephemeral }); }
             }
             await interaction.deferUpdate();
             await refreshPublicMessage(interaction.client, trade.id);
@@ -440,7 +441,7 @@ module.exports = {
         }
 
         if (action === 'decline' || action === 'cancel') {
-            if (![trade.initiator_id, trade.target_id].includes(interaction.user.id)) return interaction.reply({ content: '❌ Ты не участвуешь в этой сделке.', ephemeral: true });
+            if (![trade.initiator_id, trade.target_id].includes(interaction.user.id)) return interaction.reply({ content: '❌ Ты не участвуешь в этой сделке.', flags: MessageFlags.Ephemeral });
             db.prepare("UPDATE card_trades SET status='cancelled' WHERE id=?").run(trade.id);
             await interaction.deferUpdate();
             await refreshPublicMessage(interaction.client, trade.id);

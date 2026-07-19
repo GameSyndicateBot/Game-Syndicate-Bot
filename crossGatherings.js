@@ -5,6 +5,7 @@ const {
     ButtonBuilder,
     ButtonStyle,
     PermissionFlagsBits,
+    MessageFlags
 } = require('discord.js');
 
 const {
@@ -678,7 +679,7 @@ async function handleDiscord(interaction) {
     if (!gathering) {
         return interaction.reply({
             content: 'Сбор не найден.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -690,14 +691,14 @@ async function handleDiscord(interaction) {
         if (gathering.status !== 'active') {
             return interaction.reply({
                 content: 'Этот сбор уже закрыт.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
         if (members(id).length >= gathering.max_players) {
             return interaction.reply({
                 content: 'Мест больше нет.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -717,7 +718,7 @@ async function handleDiscord(interaction) {
 
         await interaction.reply({
             content: added ? 'Ты добавлен в сбор.' : 'Ты уже участвуешь.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -738,7 +739,7 @@ if (action === 'xg_decline') {
 
     await interaction.reply({
         content: 'Понял, тебя не записываю.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
     });
 }
 
@@ -753,7 +754,7 @@ if (action === 'xg_remind') {
 
     await interaction.reply({
         content: '⏰ Напомню перед началом сбора.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
     });
 }
 
@@ -761,7 +762,7 @@ if (action === 'xg_remind') {
         if (isCreator(gathering, 'discord', interaction.user.id)) {
             return interaction.reply({
                 content: 'Автор может только отменить сбор.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -774,7 +775,7 @@ if (action === 'xg_remind') {
 
         await interaction.reply({
             content: 'Ты вышел из сбора.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -789,7 +790,7 @@ if (action === 'xg_remind') {
         ) {
             return interaction.reply({
                 content: 'Доступно только автору или администратору.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -797,13 +798,13 @@ if (action === 'xg_remind') {
             close(id);
             await interaction.reply({
                 content: 'Сбор отменён.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         } else {
             await startNow(id);
             await interaction.reply({
                 content: 'Участники уведомлены — сбор запущен.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
     }

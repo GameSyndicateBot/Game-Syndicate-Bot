@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags} = require('discord.js');
 const { db, getOrCreatePlayer, addCardDust } = require('../database/db');
 const { addPack } = require('../utils/packInventory');
 const { createQuickEventCard, createQuickEventWinnerCard } = require('../images/quickEvent/createQuickEventCard');
@@ -747,12 +747,12 @@ async function expireMultiEvent(channel,roundId,text){
 
 async function handleLootShare(interaction,roundId){
   const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='loot_share' AND status='active'").get(roundId);
-  if(!round){await interaction.reply({content:'❌ Добыча уже закончилась.',ephemeral:true});return true;}
+  if(!round){await interaction.reply({content:'❌ Добыча уже закончилась.',flags: MessageFlags.Ephemeral});return true;}
   const used=db.prepare("SELECT 1 FROM quick_event_actions WHERE round_id=? AND user_id=? AND action='loot'").get(roundId,interaction.user.id);
-  if(used){await interaction.reply({content:'❌ Ты уже получил свою долю.',ephemeral:true});return true;}
+  if(used){await interaction.reply({content:'❌ Ты уже получил свою долю.',flags: MessageFlags.Ephemeral});return true;}
   const payload=JSON.parse(round.payload_json||'{}');
   const bank=Math.max(0,Number(payload.bank||0));
-  if(bank<=0){await interaction.reply({content:'❌ Добыча уже закончилась.',ephemeral:true});return true;}
+  if(bank<=0){await interaction.reply({content:'❌ Добыча уже закончилась.',flags: MessageFlags.Ephemeral});return true;}
   const amount=Math.min(bank,randomInt(15,60));
   payload.bank=bank-amount;
   db.transaction(()=>{
@@ -761,7 +761,7 @@ async function handleLootShare(interaction,roundId){
     addCardDust(interaction.user.id,amount);
     markParticipation(roundId,interaction.user.id);
   })();
-  await interaction.reply({content:`💰 Ты забрал **${amount} GS Dust**. В запасе осталось **${payload.bank}**.`,ephemeral:true});
+  await interaction.reply({content:`💰 Ты забрал **${amount} GS Dust**. В запасе осталось **${payload.bank}**.`,flags: MessageFlags.Ephemeral});
   if(payload.bank<=0){
     db.prepare("UPDATE quick_event_rounds SET status='solved',solved_at=?,reward_type='shared_dust',reward_amount=? WHERE id=? AND status='active'").run(Date.now(),Number(JSON.parse(round.payload_json||'{}').bank||0),roundId);
     clearRuntimeTimers(roundId);
@@ -774,9 +774,9 @@ async function handleLootShare(interaction,roundId){
 
 async function handleRisk(interaction,roundId,mode){
   const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='risk' AND status='active'").get(roundId);
-  if(!round){await interaction.reply({content:'❌ Событие уже завершено.',ephemeral:true});return true;}
+  if(!round){await interaction.reply({content:'❌ Событие уже завершено.',flags: MessageFlags.Ephemeral});return true;}
   const used=db.prepare("SELECT 1 FROM quick_event_actions WHERE round_id=? AND user_id=? AND action='risk'").get(roundId,interaction.user.id);
-  if(used){await interaction.reply({content:'❌ Ты уже сделал выбор.',ephemeral:true});return true;}
+  if(used){await interaction.reply({content:'❌ Ты уже сделал выбор.',flags: MessageFlags.Ephemeral});return true;}
   let reward;
   if(mode==='safe') reward={type:'dust',amount:35,label:'35 GS Dust'};
   else {
@@ -789,7 +789,7 @@ async function handleRisk(interaction,roundId,mode){
   db.prepare("INSERT INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?)").run(roundId,interaction.user.id,'risk',reward.amount||0,Date.now());
   markParticipation(roundId,interaction.user.id);
   if(reward.type!=='none') grantSpecialReward(interaction.user,reward,roundId);
-  await interaction.reply({content:reward.type==='none'?'🎰 Риск не оправдался — на этот раз без награды.':`🎉 Ты получаешь **${reward.label}**!`,ephemeral:true});
+  await interaction.reply({content:reward.type==='none'?'🎰 Риск не оправдался — на этот раз без награды.':`🎉 Ты получаешь **${reward.label}**!`,flags: MessageFlags.Ephemeral});
   return true;
 }
 
@@ -820,18 +820,18 @@ async function resolveDontPress(channel,roundId){
 
 async function handleDontPress(interaction,roundId,action){
   const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='dont_press' AND status='active'").get(roundId);
-  if(!round){await interaction.reply({content:'❌ Событие уже завершено.',ephemeral:true});return true;}
+  if(!round){await interaction.reply({content:'❌ Событие уже завершено.',flags: MessageFlags.Ephemeral});return true;}
   const payload=JSON.parse(round.payload_json||'{}');
   if(action==='register'){
-    if(payload.phase!=='registration'){await interaction.reply({content:'❌ Регистрация уже закрыта.',ephemeral:true});return true;}
+    if(payload.phase!=='registration'){await interaction.reply({content:'❌ Регистрация уже закрыта.',flags: MessageFlags.Ephemeral});return true;}
     const result=db.prepare("INSERT OR IGNORE INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?)").run(roundId,interaction.user.id,'dont_register',1,Date.now());
-    if(!result.changes){await interaction.reply({content:'✅ Ты уже зарегистрирован.',ephemeral:true});return true;}
-    markParticipation(roundId,interaction.user.id);await interaction.reply({content:'✋ Ты участвуешь. Когда появится бомба — не нажимай её.',ephemeral:true});return true;
+    if(!result.changes){await interaction.reply({content:'✅ Ты уже зарегистрирован.',flags: MessageFlags.Ephemeral});return true;}
+    markParticipation(roundId,interaction.user.id);await interaction.reply({content:'✋ Ты участвуешь. Когда появится бомба — не нажимай её.',flags: MessageFlags.Ephemeral});return true;
   }
   const registered=db.prepare("SELECT 1 FROM quick_event_actions WHERE round_id=? AND user_id=? AND action='dont_register'").get(roundId,interaction.user.id);
-  if(!registered){await interaction.reply({content:'Ты не был зарегистрирован и не участвуешь.',ephemeral:true});return true;}
+  if(!registered){await interaction.reply({content:'Ты не был зарегистрирован и не участвуешь.',flags: MessageFlags.Ephemeral});return true;}
   const result=db.prepare("INSERT OR IGNORE INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?)").run(roundId,interaction.user.id,'dont_pressed',1,Date.now());
-  await interaction.reply({content:result.changes?'💥 Ты нажал кнопку и выбыл!':'❌ Ты уже выбыл.',ephemeral:true});return true;
+  await interaction.reply({content:result.changes?'💥 Ты нажал кнопку и выбыл!':'❌ Ты уже выбыл.',flags: MessageFlags.Ephemeral});return true;
 }
 
 async function resolveRoyalButton(channel,roundId){
@@ -854,18 +854,18 @@ async function resolveRoyalButton(channel,roundId){
 }
 
 async function handleRoyalButton(interaction,roundId){
-  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='royal_button' AND status='active'").get(roundId);if(!round){await interaction.reply({content:'❌ Ивент уже завершён.',ephemeral:true});return true;}
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='royal_button' AND status='active'").get(roundId);if(!round){await interaction.reply({content:'❌ Ивент уже завершён.',flags: MessageFlags.Ephemeral});return true;}
   const now=Date.now();
   const payload=JSON.parse(round.payload_json||'{}');
   payload.holdTotals=payload.holdTotals||{};
   payload.lastCaptureAt=payload.lastCaptureAt||{};
 
   if(String(payload.holderId||'')===String(interaction.user.id)){
-    await interaction.reply({content:'👑 Трон уже у тебя. Повторный клик ничего не даёт.',ephemeral:true});return true;
+    await interaction.reply({content:'👑 Трон уже у тебя. Повторный клик ничего не даёт.',flags: MessageFlags.Ephemeral});return true;
   }
   const lastClick=Number(payload.lastCaptureAt[interaction.user.id]||0);
   if(now-lastClick<1000){
-    await interaction.reply({content:'⏱️ Перехватывать трон можно не чаще одного раза в секунду.',ephemeral:true});return true;
+    await interaction.reply({content:'⏱️ Перехватывать трон можно не чаще одного раза в секунду.',flags: MessageFlags.Ephemeral});return true;
   }
 
   if(payload.holderId&&payload.holderSince){
@@ -902,10 +902,10 @@ async function resolveDiceTournament(channel,roundId){
 }
 
 async function handleDiceTournament(interaction,roundId){
-  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='dice_tournament' AND status='active'").get(roundId);if(!round){await interaction.reply({content:'❌ Турнир уже завершён.',ephemeral:true});return true;}
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='dice_tournament' AND status='active'").get(roundId);if(!round){await interaction.reply({content:'❌ Турнир уже завершён.',flags: MessageFlags.Ephemeral});return true;}
   const value=randomInt(1,12);const result=db.prepare("INSERT OR IGNORE INTO quick_event_actions(round_id,user_id,action,value,created_at) VALUES(?,?,?,?,?)").run(roundId,interaction.user.id,'dice',value,Date.now());
-  if(!result.changes){await interaction.reply({content:'❌ У тебя уже был один бросок.',ephemeral:true});return true;}
-  markParticipation(roundId,interaction.user.id);await interaction.reply({content:`🎲 Твой результат: **${value}**`,ephemeral:true});
+  if(!result.changes){await interaction.reply({content:'❌ У тебя уже был один бросок.',flags: MessageFlags.Ephemeral});return true;}
+  markParticipation(roundId,interaction.user.id);await interaction.reply({content:`🎲 Твой результат: **${value}**`,flags: MessageFlags.Ephemeral});
   const board=diceLeaderboard(roundId);const lines=board.map((r,i)=>`${i+1}. <@${r.user_id}> — 🎲 **${r.value}**`);
   await interaction.message.edit({content:['## 🎲 ТУРНИР D12','Один бросок на игрока. Турнир длится **5 минут**.','','### Текущий топ',...lines].join('\n'),components:multiEventComponents(roundId,'dice_tournament'),allowedMentions:{parse:[]}}).catch(()=>{});return true;
 }
@@ -1005,7 +1005,7 @@ async function handleTreasureChest(interaction, roundId) {
   if (!round) {
     await interaction.reply({
       content:'❌ Этот сундук уже открыт или событие завершено.',
-      ephemeral:true,
+      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
@@ -1019,7 +1019,7 @@ async function handleTreasureChest(interaction, roundId) {
   if (!claimed.changes) {
     await interaction.reply({
       content:'❌ Кто-то успел открыть сундук раньше.',
-      ephemeral:true,
+      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
@@ -1077,7 +1077,7 @@ async function handleWorldBoss(interaction, roundId) {
   if (!round) {
     await interaction.reply({
       content:'❌ Босс уже побеждён или событие завершено.',
-      ephemeral:true,
+      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
@@ -1095,7 +1095,7 @@ async function handleWorldBoss(interaction, roundId) {
     );
     await interaction.reply({
       content:`⏳ Следующая атака будет доступна через **${wait} сек.**`,
-      ephemeral:true,
+      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
@@ -1130,7 +1130,7 @@ async function handleWorldBoss(interaction, roundId) {
   if (newHp > 0) {
     await interaction.reply({
       content:`⚔️ Ты нанёс **${damage} урона**. У босса осталось **${newHp}/${payload.maxHp} HP**.`,
-      ephemeral:true,
+      flags: MessageFlags.Ephemeral,
     });
 
     await interaction.message.edit({
@@ -1155,7 +1155,7 @@ async function handleWorldBoss(interaction, roundId) {
   if (!finished.changes) {
     await interaction.reply({
       content:'❌ Босс уже побеждён.',
-      ephemeral:true,
+      flags: MessageFlags.Ephemeral,
     });
     return true;
   }
@@ -1325,15 +1325,15 @@ async function handleQuickEventComponent(interaction){
 
   const roundId=Number(interaction.customId.slice('quickevent_memory_'.length));
   const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='memory' AND status='active'").get(roundId);
-  if(!round){await interaction.reply({content:'❌ Этот Quick Event уже завершён.',ephemeral:true});return true;}
+  if(!round){await interaction.reply({content:'❌ Этот Quick Event уже завершён.',flags: MessageFlags.Ephemeral});return true;}
   const seen=db.prepare('SELECT 1 FROM quick_event_memory_views WHERE round_id=? AND user_id=?').get(round.id,interaction.user.id);
-  if(seen){await interaction.reply({content:'❌ Ты уже смотрел последовательность. Отправь ответ в чат.',ephemeral:true});return true;}
+  if(seen){await interaction.reply({content:'❌ Ты уже смотрел последовательность. Отправь ответ в чат.',flags: MessageFlags.Ephemeral});return true;}
   db.prepare('INSERT INTO quick_event_memory_views(round_id,user_id,viewed_at) VALUES(?,?,?)').run(round.id,interaction.user.id,Date.now());
   markParticipation(round.id,interaction.user.id);
   const event=JSON.parse(round.payload_json||'{}');
   const card=await createQuickEventCard(event,'show');
   const seconds=round.difficulty==='hard'?16:round.difficulty==='medium'?13:10;
-  await interaction.reply({content:`🧠 Запоминай. Последовательность исчезнет через **${seconds} сек.**`,files:[new AttachmentBuilder(card,{name:'gs-memory-sequence.png'})],ephemeral:true});
+  await interaction.reply({content:`🧠 Запоминай. Последовательность исчезнет через **${seconds} сек.**`,files:[new AttachmentBuilder(card,{name:'gs-memory-sequence.png'})],flags: MessageFlags.Ephemeral});
   setTimeout(()=>interaction.editReply({content:'⌛ Время закончилось. Теперь отправь последовательность в чат.',attachments:[]}).catch(()=>{}),seconds*1000);
   return true;
 }

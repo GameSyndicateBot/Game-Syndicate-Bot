@@ -1,5 +1,6 @@
 const {
     SlashCommandBuilder,
+    MessageFlags
 } = require('discord.js');
 
 const { db } = require('../database/db');
@@ -238,7 +239,7 @@ module.exports = {
         }
 
         await interaction.deferReply({
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
 
         syncCardsCatalog();

@@ -1,6 +1,7 @@
 const {
     SlashCommandBuilder,
     PermissionFlagsBits,
+    MessageFlags
 } = require('discord.js');
 
 const achievements = require('../data/achievements.json');
@@ -25,7 +26,7 @@ module.exports = {
         if (!canUse(interaction)) {
             return interaction.reply({
                 content: '❌ Команда доступна только админам и владельцу бота.',
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 

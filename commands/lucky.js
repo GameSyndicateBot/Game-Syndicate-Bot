@@ -29,7 +29,7 @@ module.exports = {
             .setRequired(false)),
 
     async execute(interaction) {
-        await interaction.deferReply({ ephemeral: false });
+        await interaction.deferReply();
 
         const selectedChannel = interaction.options.getChannel('channel');
         const runNow = interaction.options.getBoolean('run_now') || false;

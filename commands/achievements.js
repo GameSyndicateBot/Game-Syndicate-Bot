@@ -5,6 +5,7 @@ const {
     StringSelectMenuBuilder,
     ButtonBuilder,
     ButtonStyle,
+    MessageFlags
 } = require('discord.js');
 
 const achievements = require('../data/achievements.json');
@@ -143,7 +144,7 @@ data: new SlashCommandBuilder()
             if (interaction.user.id !== ownerId) {
                 await interaction.reply({
                     content: 'Эта энциклопедия открыта не для тебя.',
-                    ephemeral: true,
+                    flags: MessageFlags.Ephemeral,
                 });
                 return true;
             }
@@ -164,7 +165,7 @@ data: new SlashCommandBuilder()
             if (interaction.user.id !== ownerId) {
                 await interaction.reply({
                     content: 'Эта энциклопедия открыта не для тебя.',
-                    ephemeral: true,
+                    flags: MessageFlags.Ephemeral,
                 });
                 return true;
             }

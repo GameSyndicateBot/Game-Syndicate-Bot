@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags} = require('discord.js');
 const { resetPlayer } = require('../database/db');
 
 module.exports = {
@@ -20,7 +20,7 @@ module.exports = {
 
         await interaction.reply({
             content: `♻️ Профиль пользователя ${targetUser} был полностью сброшен.`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
     },
 };
