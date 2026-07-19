@@ -3,7 +3,15 @@ const {ActionRowBuilder,AttachmentBuilder,ButtonBuilder,ButtonStyle,MessageFlags
 const {db,getSetting}=require('../telegram/ecosystemDb');
 const {createGameLobbyCard}=require('../images/game/createGameLobbyCard');
 const AUTO_CLOSE_MS=4*60*60*1000;
-let runtime={api:null,client:null},timer=null;
+
+// Храним runtime в globalThis, чтобы даже при повторной загрузке модуля через
+// разные пути/сборочные остатки существовал только один таймер Game Lobby.
+const STATE_KEY = Symbol.for('game-syndicate.game-lobby-runtime');
+const state = globalThis[STATE_KEY] || (globalThis[STATE_KEY] = {
+ api: null,
+ client: null,
+ timer: null,
+});
 db.exec(`CREATE TABLE IF NOT EXISTS game_lobbies(id INTEGER PRIMARY KEY AUTOINCREMENT,creator_discord_id TEXT NOT NULL,creator_name TEXT NOT NULL,game TEXT NOT NULL,map_name TEXT NOT NULL,lobby_code TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',created_at INTEGER NOT NULL,closes_at INTEGER NOT NULL,closed_at INTEGER,discord_channel_id TEXT,discord_message_id TEXT,telegram_chat_id TEXT,telegram_thread_id INTEGER,telegram_message_id INTEGER);CREATE INDEX IF NOT EXISTS idx_game_lobbies_status_close ON game_lobbies(status,closes_at);`);
 
 const gameLobbyColumns=db.prepare('PRAGMA table_info(game_lobbies)').all();
@@ -17,44 +25,48 @@ function rows(l){return l.status==='open'&&String(l.lobby_code||'').trim()?[new 
 function tgText(l){const open=l.status==='open';const lines=['<b>🎮 GS GAME LOBBY</b>','',`<b>Игра:</b> ${esc(l.game)}`,`<b>Карта / лобби:</b> ${esc(l.map_name)}`];if(String(l.lobby_code||'').trim())lines.push('<b>Код / пароль:</b>',`<code>${esc(l.lobby_code)}</code>`);lines.push('',`<b>Создал:</b> ${esc(l.creator_name)}`,'',open?'🟢 <b>ЛОББИ ОТКРЫТО</b>':'🔴 <b>ЛОББИ ЗАКРЫТО</b>',open?'Автоматически закроется через 4 часа.':'Время действия лобби истекло.');return lines.join('\n');}
 function tgKeyboard(l){return {inline_keyboard:[[{text:'❌ Закрыть лобби',callback_data:`game_lobby_close:${l.id}`}]]};}
 function setGameLobbyRuntime(api,client){
- // Не затираем Telegram API значением null при событии Discord ready.
- // startTelegramBot() передаёт api, а ready.js может повторно передать
- // только client. Оба вызова должны дополнять runtime, а не заменять его.
- runtime={
-  api:api||runtime.api,
-  client:client||runtime.client,
- };
+ const previousApi=state.api;
+ const previousClient=state.client;
 
- // Инициализация может прийти отдельно от Discord ready и Telegram startup.
- // Таймер создаём только один раз, чтобы не было двойных циклов и логов.
- if(!timer){
-  closeExpiredGameLobbies().catch(console.error);
-  timer=setInterval(
-   ()=>closeExpiredGameLobbies().catch(console.error),
+ if(api)state.api=api;
+ if(client)state.client=client;
+
+ if(!state.timer){
+  closeExpiredGameLobbies().catch(error=>
+   console.error('[GameLobby] Initial cleanup:',error.message)
+  );
+  state.timer=setInterval(
+   ()=>closeExpiredGameLobbies().catch(error=>
+    console.error('[GameLobby] Auto-close:',error.message)
+   ),
    60000
   );
-  timer.unref?.();
-
+  state.timer.unref?.();
   console.log('✅ GS Game Lobby: автозакрытие через 4 часа включено');
  }
 
- console.log(
-  `✅ GS Game Lobby runtime обновлён: Discord=${Boolean(runtime.client)}, `+
-  `Telegram=${Boolean(runtime.api)}`
- );
+ // Не печатаем одинаковое состояние повторно. Это также делает по логам
+ // заметным реальное подключение Discord/Telegram, а не повторный init.
+ if(previousApi!==state.api||previousClient!==state.client){
+  console.log(
+   `✅ GS Game Lobby runtime: Discord=${Boolean(state.client)}, `+
+   `Telegram=${Boolean(state.api)}`
+  );
+ }
 }
+
 async function publishGameLobby({creatorId,creatorName,game,mapName='',lobbyCode=''}){
  const createdAt=Date.now(),closesAt=createdAt+AUTO_CLOSE_MS;
  const info=db.prepare('INSERT INTO game_lobbies(creator_discord_id,creator_name,game,map_name,lobby_code,created_at,closes_at) VALUES(?,?,?,?,?,?,?)').run(String(creatorId),creatorName,game,mapName,lobbyCode,createdAt,closesAt);
  let l=getLobby(info.lastInsertRowid);
  const channelId=getSetting('discord_gatherings_channel_id');if(!channelId)throw new Error('Discord game-lobby не настроен. Выполни /setgatherchannel в нужном канале.');
- const ch=await runtime.client?.channels.fetch(channelId).catch(()=>null);if(!ch?.isTextBased?.())throw new Error('Discord game-lobby не найден.');
+ const ch=await state.client?.channels.fetch(channelId).catch(()=>null);if(!ch?.isTextBased?.())throw new Error('Discord game-lobby не найден.');
  const card=await createGameLobbyCard({game,mapName,code:lobbyCode,creatorName,createdAt,closesAt,status:'open'});
  const msg=await ch.send({content:'@everyone',files:[new AttachmentBuilder(card,{name:`gs-game-lobby-${l.id}.png`})],components:rows(l),allowedMentions:{parse:['everyone']}});
  db.prepare('UPDATE game_lobbies SET discord_channel_id=?,discord_message_id=? WHERE id=?').run(channelId,msg.id,l.id);
  const tg=getSetting('telegram_gatherings_chat_id'),thread=getSetting('telegram_gatherings_thread_id');
 
- if(!runtime.api){
+ if(!state.api){
   throw new Error('Telegram API не подключён к GS Game Lobby.');
  }
 
@@ -64,7 +76,7 @@ async function publishGameLobby({creatorId,creatorName,game,mapName='',lobbyCode
   );
  }
 
- const tm=await runtime.api('sendMessage',{
+ const tm=await state.api('sendMessage',{
   chat_id:tg,
   ...(thread?{message_thread_id:Number(thread)}:{}),
   text:tgText(l),
@@ -130,16 +142,16 @@ async function closeGameLobby(id){
  if(!changed.changes)return false;
  const c=getLobby(l.id);
 
- if(runtime.client&&c.discord_channel_id&&c.discord_message_id){
-  const ch=await runtime.client.channels.fetch(c.discord_channel_id).catch(()=>null);
+ if(state.client&&c.discord_channel_id&&c.discord_message_id){
+  const ch=await state.client.channels.fetch(c.discord_channel_id).catch(()=>null);
   const m=ch?await ch.messages.fetch(c.discord_message_id).catch(()=>null):null;
   if(m){
    await m.delete().catch(e=>console.error('[GameLobby] Discord delete:',e.message));
   }
  }
 
- if(runtime.api&&c.telegram_chat_id&&c.telegram_message_id){
-  await runtime.api('deleteMessage',{
+ if(state.api&&c.telegram_chat_id&&c.telegram_message_id){
+  await state.api('deleteMessage',{
    chat_id:c.telegram_chat_id,
    message_id:c.telegram_message_id
   }).catch(e=>console.error('[GameLobby] Telegram delete:',e.message));

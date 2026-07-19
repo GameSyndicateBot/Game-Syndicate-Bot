@@ -25,7 +25,8 @@
     "check": "node --check index.js && node scripts/check-syntax.js",
     "release:audit": "node scripts/release-audit.js",
     "update:audit": "node scripts/update-safety-audit.js",
-    "preflight": "npm run check && npm run update:audit && npm run release:audit"
+    "preflight": "npm run check && npm run update:audit && npm run release:audit",
+    "startup:audit": "node scripts/startup-audit.js"
   },
   "engines": {
     "node": ">=22"
