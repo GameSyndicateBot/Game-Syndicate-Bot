@@ -11,6 +11,8 @@ const state = globalThis[STATE_KEY] || (globalThis[STATE_KEY] = {
  api: null,
  client: null,
  timer: null,
+ loggedDiscord: false,
+ loggedTelegram: false,
 });
 db.exec(`CREATE TABLE IF NOT EXISTS game_lobbies(id INTEGER PRIMARY KEY AUTOINCREMENT,creator_discord_id TEXT NOT NULL,creator_name TEXT NOT NULL,game TEXT NOT NULL,map_name TEXT NOT NULL,lobby_code TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',created_at INTEGER NOT NULL,closes_at INTEGER NOT NULL,closed_at INTEGER,discord_channel_id TEXT,discord_message_id TEXT,telegram_chat_id TEXT,telegram_thread_id INTEGER,telegram_message_id INTEGER);CREATE INDEX IF NOT EXISTS idx_game_lobbies_status_close ON game_lobbies(status,closes_at);`);
 
@@ -25,9 +27,6 @@ function rows(l){return l.status==='open'&&String(l.lobby_code||'').trim()?[new 
 function tgText(l){const open=l.status==='open';const lines=['<b>🎮 GS GAME LOBBY</b>','',`<b>Игра:</b> ${esc(l.game)}`,`<b>Карта / лобби:</b> ${esc(l.map_name)}`];if(String(l.lobby_code||'').trim())lines.push('<b>Код / пароль:</b>',`<code>${esc(l.lobby_code)}</code>`);lines.push('',`<b>Создал:</b> ${esc(l.creator_name)}`,'',open?'🟢 <b>ЛОББИ ОТКРЫТО</b>':'🔴 <b>ЛОББИ ЗАКРЫТО</b>',open?'Автоматически закроется через 4 часа.':'Время действия лобби истекло.');return lines.join('\n');}
 function tgKeyboard(l){return {inline_keyboard:[[{text:'❌ Закрыть лобби',callback_data:`game_lobby_close:${l.id}`}]]};}
 function setGameLobbyRuntime(api,client){
- const previousApi=state.api;
- const previousClient=state.client;
-
  if(api)state.api=api;
  if(client)state.client=client;
 
@@ -45,12 +44,15 @@ function setGameLobbyRuntime(api,client){
   console.log('✅ GS Game Lobby: автозакрытие через 4 часа включено');
  }
 
- // Не печатаем одинаковое состояние повторно. Это также делает по логам
- // заметным реальное подключение Discord/Telegram, а не повторный init.
- if(previousApi!==state.api||previousClient!==state.client){
+ // Логируем только реальное изменение доступных интеграций. Повторная
+ // передача новых ссылок на те же Discord/Telegram-клиенты не засоряет лог.
+ const hasDiscord=Boolean(state.client);
+ const hasTelegram=Boolean(state.api);
+ if(hasDiscord!==state.loggedDiscord||hasTelegram!==state.loggedTelegram){
+  state.loggedDiscord=hasDiscord;
+  state.loggedTelegram=hasTelegram;
   console.log(
-   `✅ GS Game Lobby runtime: Discord=${Boolean(state.client)}, `+
-   `Telegram=${Boolean(state.api)}`
+   `✅ GS Game Lobby runtime: Discord=${hasDiscord}, Telegram=${hasTelegram}`
   );
  }
 }

@@ -10,10 +10,24 @@ const {
     startVoiceTrackingTicker,
 } = require('../systems/voiceTrackingSystem');
 
+const READY_STATE_KEY = Symbol.for('game-syndicate.client-ready-state');
+const readyState = globalThis[READY_STATE_KEY] || (globalThis[READY_STATE_KEY] = {
+    running: false,
+    completed: false,
+});
+
 module.exports = {
     name: 'clientReady',
 
     async execute(client) {
+        if (readyState.running || readyState.completed) {
+            console.warn('⚠️ Повторная инициализация clientReady пропущена.');
+            return;
+        }
+
+        readyState.running = true;
+
+        try {
         // Старые активные сессии нельзя продолжать после перезапуска бота:
         // иначе в топ попадёт всё время, пока бот был выключен.
         db.prepare('DELETE FROM voice_sessions').run();
@@ -73,5 +87,9 @@ module.exports = {
         setGameLobbyRuntime(null, client);
 
         console.log('✅ Участники синхронизированы, голосовые сессии восстановлены');
+        readyState.completed = true;
+        } finally {
+            readyState.running = false;
+        }
     },
 };

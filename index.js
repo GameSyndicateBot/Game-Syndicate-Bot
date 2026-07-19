@@ -1,5 +1,10 @@
 require('dotenv').config();
 
+const RUNTIME_BUILD = 'GS BUILD 38 PRODUCTION STARTUP HARDENING';
+console.log(`🏷️ Runtime: ${RUNTIME_BUILD}`);
+console.log(`🧭 Runtime entry: ${__filename}`);
+console.log(`🗄️ Runtime database: ${process.env.DATABASE_PATH || '/app/shared/database.sqlite'}`);
+
 const { startTelegramBot } = require('./telegram/startTelegramBot');
 
 const fs = require('fs');
