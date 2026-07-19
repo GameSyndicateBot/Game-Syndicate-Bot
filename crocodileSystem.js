@@ -3,9 +3,11 @@ const { db, getSetting, setSetting } = require('./telegram/ecosystemDb');
 const ROUND_MS = 60 * 60 * 1000;
 const WINNER_PRIORITY_MS = 5 * 1000;
 const CLAIMED_HOST_START_MS = 2 * 60 * 1000;
+const LIKE_WINDOW_MS = 2 * 60 * 1000;
 const RECENT_WORD_LIMIT = 500;
 const timers = new Map();
 const claimedHostTimers = new Map();
+const likeTimers = new Map();
 let apiRef = null;
 
 // Большой словарь хранится отдельным JSON-файлом.
@@ -121,6 +123,7 @@ ensureColumn('crocodile_rounds', 'host_ready', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('crocodile_rounds', 'host_ready_expires_at', 'INTEGER');
 ensureColumn('crocodile_rounds', 'source_round_id', 'INTEGER');
 ensureColumn('crocodile_rounds', 'claim_message_id', 'INTEGER');
+ensureColumn('crocodile_rounds', 'like_expires_at', 'INTEGER');
 ensureColumn('crocodile_participants', 'attempts', 'INTEGER NOT NULL DEFAULT 0');
 
 function esc(value) {
@@ -220,8 +223,11 @@ function keyboard(round) {
     }
 
     const rows = [];
-    // Лайки остаются доступными и после того, как следующий ведущий уже выбран.
-    if (round.status === 'guessed' || round.status === 'claimed') {
+    // Лайк можно поставить только в течение двух минут после завершения объяснения.
+    if (
+        (round.status === 'guessed' || round.status === 'claimed')
+        && Number(round.like_expires_at || 0) > Date.now()
+    ) {
         const likes = likeCount(round.id);
         rows.push([{ text: `💜 Лайк ${likes}`, callback_data: `croc_like:${round.id}` }]);
     }
@@ -338,6 +344,29 @@ async function startRound(api, chatId, threadId, user, options = {}) {
     scheduleTimeout(round.id);
     if (claimedHost) scheduleClaimedHostTimeout(round.id);
     return db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(round.id);
+}
+
+function scheduleLikeExpiry(roundId) {
+    clearTimeout(likeTimers.get(roundId));
+    likeTimers.delete(roundId);
+
+    const round = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(roundId);
+    if (!round || !['guessed', 'claimed'].includes(round.status)) return;
+
+    const delay = Number(round.like_expires_at || 0) - Date.now();
+    if (delay <= 0) {
+        if (apiRef) setTimeout(() => updateClaimMarkup(apiRef, round).catch(() => null), 0);
+        return;
+    }
+
+    const timer = setTimeout(async () => {
+        likeTimers.delete(roundId);
+        if (!apiRef) return;
+        const fresh = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(roundId);
+        if (fresh) await updateClaimMarkup(apiRef, fresh).catch(() => null);
+    }, delay);
+    timer.unref?.();
+    likeTimers.set(roundId, timer);
 }
 
 async function updateClaimMarkup(api, sourceRound) {
@@ -700,12 +729,13 @@ async function handleMessage(api, message) {
     db.transaction(() => {
         db.prepare(`
             UPDATE crocodile_rounds
-            SET status='guessed',winner_id=?,winner_name=?,claim_open_at=?
+            SET status='guessed',winner_id=?,winner_name=?,claim_open_at=?,like_expires_at=?
             WHERE id=? AND status='active'
         `).run(
             String(message.from.id),
             nameOf(message.from),
             now + WINNER_PRIORITY_MS,
+            now + LIKE_WINDOW_MS,
             round.id,
         );
         db.prepare(`
@@ -753,13 +783,17 @@ async function handleMessage(api, message) {
     });
     db.prepare('UPDATE crocodile_rounds SET result_message_id=? WHERE id=?')
         .run(resultMessage.message_id, finished.id);
+    scheduleLikeExpiry(finished.id);
     await unlockAchievements(api, finished.winner_id, finished.chat_id, finished.thread_id);
     await unlockAchievements(api, finished.host_id, finished.chat_id, finished.thread_id);
     return true;
 }
 async function handleLike(api, callback, round) {
     const userId = String(callback.from.id);
-    if (!['guessed', 'claimed'].includes(round.status)) {
+    if (
+        !['guessed', 'claimed'].includes(round.status)
+        || Number(round.like_expires_at || 0) <= Date.now()
+    ) {
         await answer(api, callback.id, 'Лайк уже недоступен.');
         return true;
     }
@@ -915,8 +949,8 @@ async function handleCallback(api, callback) {
         }
         await answer(api, callback.id, 'Ты новый ведущий!');
 
-        // После выбора нового ведущего убираем только кнопку выбора ведущего.
-        // Лайки за завершённое объяснение остаются доступными без ограничения по времени.
+        // После выбора нового ведущего убираем кнопку выбора ведущего.
+        // Лайк остаётся доступен только до истечения двухминутного окна.
         const claimedRound = db.prepare('SELECT * FROM crocodile_rounds WHERE id=?').get(round.id);
         await updateClaimMarkup(api, claimedRound);
 
@@ -966,6 +1000,13 @@ function init(api) {
                 scheduleClaimedHostTimeout(round.id);
             }
         }
+    }
+
+    for (const round of db.prepare(`
+        SELECT id FROM crocodile_rounds
+        WHERE status IN ('guessed','claimed') AND like_expires_at IS NOT NULL
+    `).all()) {
+        scheduleLikeExpiry(round.id);
     }
 }
 
