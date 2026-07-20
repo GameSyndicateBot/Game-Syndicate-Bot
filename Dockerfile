@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim
 
 LABEL org.opencontainers.image.title="Game Syndicate Bot" \
       org.opencontainers.image.version="5.0.0" \
-      org.opencontainers.image.revision="stable-5-20260720"
+      org.opencontainers.image.revision="stable-6-20260720"
 
 ENV NODE_ENV=production
 ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/

@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE 5",
-  "version": "5.0.0",
-  "buildId": "stable-5-20260720",
+  "name": "GS CORE STABLE 6",
+  "version": "6.0.0",
+  "buildId": "stable-6-20260720",
   "startup": "bothost-cmd-v1"
 }

@@ -555,10 +555,15 @@ async function handleCommand(api, message, command) {
                 ].join('\n'));
             }
         } catch (error) {
-            console.error('[Telegram /game]:', error);
+            const messageText = String(error?.message || error);
+            if (error?.code === 'DISCORD_NOT_READY') {
+                console.warn('[Telegram /game] Discord ещё не готов; команда отклонена без публикации.');
+            } else {
+                console.error(`[Telegram /game] ${messageText}`);
+            }
             await sendMessage(api, chat.id, [
                 '❌ Не удалось опубликовать лобби.',
-                `<code>${String(error.message || error)}</code>`,
+                `<code>${messageText}</code>`,
             ].join('\n'), {
                 parse_mode: 'HTML',
                 ...(message.message_thread_id

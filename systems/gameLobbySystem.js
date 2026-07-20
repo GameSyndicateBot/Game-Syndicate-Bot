@@ -22,6 +22,21 @@ if(!gameLobbyColumns.some(column=>column.name==='telegram_pin_service_message_id
 }
 
 const getLobby=id=>db.prepare('SELECT * FROM game_lobbies WHERE id=?').get(Number(id));
+
+function isDiscordReady(){
+ return Boolean(state.client?.isReady?.() && state.client?.user);
+}
+
+async function waitForDiscordReady(timeoutMs=15000){
+ if(isDiscordReady())return true;
+
+ const deadline=Date.now()+Math.max(0,Number(timeoutMs)||0);
+ while(Date.now()<deadline){
+  await new Promise(resolve=>setTimeout(resolve,250));
+  if(isDiscordReady())return true;
+ }
+ return false;
+}
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 function rows(l){return l.status==='open'&&String(l.lobby_code||'').trim()?[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`game_copy:${l.id}`).setLabel('Скопировать код / пароль').setEmoji('📋').setStyle(ButtonStyle.Primary))]:[];}
 function tgText(l){const open=l.status==='open';const lines=['<b>🎮 GS GAME LOBBY</b>','',`<b>Игра:</b> ${esc(l.game)}`,`<b>Карта / лобби:</b> ${esc(l.map_name)}`];if(String(l.lobby_code||'').trim())lines.push('<b>Код / пароль:</b>',`<code>${esc(l.lobby_code)}</code>`);lines.push('',`<b>Создал:</b> ${esc(l.creator_name)}`,'',open?'🟢 <b>ЛОББИ ОТКРЫТО</b>':'🔴 <b>ЛОББИ ЗАКРЫТО</b>',open?'Автоматически закроется через 4 часа.':'Время действия лобби истекло.');return lines.join('\n');}
@@ -58,11 +73,24 @@ function setGameLobbyRuntime(api,client){
 }
 
 async function publishGameLobby({creatorId,creatorName,game,mapName='',lobbyCode=''}){
+ const discordReady=await waitForDiscordReady(15000);
+ if(!discordReady){
+  const error=new Error('Discord ещё запускается. Повтори /game через несколько секунд.');
+  error.code='DISCORD_NOT_READY';
+  throw error;
+ }
+
+ const channelId=getSetting('discord_gatherings_channel_id');
+ if(!channelId){
+  throw new Error('Discord game-lobby не настроен. Выполни /setgatherchannel в нужном канале.');
+ }
+
+ const ch=await state.client.channels.fetch(channelId).catch(()=>null);
+ if(!ch?.isTextBased?.())throw new Error('Discord game-lobby не найден.');
+
  const createdAt=Date.now(),closesAt=createdAt+AUTO_CLOSE_MS;
  const info=db.prepare('INSERT INTO game_lobbies(creator_discord_id,creator_name,game,map_name,lobby_code,created_at,closes_at) VALUES(?,?,?,?,?,?,?)').run(String(creatorId),creatorName,game,mapName,lobbyCode,createdAt,closesAt);
  let l=getLobby(info.lastInsertRowid);
- const channelId=getSetting('discord_gatherings_channel_id');if(!channelId)throw new Error('Discord game-lobby не настроен. Выполни /setgatherchannel в нужном канале.');
- const ch=await state.client?.channels.fetch(channelId).catch(()=>null);if(!ch?.isTextBased?.())throw new Error('Discord game-lobby не найден.');
  const card=await createGameLobbyCard({game,mapName,code:lobbyCode,creatorName,createdAt,closesAt,status:'open'});
  const msg=await ch.send({content:'@everyone',files:[new AttachmentBuilder(card,{name:`gs-game-lobby-${l.id}.png`})],components:rows(l),allowedMentions:{parse:['everyone']}});
  db.prepare('UPDATE game_lobbies SET discord_channel_id=?,discord_message_id=? WHERE id=?').run(channelId,msg.id,l.id);
