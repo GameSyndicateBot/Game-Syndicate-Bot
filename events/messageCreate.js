@@ -34,10 +34,7 @@ async function sendLevelUpMessage(message, player, level) {
         WHERE user_id = ? AND level = ?
     `).get(message.author.id, level);
 
-    if (exists) {
-        console.log(`ℹ️ Повторный level up пропущен: ${message.author.id} lvl ${level}`);
-        return;
-    }
+    if (exists) return;
 
     db.prepare(`
         INSERT INTO level_up_notifications(user_id, level, created_at)

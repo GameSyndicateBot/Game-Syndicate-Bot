@@ -1,5 +1,6 @@
 // PATCHED: achievement notification duplicate protection prepared
 const { AttachmentBuilder } = require('discord.js');
+const { getGuildSetting } = require('./guildSettings');
 const achievements = require('../data/achievements.json');
 const {
     calculateAchievementDust,
@@ -185,11 +186,15 @@ async function sendAchievementMessage(message, achievement, dustReward = 0) {
         name: 'achievement.png',
     });
 
-    const achievementChannel = await message.guild.channels.fetch(
+    const channelId = getGuildSetting(
+        message.guild.id,
+        'achievements_channel_id',
         process.env.ACHIEVEMENTS_CHANNEL_ID
     );
+    if (!channelId) return;
 
-    if (!achievementChannel) return;
+    const achievementChannel = await message.guild.channels.fetch(channelId).catch(() => null);
+    if (!achievementChannel || typeof achievementChannel.send !== 'function') return;
 
     await achievementChannel.send({
         content:

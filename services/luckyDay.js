@@ -2,6 +2,7 @@
 
 const { AttachmentBuilder, PermissionFlagsBits } = require('discord.js');
 const { db, addCardDust, getCardDust } = require('../database/db');
+const { getGuildSetting, setGuildSetting } = require('../utils/guildSettings');
 const { openRandomCard, PACK_TYPES } = require('../utils/cardSystem');
 const { getServerDisplayName } = require('../utils/displayName');
 const { createLuckyDayCard } = require('../images/lucky/createLuckyDayCard');
@@ -90,6 +91,9 @@ function weightedChoice(items) {
 }
 
 function getConfiguredChannelId(guildId) {
+    const guildSetting = getGuildSetting(guildId, 'lucky_day_channel_id');
+    if (guildSetting) return guildSetting;
+
     const stored = db.prepare('SELECT channel_id FROM lucky_day_settings WHERE guild_id = ? AND enabled = 1').get(guildId);
     return stored?.channel_id || process.env.LUCKY_DAY_CHANNEL_ID || null;
 }
@@ -104,7 +108,9 @@ function setConfiguredChannel(guildId, channelId) {
             enabled = 1,
             updated_at = CURRENT_TIMESTAMP
     `).run(guildId, channelId);
+    setGuildSetting(guildId, 'lucky_day_channel_id', channelId);
 }
+
 
 function getPreviousWinnerId(guildId, beforeDate) {
     const row = db.prepare(`
@@ -192,6 +198,20 @@ async function publishDraw(guild, draw) {
 
 async function runLuckyDayForGuild(guild, options = {}) {
     ensureLuckyDayTables();
+
+    const configuredChannelId = getConfiguredChannelId(guild.id);
+    const configuredChannel = configuredChannelId
+        ? await guild.channels.fetch(configuredChannelId).catch(() => null)
+        : null;
+
+    if (!configuredChannel?.isTextBased?.()) {
+        return {
+            skipped: true,
+            reason: configuredChannelId ? 'invalid_channel' : 'channel_not_configured',
+            draw: null,
+        };
+    }
+
     const drawDate = options.drawDate || moscowDateKey();
     const sourceDate = options.sourceDate || previousDateKey(drawDate);
 
@@ -344,9 +364,14 @@ function startLuckyDayScheduler(client) {
         running = true;
         try {
             for (const guild of client.guilds.cache.values()) {
-                await runLuckyDayForGuild(guild).catch(error => {
+                const result = await runLuckyDayForGuild(guild).catch(error => {
                     console.error(`[Lucky Day] Ошибка розыгрыша для ${guild.name}:`, error);
+                    return null;
                 });
+
+                if (result?.skipped && ['channel_not_configured', 'invalid_channel'].includes(result.reason)) {
+                    continue;
+                }
             }
         } finally {
             running = false;

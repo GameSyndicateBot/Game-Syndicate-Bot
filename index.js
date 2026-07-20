@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const RUNTIME_BUILD = 'GS BUILD 38 PRODUCTION STARTUP HARDENING';
+const RUNTIME_BUILD = 'GS CORE STABLE 2';
 console.log(`🏷️ Runtime: ${RUNTIME_BUILD}`);
 console.log(`🧭 Runtime entry: ${__filename}`);
 console.log(`🗄️ Runtime database: ${process.env.DATABASE_PATH || '/app/shared/database.sqlite'}`);

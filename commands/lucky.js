@@ -59,7 +59,15 @@ module.exports = {
 
         const notes = [];
         if (selectedChannel) notes.push(`Канал Lucky Day настроен: ${selectedChannel}.`);
-        if (manualResult?.skipped) notes.push('Сегодняшний розыгрыш уже проводился — повторная награда не выдана.');
+        if (manualResult?.skipped && manualResult.reason === 'already_run') {
+            notes.push('Сегодняшний розыгрыш уже проводился — повторная награда не выдана.');
+        }
+        if (manualResult?.skipped && manualResult.reason === 'channel_not_configured') {
+            notes.push('Розыгрыш не запущен: сначала настройте канал Lucky Day.');
+        }
+        if (manualResult?.skipped && manualResult.reason === 'invalid_channel') {
+            notes.push('Розыгрыш не запущен: сохранённый канал Lucky Day недоступен боту.');
+        }
         if (manualResult && !manualResult.skipped) notes.push('Сегодняшний розыгрыш успешно проведён.');
         if (!stats.channelId) notes.push('Администратору нужно один раз указать канал: `/lucky channel:#канал`.');
 

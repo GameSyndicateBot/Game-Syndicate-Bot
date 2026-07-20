@@ -1,3 +1,4 @@
+const { getGuildSetting } = require('./guildSettings');
 const {
     AttachmentBuilder,
 } = require('discord.js');
@@ -96,7 +97,11 @@ function getCategoryProgress(userId, category) {
 async function sendCategoryRoleMessage(member, role, category, progress, dustReward = 0) {
     if (Number(dustReward) <= 0) return;
 
-    const channelId = process.env.ACHIEVEMENTS_CHANNEL_ID;
+    const channelId = getGuildSetting(
+        member.guild.id,
+        'achievements_channel_id',
+        process.env.ACHIEVEMENTS_CHANNEL_ID
+    );
     if (!channelId) return;
 
     const channel = await member.guild.channels.fetch(channelId).catch(() => null);
