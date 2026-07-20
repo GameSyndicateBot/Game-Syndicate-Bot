@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const RUNTIME_BUILD = 'GS CORE STABLE 2';
+const RUNTIME_BUILD = 'GS CORE STABLE 3';
 console.log(`🏷️ Runtime: ${RUNTIME_BUILD}`);
 console.log(`🧭 Runtime entry: ${__filename}`);
 console.log(`🗄️ Runtime database: ${process.env.DATABASE_PATH || '/app/shared/database.sqlite'}`);
@@ -16,6 +16,8 @@ const {
     Partials,
     MessageFlags
 } = require('discord.js');
+
+const { closeDatabase } = require('./database/db');
 
 const client = new Client({
     intents: [
@@ -214,5 +216,29 @@ for (const file of eventFiles) {
 startTelegramBot(client).catch(error => {
     console.error('❌ Ошибка запуска Telegram-бота:', error);
 });
+
+let shuttingDown = false;
+
+function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`🛑 Получен ${signal}. Завершаю работу и фиксирую SQLite WAL...`);
+
+    try {
+        client.destroy();
+    } catch (_) {}
+
+    try {
+        closeDatabase();
+        console.log('✅ SQLite WAL зафиксирован, база закрыта.');
+    } catch (error) {
+        console.error('❌ Ошибка закрытия SQLite:', error);
+    }
+
+    process.exit(0);
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
 
 client.login(process.env.TOKEN);

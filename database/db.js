@@ -20,31 +20,41 @@ if (configuredDatabasePath !== bundledDatabasePath && !fs.existsSync(configuredD
 
 const db = new Database(configuredDatabasePath);
 
-// Bothost может жёстко перезапускать контейнер и не сохранять WAL-файл.
-// Поэтому используем обычный журнал DELETE: изменения сразу фиксируются
-// в основном database.sqlite, который лежит в /app/shared.
+// WAL уменьшает взаимные блокировки между параллельными обработчиками Discord,
+// Telegram, планировщиками и системой резервного копирования. Бэкапы создаются
+// через better-sqlite3 backup(), поэтому получают согласованный снимок базы.
 try {
-    const currentJournalMode = String(
-        db.pragma('journal_mode', { simple: true }) ?? ''
-    ).toLowerCase();
-
-    if (currentJournalMode === 'wal') {
-        try {
-            db.pragma('wal_checkpoint(TRUNCATE)');
-        } catch (error) {
-            console.warn('⚠️ Не удалось выполнить WAL checkpoint:', error.message);
-        }
-    }
-
-    db.pragma('journal_mode = DELETE');
+    db.pragma('journal_mode = WAL');
     db.pragma('synchronous = FULL');
-    db.pragma('busy_timeout = 5000');
+    db.pragma('busy_timeout = 10000');
+    db.pragma('wal_autocheckpoint = 1000');
 } catch (error) {
     console.error('❌ Ошибка настройки SQLite:', error);
     throw error;
 }
 
 const databasePath = configuredDatabasePath;
+
+let databaseClosed = false;
+
+function checkpointDatabase(mode = 'PASSIVE') {
+    if (databaseClosed || !db.open) return;
+    const normalizedMode = String(mode).toUpperCase();
+    const allowedModes = new Set(['PASSIVE', 'FULL', 'RESTART', 'TRUNCATE']);
+    const checkpointMode = allowedModes.has(normalizedMode) ? normalizedMode : 'PASSIVE';
+    db.pragma(`wal_checkpoint(${checkpointMode})`);
+}
+
+function closeDatabase() {
+    if (databaseClosed || !db.open) return;
+    try {
+        checkpointDatabase('TRUNCATE');
+    } catch (error) {
+        console.warn('⚠️ SQLite checkpoint при остановке не выполнен:', error.message);
+    }
+    db.close();
+    databaseClosed = true;
+}
 
 console.log('📁 Database path:', configuredDatabasePath);
 console.log('🧾 SQLite journal mode:', db.pragma('journal_mode', { simple: true }));
@@ -734,4 +744,6 @@ module.exports = {
     getUserStreak,
     getUserStreaks,
     databasePath,
+    checkpointDatabase,
+    closeDatabase,
 };
