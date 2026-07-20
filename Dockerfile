@@ -1,8 +1,8 @@
 FROM node:22-bookworm-slim
 
 LABEL org.opencontainers.image.title="Game Syndicate Bot" \
-      org.opencontainers.image.version="4.0.0" \
-      org.opencontainers.image.revision="stable-4-20260720"
+      org.opencontainers.image.version="4.0.1" \
+      org.opencontainers.image.revision="stable-4-fix-20260720"
 
 ENV NODE_ENV=production
 ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
@@ -49,4 +49,4 @@ RUN mkdir -p /opt/gs-data \
     && test -f /opt/gs-data/cards.json \
     && chmod -R 755 /opt/gs-data
 
-ENTRYPOINT ["/app/scripts/container-entrypoint.sh"]
+CMD ["sh", "/app/scripts/container-entrypoint.sh"]

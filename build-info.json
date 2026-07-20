@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE 4",
-  "version": "4.0.0",
-  "buildId": "stable-4-20260720",
-  "startup": "container-entrypoint-v1"
+  "name": "GS CORE STABLE 4 FIX",
+  "version": "4.0.1",
+  "buildId": "stable-4-fix-20260720",
+  "startup": "bothost-cmd-v1"
 }
