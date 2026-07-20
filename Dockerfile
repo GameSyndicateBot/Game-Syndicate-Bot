@@ -35,9 +35,10 @@ COPY . .
 # Жёсткая проверка, что в Docker-образ попала именно новая простая
 # система бэкапов. Если Bothost соберёт старый файл, сборка остановится.
 RUN test -f /app/services/automaticBackups.js \
-    && grep -q "Backup Service V5: ONLINE" /app/services/automaticBackups.js \
+    && grep -q "SCHEDULED_BACKUP_SYSTEM_V5 loaded" /app/services/automaticBackups.js \
     && ! grep -q "installCriticalBackupTracking" /app/services/automaticBackups.js \
-    && echo "✅ Backup Service V5 verified"
+    && echo "✅ Verified SCHEDULED_BACKUP_SYSTEM_V5 during build" \
+    && sha256sum /app/services/automaticBackups.js
 
 RUN mkdir -p /opt/gs-data \
     && cp /app/data/achievements.json /opt/gs-data/achievements.json \
@@ -46,4 +47,4 @@ RUN mkdir -p /opt/gs-data \
     && test -f /opt/gs-data/cards.json \
     && chmod -R 755 /opt/gs-data
 
-CMD ["sh", "-c", "rm -f /app/commands/linktelegram.js /app/events/interactionCreate.js /app/startTelegramBot.js /app/crossGatherings.js /app/systems/riddleSystem.js /app/images/createRiddleCard.js && echo '🏷️ GS BUILD 39 COMMERCIAL STABILITY' && mkdir -p /app/data /app/shared/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/shared /app/data && node scripts/storageDiagnostics.js && node scripts/restoreDatabaseFromDiscord.js && exec node index.js"]
+CMD ["sh", "-c", "rm -f /app/commands/linktelegram.js /app/events/interactionCreate.js /app/startTelegramBot.js /app/crossGatherings.js /app/systems/riddleSystem.js /app/images/createRiddleCard.js /app/images/riddle/createRiddleCard.js && echo '🧹 Устаревшие файлы очищены' && echo '🏷️ GS BUILD 38 PRODUCTION STARTUP HARDENING' && mkdir -p /app/data /app/shared/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/shared /app/data && echo '✅ Data-файлы восстановлены' && echo \"📁 DATABASE_PATH=$DATABASE_PATH\" && echo \"📁 BACKUP_DIR=$BACKUP_DIR\" && echo '=== BACKUP SERVICE V5 CHECK ===' && grep 'SCHEDULED_BACKUP_SYSTEM_V5 loaded' /app/services/automaticBackups.js && ! grep -q 'installCriticalBackupTracking' /app/services/automaticBackups.js && sha256sum /app/services/automaticBackups.js && ls -la /app/shared && node scripts/storageDiagnostics.js && node scripts/restoreDatabaseFromDiscord.js && exec node index.js"]

@@ -4,36 +4,6 @@ const path = require('path');
 const API_BASE = 'https://discord.com/api/v10';
 const MIN_DATABASE_SIZE = 4096;
 const SQLITE_HEADER = Buffer.from('SQLite format 3\0', 'binary');
-const STATUS_FILENAME = '.gs-storage-status.json';
-
-
-function writeStorageStatus(databasePath, patch) {
-    const statusPath = path.join(path.dirname(databasePath), STATUS_FILENAME);
-    let current = {};
-
-    try {
-        current = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
-    } catch {
-        current = {};
-    }
-
-    fs.mkdirSync(path.dirname(statusPath), { recursive: true });
-    fs.writeFileSync(
-        statusPath,
-        `${JSON.stringify({ ...current, ...patch, updatedAt: new Date().toISOString() }, null, 2)}\n`,
-        { mode: 0o666 }
-    );
-}
-
-function removeSqliteSidecars(databasePath) {
-    for (const suffix of ['-wal', '-shm']) {
-        try {
-            fs.rmSync(`${databasePath}${suffix}`, { force: true });
-        } catch (error) {
-            console.warn(`⚠️ Не удалось удалить SQLite sidecar ${suffix}:`, error.message);
-        }
-    }
-}
 
 function getDatabasePath() {
     return path.resolve(
@@ -126,7 +96,6 @@ async function downloadDatabase(attachment, destination) {
     }
 
     fs.mkdirSync(path.dirname(destination), { recursive: true });
-    removeSqliteSidecars(destination);
 
     const temporaryPath = `${destination}.restore-${process.pid}.tmp`;
     fs.writeFileSync(temporaryPath, buffer, { mode: 0o666 });
@@ -140,8 +109,7 @@ async function main() {
 
     if (isValidSqliteFile(databasePath)) {
         const size = fs.statSync(databasePath).size;
-        writeStorageStatus(databasePath, { mode: 'LOCAL', databasePresent: true, databaseSize: size });
-        console.log(`✅ Storage mode: LOCAL — база готова (${size} bytes)`);
+        console.log(`✅ Постоянная база уже существует: ${databasePath} (${size} bytes)`);
         return;
     }
 
@@ -149,8 +117,9 @@ async function main() {
     const channelId = String(process.env.BACKUP_CHANNEL_ID || '').trim();
 
     if (!token || !channelId) {
-        writeStorageStatus(databasePath, { mode: 'FRESH_INSTALL', databasePresent: false, recoverySkipped: true });
-        console.log('ℹ️ Storage mode: FRESH_INSTALL — облачная копия не настроена, будет создана новая база.');
+        console.warn(
+            '⚠️ Восстановление из Discord пропущено: нет TOKEN или BACKUP_CHANNEL_ID.'
+        );
         return;
     }
 
@@ -158,40 +127,33 @@ async function main() {
     if (databaseExists) {
         const stat = fs.statSync(databasePath);
         const quarantinePath = `${databasePath}.invalid-${Date.now()}`;
-        removeSqliteSidecars(databasePath);
         fs.renameSync(databasePath, quarantinePath);
         console.warn(
             `⚠️ Постоянная база найдена, но не прошла SQLite-проверку ` +
             `(${stat.size} bytes). Файл сохранён: ${quarantinePath}`
         );
+    } else {
+        console.log(`ℹ️ Файл постоянной базы не найден: ${databasePath}`);
     }
 
-    console.log('☁️ Storage mode: RECOVERY — поиск последней резервной копии Discord...');
+    console.log('🔎 Ищу последний Discord-бэкап для аварийного восстановления...');
 
     try {
         const messages = await fetchMessages(channelId, token);
         const attachment = findNewestDatabaseAttachment(messages);
 
         if (!attachment) {
-            writeStorageStatus(databasePath, { mode: 'FRESH_INSTALL', databasePresent: false, backupFound: false });
-            console.log('ℹ️ Storage mode: FRESH_INSTALL — резервных копий нет, будет создана новая база.');
+            console.warn('⚠️ В канале бэкапов не найдено ни одного файла SQLite.');
             return;
         }
 
         const size = await downloadDatabase(attachment, databasePath);
-        writeStorageStatus(databasePath, {
-            mode: 'RECOVERY',
-            databasePresent: true,
-            databaseSize: size,
-            source: 'Discord Backup',
-            sourceFile: attachment.filename,
-            sourceMessageId: attachment.messageId,
-        });
-        console.log(`✅ Storage mode: RECOVERY — база восстановлена (${size} bytes)`);
-        console.log(`📦 Источник: ${attachment.filename}`);
+        console.log(
+            `✅ База восстановлена из Discord: ${attachment.filename} ` +
+            `(${size} bytes, message ${attachment.messageId})`
+        );
     } catch (error) {
-        writeStorageStatus(databasePath, { mode: 'FRESH_INSTALL', databasePresent: false, recoveryError: error.message });
-        console.error('❌ Облачное восстановление не выполнено:', error.message);
+        console.error('❌ Не удалось восстановить базу из Discord:', error.message);
         // Не завершаем контейнер: db.js сможет использовать bundled-базу как аварийный fallback.
     }
 }

@@ -8,7 +8,24 @@ const { getServerDisplayName } = require('../utils/displayName');
 const { checkAchievements } = require('../utils/checkAchievements');
 const { optionalDiscordId } = require('../utils/env');
 
-const CHANNEL_ID = optionalDiscordId('QUICK_EVENT_CHANNEL_ID', '1526504061870932049');
+let CHANNEL_ID = optionalDiscordId('QUICK_EVENT_CHANNEL_ID', '1526504061870932049');
+
+function setConfiguredChannel(guildId, channelId) {
+  if (!channelId) return CHANNEL_ID;
+  CHANNEL_ID = String(channelId);
+  return CHANNEL_ID;
+}
+
+function loadConfiguredChannel(client) {
+  try {
+    const { getGuildSetting } = require('../utils/guildSettings');
+    for (const guild of client?.guilds?.cache?.values?.() || []) {
+      const saved = getGuildSetting(guild.id, 'quick_event_channel_id');
+      if (saved) return setConfiguredChannel(guild.id, saved);
+    }
+  } catch (_) {}
+  return CHANNEL_ID;
+}
 const MIN_INTERVAL_MS = 40 * 60 * 1000;
 const MAX_INTERVAL_MS = 70 * 60 * 1000;
 const BONUS_INTERVAL_MS = 20 * 60 * 1000;
@@ -1665,6 +1682,7 @@ function startQuickEventScheduler(client) {
   initTables();
 
   quickEventClient = client;
+  loadConfiguredChannel(client);
 
   const last = db.prepare(`
     SELECT created_at
@@ -1730,4 +1748,5 @@ module.exports = {
   forceCloseQuickEvent,
   getQuickEventScheduleStatus,
   postQuickEvent,
+  setConfiguredChannel,
 };

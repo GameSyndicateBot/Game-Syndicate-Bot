@@ -21,12 +21,12 @@ function isOwner(interaction, owner) { return interaction.user.id === owner; }
 function mainEmbed(interaction) {
   const configured = Object.keys(CHANNELS).filter(k => getGuildSetting(interaction.guildId, k)).length;
   return new EmbedBuilder().setColor(0x8B5CF6).setTitle('🏴 GAME SYNDICATE • CONTROL PANEL')
-    .setDescription('Настройка коммерческой версии без редактирования кода.')
+    .setDescription('Настройка действующего сервера без редактирования кода и без сброса данных.')
     .addFields(
       { name: '📡 Каналы', value: `${configured}/${Object.keys(CHANNELS).length} настроено`, inline: true },
       { name: '🧰 Управление', value: 'Доступно администраторам', inline: true },
       { name: '🚀 Быстрый старт', value: 'Откройте «Каналы» и назначьте основные точки публикации.', inline: false },
-    ).setFooter({ text: 'Game Syndicate • Commercial Ready' });
+    ).setFooter({ text: 'Game Syndicate • Server Control' });
 }
 
 function mainRows(owner) {
@@ -90,6 +90,9 @@ module.exports = {
       }
       if(extra==='lucky_day_channel_id') {
         try { require('../services/luckyDay').setConfiguredChannel(interaction.guildId, channelId); } catch(_) {}
+      }
+      if(extra==='quick_event_channel_id') {
+        try { require('../systems/quickEventSystem').setConfiguredChannel(interaction.guildId, channelId); } catch(_) {}
       }
       return interaction.update({embeds:[channelsEmbed(interaction)],components:channelRows(owner)});
     }

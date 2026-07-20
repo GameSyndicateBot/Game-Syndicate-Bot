@@ -11,7 +11,7 @@ let intervalHandle = null;
 let backupInProgress = false;
 let activeClient = null;
 
-console.log('🛡️ Backup Service V5: ONLINE');
+console.log('✅ SCHEDULED_BACKUP_SYSTEM_V5 loaded');
 
 function readPositiveInteger(name, fallback, minimum = 1) {
     const value = Number(process.env[name]);
