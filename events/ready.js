@@ -70,10 +70,12 @@ module.exports = {
                 player = result.player;
                 updatePlayer(player);
 
-                console.log(
-                    `[Join date restore] ${member.user.tag} (${userId}): ` +
-                    `${result.unlockedAchievements.length} достижений пересчитано.`
-                );
+                if (result.unlockedAchievements.length > 0) {
+                    console.log(
+                        `[Join date restore] ${member.user.tag} (${userId}): ` +
+                        `${result.unlockedAchievements.length} достижений пересчитано.`
+                    );
+                }
                 break;
             }
         }

@@ -11,3 +11,12 @@ backups
 *.part-*
 .DS_Store
 Thumbs.db
+
+# Runtime data must live only in persistent storage
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.bak
+
+# Historical development notes are not required at runtime
+docs/history

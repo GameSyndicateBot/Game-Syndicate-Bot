@@ -1,0 +1,12 @@
+GAME SYNDICATE BOT — PATCH 30
+
+Добавлено:
+- отдельная регистрация slash-команд для DEV и PROD серверов;
+- npm run deploy:dev;
+- npm run deploy:prod;
+- npm run deploy:all;
+- npm run deploy:global;
+- регистрация на произвольном сервере через node deploy-commands.js <GUILD_ID>;
+- PROD_GUILD_ID и DEV_GUILD_ID в .env.example;
+- обратная совместимость со старой переменной GUILD_ID;
+- понятные ошибки при отсутствующих TOKEN, CLIENT_ID или ID сервера.

@@ -3,11 +3,14 @@ set -eu
 
 cd /app
 
+# Старые update-архивы могли оставить отключённые файлы.
+# Удаляем их только из слоя приложения; постоянное хранилище /app/shared не затрагивается.
 rm -f \
   /app/commands/linktelegram.js \
   /app/events/interactionCreate.js \
   /app/startTelegramBot.js \
   /app/crossGatherings.js \
+  /app/ecosystemDb.js \
   /app/systems/riddleSystem.js \
   /app/images/createRiddleCard.js \
   /app/images/riddle/createRiddleCard.js

@@ -1,0 +1,7 @@
+Добавлены Treasure Chest, Lucky Roll и World Boss в существующий Quick Event.
+Старые мини-игры и Golden Event сохранены.
+Награды новых событий: только GS Dust и паки.
+Исправлена подпись карточки достижения.
+Сохранён фикс повторных Level Up.
+Новые slash-команды не добавлены.
+Commit: feat: complete new quick events and fix achievement layout
