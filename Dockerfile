@@ -1,12 +1,15 @@
 FROM node:22-bookworm-slim
 
+LABEL org.opencontainers.image.title="Game Syndicate Bot" \
+      org.opencontainers.image.version="4.0.0" \
+      org.opencontainers.image.revision="stable-4-20260720"
+
 ENV NODE_ENV=production
 ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
 ENV NPM_CONFIG_FETCH_RETRIES=5
 ENV NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000
 ENV NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
 ENV NPM_CONFIG_FETCH_TIMEOUT=300000
-
 ENV DATABASE_PATH=/app/shared/database.sqlite
 ENV BACKUP_DIR=/app/shared/backups
 
@@ -31,10 +34,9 @@ COPY package.json package-lock.json .npmrc ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY . .
-
-# Жёсткая проверка, что в Docker-образ попала именно новая простая
-# система бэкапов. Если Bothost соберёт старый файл, сборка остановится.
-RUN test -f /app/services/automaticBackups.js \
+RUN chmod +x /app/scripts/container-entrypoint.sh \
+    && node /app/scripts/verify-build.js \
+    && test -f /app/services/automaticBackups.js \
     && grep -q "SCHEDULED_BACKUP_SYSTEM_V5 loaded" /app/services/automaticBackups.js \
     && ! grep -q "installCriticalBackupTracking" /app/services/automaticBackups.js \
     && echo "✅ Verified SCHEDULED_BACKUP_SYSTEM_V5 during build" \
@@ -47,4 +49,4 @@ RUN mkdir -p /opt/gs-data \
     && test -f /opt/gs-data/cards.json \
     && chmod -R 755 /opt/gs-data
 
-CMD ["sh", "-c", "rm -f /app/commands/linktelegram.js /app/events/interactionCreate.js /app/startTelegramBot.js /app/crossGatherings.js /app/systems/riddleSystem.js /app/images/createRiddleCard.js /app/images/riddle/createRiddleCard.js && echo '🧹 Устаревшие файлы очищены' && echo '🏷️ GS CORE STABLE 3' && mkdir -p /app/data /app/shared/backups && cp -f /opt/gs-data/achievements.json /app/data/achievements.json && cp -f /opt/gs-data/cards.json /app/data/cards.json && chmod -R 777 /app/shared /app/data && echo '✅ Data-файлы восстановлены' && echo \"📁 DATABASE_PATH=$DATABASE_PATH\" && echo \"📁 BACKUP_DIR=$BACKUP_DIR\" && echo '=== BACKUP SERVICE V5 CHECK ===' && grep 'SCHEDULED_BACKUP_SYSTEM_V5 loaded' /app/services/automaticBackups.js && ! grep -q 'installCriticalBackupTracking' /app/services/automaticBackups.js && sha256sum /app/services/automaticBackups.js && ls -la /app/shared && node scripts/storageDiagnostics.js && node scripts/restoreDatabaseFromDiscord.js && exec node index.js"]
+ENTRYPOINT ["/app/scripts/container-entrypoint.sh"]

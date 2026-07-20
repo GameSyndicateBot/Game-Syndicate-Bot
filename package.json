@@ -1,6 +1,6 @@
 {
   "name": "gs-core",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
   "description": "Game Syndicate Discord bot and card tools",
   "main": "index.js",
@@ -26,7 +26,8 @@
     "release:audit": "node scripts/release-audit.js",
     "update:audit": "node scripts/update-safety-audit.js",
     "preflight": "npm run check && npm run update:audit && npm run release:audit",
-    "startup:audit": "node scripts/startup-audit.js"
+    "startup:audit": "node scripts/startup-audit.js",
+    "build:verify": "node scripts/verify-build.js"
   },
   "engines": {
     "node": ">=22"
