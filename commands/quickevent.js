@@ -55,7 +55,7 @@ module.exports = {
             const result = await startRegistration(interaction.client, { manual: true });
             return interaction.editReply({
                 content: result.ok
-                    ? `✅ Регистрация мирового босса запущена в канале <#1526504061870932049>.`
+                    ? `✅ Регистрация мирового босса запущена в канале <#1529226831797158130>.`
                     : result.reason === 'active'
                         ? '❌ Мировой босс уже активен или идёт регистрация.'
                         : '❌ Не удалось запустить мирового босса: канал не найден.',

@@ -5,7 +5,8 @@ const {db,getOrCreatePlayer,addCardDust}=require('../../database/db');
 const {addPack}=require('../../utils/packInventory');
 const {CLASSES,MINIONS,BOSSES}=require('./config');
 
-const CHANNEL_ID=process.env.QUICK_EVENT_CHANNEL_ID||'1526504061870932049';
+const CHANNEL_ID=process.env.WORLD_BOSS_CHANNEL_ID||'1529226831797158130';
+const AUTO_SCHEDULE_ENABLED=String(process.env.WORLD_BOSS_AUTO_SCHEDULE||'false').toLowerCase()==='true';
 const REGISTRATION_MS=10*60*1000;
 const TURN_MS=60*1000;
 const SLOTS=[9,15,21];
@@ -158,5 +159,5 @@ async function handle(interaction){if(!interaction.isButton()||!interaction.cust
  const result=await perform(id,interaction.user.id,act);const msg=result?.ok?`✅ ${result.text}`:result?.reason==='turn'?'⏳ Сейчас не твой ход.':result?.reason==='energy'?'🔋 Недостаточно энергии.':'Событие уже завершено.';await interaction.reply({content:msg,flags:MessageFlags.Ephemeral});return true}
 function nextSlotDelay(){const now=Date.now();for(let d=0;d<2;d++)for(const h of SLOTS){const base=new Date(now+d*86400000);const parts=moscowParts(base);const utc=Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day),h-3,0,0);if(utc>now+1000)return utc-now}return 6*3600000}
 function schedulerTick(){const p=moscowParts(),h=Number(p.hour),min=Number(p.minute),key=dateKey();if(SLOTS.includes(h)&&min<2){const done=db.prepare('SELECT 1 FROM world_boss_schedule WHERE date_key=? AND slot_hour=?').get(key,h);if(!done){db.prepare('INSERT INTO world_boss_schedule(date_key,slot_hour,created_at) VALUES(?,?,?)').run(key,h,Date.now());startRegistration(clientRef).then(r=>{if(r.ok)db.prepare('UPDATE world_boss_schedule SET battle_id=? WHERE date_key=? AND slot_hour=?').run(r.id,key,h)}).catch(console.error)}}scheduler=setTimeout(schedulerTick,Math.min(nextSlotDelay(),60000));scheduler.unref?.()}
-function startScheduler(client){init();clientRef=client;if(scheduler)clearTimeout(scheduler);const a=activeBattle();if(a){if(a.status==='registration')setTimer(a.id,()=>beginBattle(a.id).catch(console.error),Math.max(1000,a.registration_ends_at-Date.now()));else armTurn(a.id);refresh(a.id).catch(()=>{})}schedulerTick();console.log('[WorldBoss] Расписание: 09:00, 15:00, 21:00 МСК')}
+function startScheduler(client){init();clientRef=client;if(scheduler)clearTimeout(scheduler);const a=activeBattle();if(a){if(a.status==='registration')setTimer(a.id,()=>beginBattle(a.id).catch(console.error),Math.max(1000,a.registration_ends_at-Date.now()));else armTurn(a.id);refresh(a.id).catch(()=>{})}if(AUTO_SCHEDULE_ENABLED){schedulerTick();console.log('[WorldBoss] Автозапуск включён: 09:00, 15:00, 21:00 МСК')}else{console.log('[WorldBoss] Тестовый режим: автозапуск отключён, доступен только ручной запуск')}}
 module.exports={startScheduler,startRegistration,handle,isActive:()=>Boolean(activeBattle()),beginBattle};
