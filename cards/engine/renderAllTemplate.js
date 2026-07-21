@@ -37,3 +37,5 @@ if (require.main === module) {
 module.exports = {
     renderAll,
 };
+
+// ensure card saved

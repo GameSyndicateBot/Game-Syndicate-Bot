@@ -314,3 +314,5 @@ async function createPackOpeningGif(drop) {
 module.exports = {
     createPackOpeningGif,
 };
+
+// ensure card saved

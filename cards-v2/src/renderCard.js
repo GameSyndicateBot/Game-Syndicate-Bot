@@ -267,3 +267,5 @@ async function renderCard(id, rarityName, outputPath) {
 module.exports = {
     renderCard,
 };
+
+// ensure card saved

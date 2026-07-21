@@ -67,3 +67,5 @@ async function createCardImage(card, owned = null, options = {}) {
 module.exports = {
     createCardImage,
 };
+
+// ensure card saved

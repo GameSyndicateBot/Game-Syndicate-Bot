@@ -24,3 +24,5 @@
 
 ## MYTHIC
 Красный, 5/5 звёзд. Рамка, имя, верх, GAME SYNDICATE, номер карты, полосы, STAFF/FOUNDERS, нижний GS, ЭКЗЕМПЛЯР и #000000 — красные.
+
+// ensure card saved
