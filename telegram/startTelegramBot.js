@@ -5,6 +5,18 @@ if (!global.gs_sent_lobbies) {
 
 async function safeSend(bot, chatId, text, opts = {}) {
     try {
+        return await bot.sendMessage(chatId, text, opts);
+    } catch (err) {
+        if (err.response?.body?.parameters?.retry_after) {
+            const wait = err.response.body.parameters.retry_after * 1000;
+            console.log(`⏳ Telegram rate limit, жду ${wait}ms`);
+            await new Promise(r => setTimeout(r, wait));
+            return await bot.sendMessage(chatId, text, opts);
+        }
+        console.error('Telegram send error:', err.message);
+    }
+}) {
+    try {
         return await safeSend(bot, chatId, text, opts);
     } catch (err) {
         if (err.response && err.response.body && err.response.body.parameters?.retry_after) {
