@@ -9,6 +9,16 @@ async function safeSend(bot, chatId, text, opts = {}) {
     } catch (err) {
         if (err.response?.body?.parameters?.retry_after) {
             const wait = err.response.body.parameters.retry_after * 1000;
+            await new Promise(r => setTimeout(r, wait));
+            return await bot.sendMessage(chatId, text, opts);
+        }
+    }
+}) {
+    try {
+        return await bot.sendMessage(chatId, text, opts);
+    } catch (err) {
+        if (err.response?.body?.parameters?.retry_after) {
+            const wait = err.response.body.parameters.retry_after * 1000;
             console.log(`⏳ Telegram rate limit, жду ${wait}ms`);
             await new Promise(r => setTimeout(r, wait));
             return await bot.sendMessage(chatId, text, opts);

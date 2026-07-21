@@ -31,62 +31,60 @@ function checkBossSchedule(client) {
     if (lastTriggeredSlot === slot) return;
 
     lastTriggeredSlot = slot;
-    triggerBoss(client).catch((error) => {
-        console.error('❌ Ошибка автоматического запуска босса:', error);
-    });
+    triggerBoss(client);
 }
 
 function startEventEngine(client) {
-    if (schedulerTimer) {
-        console.log('ℹ️ Event Engine уже запущен');
-        return;
-    }
+    if (schedulerTimer) return;
 
-    console.log('🔥 Event Engine запущен (09:00, 15:00 и 21:00 МСК)');
+    console.log('🔥 Event Engine FULL запущен');
 
-    // Проверяем расписание сразу и затем каждые 30 секунд.
     checkBossSchedule(client);
-    schedulerTimer = setInterval(() => checkBossSchedule(client), 30_000);
+    schedulerTimer = setInterval(() => checkBossSchedule(client), 30000);
 
-    // Таймер не должен мешать штатному завершению процесса.
-    schedulerTimer.unref?.();
+    setInterval(() => {
+        try {
+            require('./dailyPackSystem').runDailyPack(client);
+        } catch (e) {}
+    }, 60 * 60 * 1000);
 }
 
-async function triggerBoss(client, forced = false) {
-    if (isEventRunning && !forced) return;
+async function triggerBoss(client) {
+    if (isEventRunning) return;
 
     isEventRunning = true;
+    console.log('👹 Босс стартовал');
 
-    console.log(forced ? '⚠️ Форс запуск босса' : '👹 Босс стартовал');
     global.activeBoss = true;
 
-    // TODO: вставь свой старт боя
-
-    setTimeout(() => {
-        endBoss(client);
-    }, 60_000).unref?.();
+    setTimeout(() => endBoss(client), 60000);
 }
 
 function endBoss(client) {
     console.log('🏆 Босс побежден');
 
     global.activeBoss = false;
-
     startNextQuickEvent(client);
     isEventRunning = false;
 }
 
 function startNextQuickEvent(client) {
-    console.log('🎲 Запуск quick event после босса');
+    console.log('🎲 Quick event старт');
 
-    // TODO: вставь quick event систему
+    const events = ['quiz', 'lottery', 'crocodile'];
+    const random = events[Math.floor(Math.random() * events.length)];
+
+    try {
+        if (random === 'quiz') require('./quizSystem').startQuiz(client);
+        if (random === 'lottery') require('./lotterySystem').startLottery(client);
+        if (random === 'crocodile') require('./crocodileSystem').startGame(client);
+    } catch (e) {
+        console.error('Quick event error:', e.message);
+    }
 }
 
 function forceBoss(client) {
-    return triggerBoss(client, true);
+    triggerBoss(client);
 }
 
-module.exports = {
-    startEventEngine,
-    forceBoss,
-};
+module.exports = { startEventEngine, forceBoss };
