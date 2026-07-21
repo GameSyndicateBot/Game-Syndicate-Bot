@@ -32,17 +32,17 @@ const PACK_META = Object.freeze({
         emoji: '📦',
         style: ButtonStyle.Success,
         description: 'Базовый набор с одной случайной карточкой.',
-    },
+    }
     premium: {
         emoji: '💎',
         style: ButtonStyle.Primary,
         description: 'Улучшенный набор с повышенными шансами редких карточек.',
-    },
+    }
     elite: {
         emoji: '👑',
         style: ButtonStyle.Danger,
         description: 'Элитный набор с самыми высокими шансами топовых редкостей.',
-    },
+    }
 });
 
 function buttonId(packId, userId) {
@@ -263,8 +263,7 @@ module.exports = {
         await interaction.deferReply();
         syncCardsCatalog();
         return interaction.editReply(buildInventoryReply(interaction.user));
-    },
-
+    }
     async handleComponent(interaction) {
         if (interaction.customId.startsWith('packs_inventory_')) {
             const ownerId = interaction.customId.slice('packs_inventory_'.length);
@@ -321,5 +320,5 @@ module.exports = {
         }
 
         return true;
-    },
+    }
 };

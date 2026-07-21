@@ -14,19 +14,19 @@ function getTheme(type) {
             icon: 'EVT',
             color: '#8B5CF6',
             status: 'ОЖИДАНИЕ',
-        },
+        }
         started: {
             title: 'ИГРОВОЙ ВЕЧЕР НАЧАЛСЯ',
             icon: 'LIVE',
             color: '#22C55E',
             status: 'ИДЁТ СЕЙЧАС',
-        },
+        }
         finished: {
             title: 'ИГРОВОЙ ВЕЧЕР ЗАВЕРШЁН',
             icon: 'DONE',
             color: '#F59E0B',
             status: 'ЗАВЕРШЁН',
-        },
+        }
     };
 
     return themes[type] || themes.created;

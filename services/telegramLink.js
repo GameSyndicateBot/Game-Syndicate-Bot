@@ -279,7 +279,7 @@ async function notifyTelegramLinkSuccess(telegramUserId, discordDisplayName) {
             `https://api.telegram.org/bot${token}/sendMessage`,
             {
                 method: 'POST',
-                headers: { 'content-type': 'application/json' },
+                headers: { 'content-type': 'application/json' }
                 body: JSON.stringify({
                     chat_id: telegramUserId,
                     parse_mode: 'HTML',
@@ -291,7 +291,7 @@ async function notifyTelegramLinkSuccess(telegramUserId, discordDisplayName) {
                         'Теперь Telegram-бот сможет показывать данные твоего профиля Game Syndicate.',
                     ].join('\n'),
                 }),
-            },
+            }
         );
 
         return response.ok;

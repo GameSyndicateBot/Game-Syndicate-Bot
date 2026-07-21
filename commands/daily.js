@@ -31,21 +31,18 @@ const QUEST_DUST_BY_FIELD = { messages: 15, voice_seconds: 20, given_reactions: 
 const WEEKLY_CHEST_DUST = 300;
 
 const QUEST_POOL = [
-    { key: 'messages_15', title: 'Написать 15 сообщений', icon: '💬', field: 'messages', target: 15, unit: 'count', reward_xp: 60 },
-    { key: 'messages_30', title: 'Написать 30 сообщений', icon: '💬', field: 'messages', target: 30, unit: 'count', reward_xp: 100 },
-    { key: 'messages_50', title: 'Написать 50 сообщений', icon: '💬', field: 'messages', target: 50, unit: 'count', reward_xp: 150 },
-
-    { key: 'voice_15m', title: 'Провести 15 минут в голосе', icon: '🎙', field: 'voice_seconds', target: 15 * 60, unit: 'seconds', reward_xp: 80 },
-    { key: 'voice_30m', title: 'Провести 30 минут в голосе', icon: '🎙', field: 'voice_seconds', target: 30 * 60, unit: 'seconds', reward_xp: 130 },
-    { key: 'voice_60m', title: 'Провести 60 минут в голосе', icon: '🎙', field: 'voice_seconds', target: 60 * 60, unit: 'seconds', reward_xp: 220 },
-
-    { key: 'given_reactions_5', title: 'Поставить 5 реакций', icon: '👍', field: 'given_reactions', target: 5, unit: 'count', reward_xp: 50 },
-    { key: 'given_reactions_10', title: 'Поставить 10 реакций', icon: '👍', field: 'given_reactions', target: 10, unit: 'count', reward_xp: 90 },
-    { key: 'given_reactions_15', title: 'Поставить 15 реакций', icon: '👍', field: 'given_reactions', target: 15, unit: 'count', reward_xp: 130 },
-
-    { key: 'received_reactions_3', title: 'Получить 3 реакции', icon: '❤️', field: 'received_reactions', target: 3, unit: 'count', reward_xp: 70 },
-    { key: 'received_reactions_5', title: 'Получить 5 реакций', icon: '❤️', field: 'received_reactions', target: 5, unit: 'count', reward_xp: 110 },
-    { key: 'received_reactions_8', title: 'Получить 8 реакций', icon: '❤️', field: 'received_reactions', target: 8, unit: 'count', reward_xp: 160 },
+    { key: 'messages_15', title: 'Написать 15 сообщений', icon: '💬', field: 'messages', target: 15, unit: 'count', reward_xp: 60 }
+    { key: 'messages_30', title: 'Написать 30 сообщений', icon: '💬', field: 'messages', target: 30, unit: 'count', reward_xp: 100 }
+    { key: 'messages_50', title: 'Написать 50 сообщений', icon: '💬', field: 'messages', target: 50, unit: 'count', reward_xp: 150 }
+    { key: 'voice_15m', title: 'Провести 15 минут в голосе', icon: '🎙', field: 'voice_seconds', target: 15 * 60, unit: 'seconds', reward_xp: 80 }
+    { key: 'voice_30m', title: 'Провести 30 минут в голосе', icon: '🎙', field: 'voice_seconds', target: 30 * 60, unit: 'seconds', reward_xp: 130 }
+    { key: 'voice_60m', title: 'Провести 60 минут в голосе', icon: '🎙', field: 'voice_seconds', target: 60 * 60, unit: 'seconds', reward_xp: 220 }
+    { key: 'given_reactions_5', title: 'Поставить 5 реакций', icon: '👍', field: 'given_reactions', target: 5, unit: 'count', reward_xp: 50 }
+    { key: 'given_reactions_10', title: 'Поставить 10 реакций', icon: '👍', field: 'given_reactions', target: 10, unit: 'count', reward_xp: 90 }
+    { key: 'given_reactions_15', title: 'Поставить 15 реакций', icon: '👍', field: 'given_reactions', target: 15, unit: 'count', reward_xp: 130 }
+    { key: 'received_reactions_3', title: 'Получить 3 реакции', icon: '❤️', field: 'received_reactions', target: 3, unit: 'count', reward_xp: 70 }
+    { key: 'received_reactions_5', title: 'Получить 5 реакций', icon: '❤️', field: 'received_reactions', target: 5, unit: 'count', reward_xp: 110 }
+    { key: 'received_reactions_8', title: 'Получить 8 реакций', icon: '❤️', field: 'received_reactions', target: 8, unit: 'count', reward_xp: 160 }
 ].map(quest => ({ ...quest, reward_dust: QUEST_DUST_BY_FIELD[quest.field] ?? 0 }));
 
 function seededRandom(seed) {
@@ -216,7 +213,7 @@ async function giveXPAndCheck(interaction, xp) {
         message: {
             author: interaction.user,
             guild: interaction.guild,
-        },
+        }
         player,
         member,
     });
@@ -441,8 +438,7 @@ data: new SlashCommandBuilder()
                 components: reply.components,
             });
         }
-    },
-
+    }
     async handleComponent(interaction) {
         const parts = interaction.customId.split('_');
 

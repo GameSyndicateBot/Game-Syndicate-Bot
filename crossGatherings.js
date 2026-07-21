@@ -312,27 +312,27 @@ function tgKeyboard(gathering) {
                 {
                     text: '✅ Иду',
                     callback_data: `xg_join:${gathering.id}`,
-                },
+                }
                 {
                     text: '❌ Не смогу',
                     callback_data: `xg_decline:${gathering.id}`,
-                },
+                }
             ],
             [
                 {
                     text: '⏰ Напомнить',
                     callback_data: `xg_remind:${gathering.id}`,
-                },
+                }
             ],
             [
                 {
                     text: '🚀 Запустить сейчас',
                     callback_data: `xg_start:${gathering.id}`,
-                },
+                }
                 {
                     text: '🛑 Отменить',
                     callback_data: `xg_cancel:${gathering.id}`,
-                },
+                }
             ],
         ],
     };
@@ -426,7 +426,7 @@ async function publish(gathering) {
                     'Нажмите **«Иду»**, **«Не смогу»** или **«Напомнить»**.',
                 ].join('\n'),
                 components: discordRows(gathering),
-                allowedMentions: { parse: ['everyone'] },
+                allowedMentions: { parse: ['everyone'] }
             });
 
             db.prepare(`
@@ -579,7 +579,7 @@ async function sendNotice(gathering, kind) {
                 ].join('\n'),
                 allowedMentions: {
                     users: discordMentions.map(value => value.replace(/\D/g, '')),
-                },
+                }
             }).catch(error => {
                 console.error('Discord gathering notice:', error.message);
             });

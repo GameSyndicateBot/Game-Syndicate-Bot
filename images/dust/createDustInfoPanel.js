@@ -172,37 +172,37 @@ async function createDustInfoPanel(user) {
     const cardH = 150;
 
     drawSourceCard(ctx, leftX, 310, cardW, cardH, 'daily', 'Ежедневные задания', [
-        { text: '4 задания: +15 / +20 / +10 / +10 Dust' },
-        { text: 'Бонус за полный день: +45 Dust', highlight: true },
-        { text: 'Максимум за день: 100 Dust' },
+        { text: '4 задания: +15 / +20 / +10 / +10 Dust' }
+        { text: 'Бонус за полный день: +45 Dust', highlight: true }
+        { text: 'Максимум за день: 100 Dust' }
     ], colors.green);
 
     drawSourceCard(ctx, rightX, 310, cardW, cardH, 'streak', 'Серии полного дня', [
-        { text: '3 / 7 / 14 дней: +40 / +100 / +250 Dust' },
-        { text: '30 / 60 / 100 дней: +600 / +1500 / +3500 Dust', highlight: true },
-        { text: 'Серия растёт только при закрытии всех ежедневок' },
+        { text: '3 / 7 / 14 дней: +40 / +100 / +250 Dust' }
+        { text: '30 / 60 / 100 дней: +600 / +1500 / +3500 Dust', highlight: true }
+        { text: 'Серия растёт только при закрытии всех ежедневок' }
     ], '#ff6b4a');
 
     drawSourceCard(ctx, leftX, 485, cardW, cardH, 'achievement', 'Достижения', [
-        { text: 'Common 5 • Rare 10 • Epic 20 Dust' },
-        { text: 'Legendary 35 • Mythic 60 Dust', highlight: true },
-        { text: 'Награда выдаётся один раз при получении' },
+        { text: 'Common 5 • Rare 10 • Epic 20 Dust' }
+        { text: 'Legendary 35 • Mythic 60 Dust', highlight: true }
+        { text: 'Награда выдаётся один раз при получении' }
     ], colors.gold);
 
     drawSourceCard(ctx, rightX, 485, cardW, cardH, 'category', 'Категории достижений', [
-        { text: 'Bronze 30 • Silver 60 Dust' },
-        { text: 'Gold 100 • Platinum 150 Dust', highlight: true },
-        { text: 'Начисляется при открытии новой роли категории' },
+        { text: 'Bronze 30 • Silver 60 Dust' }
+        { text: 'Gold 100 • Platinum 150 Dust', highlight: true }
+        { text: 'Начисляется при открытии новой роли категории' }
     ], colors.purpleLight);
 
     drawSourceCard(ctx, leftX, 650, cardW, 116, 'duplicate', 'Распыление повторок', [
-        { text: 'Common 20 • Rare 50 • Epic 120 • Legendary 300' },
-        { text: 'Mythic 700 • Exclusive 1500 • Holographic 2500', highlight: true },
+        { text: 'Common 20 • Rare 50 • Epic 120 • Legendary 300' }
+        { text: 'Mythic 700 • Exclusive 1500 • Holographic 2500', highlight: true }
     ], '#4aa3ff');
 
     drawSourceCard(ctx, rightX, 650, cardW, 116, 'weekly', 'Недельный сундук', [
-        { text: 'Закрой все ежедневки 7 дней подряд' },
-        { text: '+300 Dust и 1 Base Pack', highlight: true },
+        { text: 'Закрой все ежедневки 7 дней подряд' }
+        { text: '+300 Dust и 1 Base Pack', highlight: true }
     ], '#f7c948');
 
     drawTag(ctx, 90, 786, 'TREASURE НЕ РАСПЫЛЯЕТСЯ', '#ff5c72');

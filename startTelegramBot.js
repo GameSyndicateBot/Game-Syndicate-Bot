@@ -145,7 +145,7 @@ async function beginGather(api, message) {
         await beginPrivateGather(api, from);
     } catch (error) {
         const warning = await sendMessage(api, chat.id, [
-            `@${from.username || userName(from)}
+            `@${from.username || userName(from)} сначала открой личный чат с ботом и нажми Start.`,
             'После этого снова используй /gather.',
         ].join('\n')).catch(() => null);
 

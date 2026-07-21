@@ -4,15 +4,15 @@ const PACK_TYPES = Object.freeze({
     base: {
         id: 'base',
         name: 'Base Pack',
-    },
+    }
     premium: {
         id: 'premium',
         name: 'Premium Pack',
-    },
+    }
     elite: {
         id: 'elite',
         name: 'Elite Pack',
-    },
+    }
 });
 
 const PACK_ALIASES = Object.freeze({

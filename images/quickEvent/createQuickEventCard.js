@@ -1,23 +1,23 @@
 const { createCanvas, loadImage } = require('canvas');
 
 const TYPE_META = {
-  unscramble: { title: 'СОБЕРИ СЛОВО', accent: '#b879ff' },
-  math: { title: 'РЕШИ ПРИМЕР', accent: '#58b9ff' },
-  color: { title: 'ОПРЕДЕЛИ ЦВЕТ', accent: '#ff6fae' },
-  typing: { title: 'ПЕРЕПЕЧАТАЙ ФРАЗУ', accent: '#70e6d0' },
-  odd: { title: 'НАЙДИ ЛИШНЕЕ', accent: '#ffb45f' },
-  memory: { title: 'ЗАПОМНИ ПОСЛЕДОВАТЕЛЬНОСТЬ', accent: '#9f7cff' },
-  finish: { title: 'ЗАКОНЧИ СЛОВО', accent: '#65d6ff' },
-  rarity: { title: 'УГАДАЙ РЕДКОСТЬ КАРТЫ', accent: '#ff6f7f' },
-  avatar: { title: 'УГАДАЙ УЧАСТНИКА', accent: '#8ce66b' },
-  reaction: { title: 'ТЕСТ НА РЕАКЦИЮ', accent: '#ffd15e' },
-  sequence: { title: 'ПРОДОЛЖИ РЯД', accent: '#6ed4ff' },
-  reverse: { title: 'РАЗВЕРНИ СЛОВО', accent: '#c58cff' },
-  emoji_riddle: { title: 'ЭМОДЗИ-ЗАГАДКА', accent: '#ff9f6e' },
-  true_false: { title: 'ВЕРНО ИЛИ НЕТ', accent: '#72e6b1' },
-  treasure_chest: { title: 'ТАИНСТВЕННЫЙ СУНДУК', accent: '#43e38d' },
-  lucky_roll: { title: 'LUCKY ROLL', accent: '#63f3ff' },
-  world_boss: { title: 'МИРОВОЙ БОСС', accent: '#ff5d73' },
+  unscramble: { title: 'СОБЕРИ СЛОВО', accent: '#b879ff' }
+  math: { title: 'РЕШИ ПРИМЕР', accent: '#58b9ff' }
+  color: { title: 'ОПРЕДЕЛИ ЦВЕТ', accent: '#ff6fae' }
+  typing: { title: 'ПЕРЕПЕЧАТАЙ ФРАЗУ', accent: '#70e6d0' }
+  odd: { title: 'НАЙДИ ЛИШНЕЕ', accent: '#ffb45f' }
+  memory: { title: 'ЗАПОМНИ ПОСЛЕДОВАТЕЛЬНОСТЬ', accent: '#9f7cff' }
+  finish: { title: 'ЗАКОНЧИ СЛОВО', accent: '#65d6ff' }
+  rarity: { title: 'УГАДАЙ РЕДКОСТЬ КАРТЫ', accent: '#ff6f7f' }
+  avatar: { title: 'УГАДАЙ УЧАСТНИКА', accent: '#8ce66b' }
+  reaction: { title: 'ТЕСТ НА РЕАКЦИЮ', accent: '#ffd15e' }
+  sequence: { title: 'ПРОДОЛЖИ РЯД', accent: '#6ed4ff' }
+  reverse: { title: 'РАЗВЕРНИ СЛОВО', accent: '#c58cff' }
+  emoji_riddle: { title: 'ЭМОДЗИ-ЗАГАДКА', accent: '#ff9f6e' }
+  true_false: { title: 'ВЕРНО ИЛИ НЕТ', accent: '#72e6b1' }
+  treasure_chest: { title: 'ТАИНСТВЕННЫЙ СУНДУК', accent: '#43e38d' }
+  lucky_roll: { title: 'LUCKY ROLL', accent: '#63f3ff' }
+  world_boss: { title: 'МИРОВОЙ БОСС', accent: '#ff5d73' }
 };
 
 function rounded(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}

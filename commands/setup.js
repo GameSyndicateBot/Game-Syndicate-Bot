@@ -39,9 +39,9 @@ module.exports = {
           : 'Основные серверные каналы настроены. Запустите диагностику для проверки доступа бота.'
       )
       .addFields(
-        { name: 'Настроено', value: `${configured.length}/${REQUIRED_CHANNELS.length}`, inline: true },
-        { name: 'Не настроено', value: missing.length ? missing.map(([, name]) => `• ${name}`).join('\n') : 'Нет', inline: false },
-        { name: 'Важно', value: 'Команда не очищает базу, карточки, Dust, достижения, Discord- или Telegram-данные.', inline: false },
+        { name: 'Настроено', value: `${configured.length}/${REQUIRED_CHANNELS.length}`, inline: true }
+        { name: 'Не настроено', value: missing.length ? missing.map(([, name]) => `• ${name}`).join('\n') : 'Нет', inline: false }
+        { name: 'Важно', value: 'Команда не очищает базу, карточки, Dust, достижения, Discord- или Telegram-данные.', inline: false }
       );
 
     const row = new ActionRowBuilder().addComponents(
@@ -58,5 +58,5 @@ module.exports = {
     );
 
     await interaction.reply({ embeds: [embed], components: [row], flags: MessageFlags.Ephemeral });
-  },
+  }
 };

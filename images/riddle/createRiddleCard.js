@@ -1,9 +1,9 @@
 const { createCanvas } = require('canvas');
 
 const DIFF = {
-  easy:{label:'ЛЁГКАЯ',accent:'#62e6a7'},
-  medium:{label:'СРЕДНЯЯ',accent:'#b879ff'},
-  hard:{label:'СЛОЖНАЯ',accent:'#ffbf66'},
+  easy:{label:'ЛЁГКАЯ',accent:'#62e6a7'}
+  medium:{label:'СРЕДНЯЯ',accent:'#b879ff'}
+  hard:{label:'СЛОЖНАЯ',accent:'#ffbf66'}
 };
 function rounded(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
 function glowText(ctx,text,x,y,size,accent,align='left'){

@@ -91,13 +91,12 @@ module.exports = {
         await interaction.deferReply();
         syncCardsCatalog();
         return interaction.editReply(await buildShopReply(interaction.user));
-    },
-
+    }
     async handleComponent(interaction) {
         if (!interaction.customId.startsWith(BUTTON_PREFIX)) return false;
         const packId = interaction.customId.slice(BUTTON_PREFIX.length);
         await interaction.deferUpdate();
         await playBuyAnimation(interaction, interaction.user, packId);
         return true;
-    },
+    }
 };

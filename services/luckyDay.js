@@ -11,11 +11,11 @@ const MOSCOW_OFFSET_MS = 3 * 60 * 60 * 1000;
 const CHECK_INTERVAL_MS = 30 * 1000;
 
 const REWARDS = [
-    { type: 'dust', amount: 150, weight: 55, label: '150 GS Dust' },
-    { type: 'dust', amount: 300, weight: 25, label: '300 GS Dust' },
-    { type: 'base_pack', amount: 1, weight: 12, label: 'Base Pack' },
-    { type: 'dust', amount: 600, weight: 6, label: '600 GS Dust' },
-    { type: 'premium_pack', amount: 1, weight: 2, label: 'Premium Pack' },
+    { type: 'dust', amount: 150, weight: 55, label: '150 GS Dust' }
+    { type: 'dust', amount: 300, weight: 25, label: '300 GS Dust' }
+    { type: 'base_pack', amount: 1, weight: 12, label: 'Base Pack' }
+    { type: 'dust', amount: 600, weight: 6, label: '600 GS Dust' }
+    { type: 'premium_pack', amount: 1, weight: 2, label: 'Premium Pack' }
 ];
 
 function ensureLuckyDayTables() {

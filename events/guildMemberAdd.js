@@ -87,5 +87,5 @@ ${announcementsLine}
         } catch (error) {
             console.error('Ошибка приветствия:', error);
         }
-    },
+    }
 };

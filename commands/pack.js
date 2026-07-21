@@ -161,8 +161,7 @@ module.exports = {
 
         const reply = await buildPackReply(interaction.user);
         return interaction.editReply(reply);
-    },
-
+    }
     async handleComponent(interaction) {
         if (!interaction.customId.startsWith('pack_daily_')) {
             return false;
@@ -227,5 +226,5 @@ module.exports = {
         }
 
         return true;
-    },
+    }
 };

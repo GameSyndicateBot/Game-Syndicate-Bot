@@ -10,11 +10,11 @@ const W = 1054;
 const H = 1492;
 
 const RARITIES = {
-  common: { color: '#B9BDC5' },
-  rare: { color: '#006BFF' },
-  epic: { color: '#A855F7' },
-  legendary: { color: '#F5B800' },
-  mythic: { color: '#EF2B2B' },
+  common: { color: '#B9BDC5' }
+  rare: { color: '#006BFF' }
+  epic: { color: '#A855F7' }
+  legendary: { color: '#F5B800' }
+  mythic: { color: '#EF2B2B' }
 };
 
 function idFromName(name) {

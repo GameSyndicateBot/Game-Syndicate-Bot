@@ -47,8 +47,7 @@ function buildTextOverlay(card, rarityName) {
 
     if (!rarity) {
         throw new Error(
-            `Неизвестная редкость: ${rarityName}`,
-        );
+            `Неизвестная редкость: ${rarityName}`);
     }
 
     const accent = rarity.accent;
@@ -225,7 +224,7 @@ async function prepareArt(card, dataFile) {
                 {
                     fit: 'cover',
                     position: 'centre',
-                },
+                }
             )
             .png()
             .toBuffer();
@@ -262,7 +261,7 @@ async function prepareArt(card, dataFile) {
             {
                 fit: 'cover',
                 position: 'centre',
-            },
+            }
         )
         .png()
         .toBuffer();
@@ -275,8 +274,7 @@ async function renderCard(
 ) {
     if (!fs.existsSync(dataFile)) {
         throw new Error(
-            `Не найден JSON карточки:\n${dataFile}`,
-        );
+            `Не найден JSON карточки:\n${dataFile}`);
     }
 
     const card = JSON.parse(
@@ -287,20 +285,17 @@ async function renderCard(
 
     if (!rarity) {
         throw new Error(
-            `Неизвестная редкость: ${rarityName}`,
-        );
+            `Неизвестная редкость: ${rarityName}`);
     }
 
     const templatePath = path.join(
         ROOT,
         'templates',
-        `${rarityName}.png`,
-    );
+        `${rarityName}.png`);
 
     if (!fs.existsSync(templatePath)) {
         throw new Error(
-            `Не найден шаблон:\n${templatePath}`,
-        );
+            `Не найден шаблон:\n${templatePath}`);
     }
 
     const artBuffer = await prepareArt(
@@ -317,7 +312,7 @@ async function renderCard(
         path.dirname(outputPath),
         {
             recursive: true,
-        },
+        }
     );
 
     await sharp(templatePath)
@@ -326,19 +321,19 @@ async function renderCard(
             layout.canvas.height,
             {
                 fit: 'fill',
-            },
+            }
         )
         .composite([
             {
                 input: artBuffer,
                 left: layout.art.x,
                 top: layout.art.y,
-            },
+            }
             {
                 input: textOverlay,
                 left: 0,
                 top: 0,
-            },
+            }
         ])
         .png({
             compressionLevel: 9,

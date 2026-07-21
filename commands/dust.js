@@ -654,8 +654,7 @@ module.exports = {
             1
         );
         return interaction.editReply(reply);
-    },
-
+    }
     async handleComponent(interaction) {
         const parts = interaction.customId.split('_');
 
@@ -828,5 +827,5 @@ module.exports = {
         }
 
         return false;
-    },
+    }
 };

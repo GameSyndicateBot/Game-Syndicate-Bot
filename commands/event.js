@@ -250,7 +250,7 @@ module.exports = {
                     message: {
                         author: member.user,
                         guild: interaction.guild,
-                    },
+                    }
                     player,
                     member,
                 });
@@ -329,5 +329,5 @@ module.exports = {
 
             return interaction.editReply({ embeds: [embed] });
         }
-    },
+    }
 };

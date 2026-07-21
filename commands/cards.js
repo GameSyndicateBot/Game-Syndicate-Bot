@@ -306,8 +306,7 @@ data: new SlashCommandBuilder()
         const reply = await buildCardsReply(interaction.user, 'all', 1);
 
         return interaction.editReply(reply);
-    },
-
+    }
     async handleComponent(interaction) {
         const parts = interaction.customId.split('_');
 
@@ -374,5 +373,5 @@ data: new SlashCommandBuilder()
         }
 
         return false;
-    },
+    }
 };

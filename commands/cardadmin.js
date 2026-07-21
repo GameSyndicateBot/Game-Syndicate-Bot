@@ -184,13 +184,13 @@ function addCommonCardOptions(subcommand, actionText) {
                 .setDescription('Редкость; если не указана — базовая редкость карты')
                 .setRequired(false)
                 .addChoices(
-                    { name: 'Common', value: 'common' },
-                    { name: 'Rare', value: 'rare' },
-                    { name: 'Epic', value: 'epic' },
-                    { name: 'Legendary', value: 'legendary' },
-                    { name: 'Mythic', value: 'mythic' },
-                    { name: 'Exclusive', value: 'exclusive' },
-                    { name: 'Holographic', value: 'holographic' },
+                    { name: 'Common', value: 'common' }
+                    { name: 'Rare', value: 'rare' }
+                    { name: 'Epic', value: 'epic' }
+                    { name: 'Legendary', value: 'legendary' }
+                    { name: 'Mythic', value: 'mythic' }
+                    { name: 'Exclusive', value: 'exclusive' }
+                    { name: 'Holographic', value: 'holographic' }
                     { name: 'Treasure', value: 'treasure' }
                 )
         )
@@ -413,5 +413,5 @@ module.exports = {
         return interaction.editReply({
             content: '❌ Неизвестная cardadmin-команда.',
         });
-    },
+    }
 };

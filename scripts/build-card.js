@@ -277,7 +277,7 @@ async function buildCard(inputPath, rarityName, outputPath) {
             width: info.width,
             height: info.height,
             channels: info.channels,
-        },
+        }
     })
         .composite([{ input: overlay, top: 0, left: 0 }])
         .png({ compressionLevel: 9 })
@@ -302,8 +302,7 @@ async function main() {
         path.join(
             ROOT,
             'output',
-            `${path.parse(inputPath).name}_${rarityName}.png`,
-        );
+            `${path.parse(inputPath).name}_${rarityName}.png`);
 
     fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
 

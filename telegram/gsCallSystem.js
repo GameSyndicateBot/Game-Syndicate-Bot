@@ -425,7 +425,7 @@ async function publishDiscordGs(game) {
 
 🎮 **GAME SYNDICATE — СБОР**
 Игра: **${String(game).slice(0, 1000)}**`,
-        allowedMentions: { parse: ['everyone'] },
+        allowedMentions: { parse: ['everyone'] }
     });
 
     // Сбор должен исчезнуть одновременно в Telegram и Discord.

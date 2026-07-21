@@ -12,8 +12,7 @@ async function main() {
         'cards-v2',
         'output',
         id,
-        `${id}_${rarity}.png`,
-    );
+        `${id}_${rarity}.png`);
 
     await renderCard(id, rarity, outputPath);
 }

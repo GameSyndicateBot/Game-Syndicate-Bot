@@ -21,8 +21,7 @@ async function main() {
                 'cards-v2',
                 'output',
                 card.id,
-                `${card.id}_${rarity}.png`,
-            );
+                `${card.id}_${rarity}.png`);
 
             try {
                 await renderCard(
@@ -32,8 +31,7 @@ async function main() {
                 );
             } catch (error) {
                 console.error(
-                    `[${card.id}/${rarity}] ${error.message}`,
-                );
+                    `[${card.id}/${rarity}] ${error.message}`);
             }
         }
     }

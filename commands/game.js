@@ -57,8 +57,7 @@ module.exports = {
         );
 
         await interaction.showModal(modal);
-    },
-
+    }
     async handleModal(interaction) {
         if (!interaction.isModalSubmit() || interaction.customId !== 'game_create_modal') {
             return false;
@@ -90,5 +89,5 @@ module.exports = {
         }
 
         return true;
-    },
+    }
 };

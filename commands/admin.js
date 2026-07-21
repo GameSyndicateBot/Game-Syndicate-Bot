@@ -183,5 +183,5 @@ module.exports = {
             content: '❌ Неизвестная admin-команда.',
             flags: MessageFlags.Ephemeral,
         });
-    },
+    }
 };

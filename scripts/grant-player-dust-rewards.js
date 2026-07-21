@@ -8,11 +8,11 @@ const APPLY = process.argv.includes('--apply');
 const REWARD_KEY = 'manual_dust_rewards_2026_07_batch_1';
 
 const rewards = [
-    { userId: '561961056197672991', dust: 11200 },
-    { userId: '830515570377097259', dust: 8000 },
-    { userId: '468683569359880192', dust: 4800 },
-    { userId: '759026090038657034', dust: 3200 },
-    { userId: '302797251271458817', dust: 3200 },
+    { userId: '561961056197672991', dust: 11200 }
+    { userId: '830515570377097259', dust: 8000 }
+    { userId: '468683569359880192', dust: 4800 }
+    { userId: '759026090038657034', dust: 3200 }
+    { userId: '302797251271458817', dust: 3200 }
 ];
 
 db.exec(`
@@ -31,8 +31,7 @@ const alreadyApplied = db.prepare(`
 
 if (alreadyApplied) {
     console.error(
-        `❌ Этот пакет наград уже был применён: ${alreadyApplied.applied_at}`,
-    );
+        `❌ Этот пакет наград уже был применён: ${alreadyApplied.applied_at}`);
     process.exit(1);
 }
 
@@ -64,8 +63,7 @@ for (const row of rows) {
     console.log(
         `${row.found ? '✅' : '❌'} ${row.userId}`
         + `${row.username ? ` (${row.username})` : ''}`
-        + `: ${row.oldDust} + ${row.dust} = ${row.newDust}`,
-    );
+        + `: ${row.oldDust} + ${row.dust} = ${row.newDust}`);
 }
 
 const missing = rows.filter(row => !row.found);
@@ -101,8 +99,7 @@ const timestamp = new Date()
 
 const backupPath = path.join(
     backupDir,
-    `database-before-dust-rewards-${timestamp}.sqlite`,
-);
+    `database-before-dust-rewards-${timestamp}.sqlite`);
 
 db.pragma('wal_checkpoint(TRUNCATE)');
 fs.copyFileSync(databasePath, backupPath);
@@ -126,8 +123,7 @@ const applyRewards = db.transaction(() => {
 
         if (result.changes !== 1) {
             throw new Error(
-                `Не удалось начислить Dust пользователю ${reward.userId}`,
-            );
+                `Не удалось начислить Dust пользователю ${reward.userId}`);
         }
     }
 

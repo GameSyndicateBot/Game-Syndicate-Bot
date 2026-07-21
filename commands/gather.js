@@ -70,5 +70,5 @@ module.exports = {
         return interaction.editReply(
             '✅ Общий сбор создан и опубликован в назначенном канале.',
         );
-    },
+    }
 };
