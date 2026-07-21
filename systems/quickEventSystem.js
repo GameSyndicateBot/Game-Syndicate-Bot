@@ -1754,17 +1754,6 @@ module.exports = {
 };
 
 
-function startAutoEvents(client) {
-    [9, 15, 21].forEach(hour => {
-        schedule.scheduleJob(
-            { rule: `0 ${hour} * * *`, tz: 'Europe/Moscow' },
-            () => {
-                if (eventActive) return;
-                eventActive = true;
-                startQuickEvent(client).finally(() => {
-                    eventActive = false;
-                });
-            }
         );
     });
 }

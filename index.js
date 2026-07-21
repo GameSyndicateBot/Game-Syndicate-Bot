@@ -56,7 +56,8 @@ for (const file of commandFiles) {
     client.commands.set(command.data.name, command);
 }
 
-client.once('ready', () => { startScheduler(client); startScheduler(client);
+client.once('ready', () => {
+    startScheduler(client); startScheduler(client); startScheduler(client);
     startAutoEvents(client);
     console.log(`✅ Бот ${client.user.tag} запущен!`);
 });
@@ -246,3 +247,14 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
 process.once('SIGINT', () => shutdown('SIGINT'));
 
 client.login(process.env.TOKEN);
+
+
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+
+    if (message.content === 'boss') {
+        const { startQuickEvent } = require('./systems/quickEventSystem');
+        await startQuickEvent(client);
+        message.reply('🔥 Босс запущен');
+    }
+});
