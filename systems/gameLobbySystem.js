@@ -1,3 +1,8 @@
+
+if (!global.gs_sent_lobbies) {
+    global.gs_sent_lobbies = new Set();
+}
+
 global.gs_last_lobby = global.gs_last_lobby || null;
 'use strict';
 const {ActionRowBuilder,AttachmentBuilder,ButtonBuilder,ButtonStyle,MessageFlags}=require('discord.js');

@@ -81,7 +81,7 @@ module.exports = {
         }
 
         startVoiceTrackingTicker(client);
-        startQuickEventScheduler(client);
+        // disabled broken scheduler
         startLuckyDayScheduler(client);
         startAutomaticBackups(client);
 
