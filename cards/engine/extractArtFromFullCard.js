@@ -67,5 +67,3 @@ if (require.main === module) {
 module.exports = {
     extractArt,
 };
-
-// ensure card saved

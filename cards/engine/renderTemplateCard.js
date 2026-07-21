@@ -153,5 +153,3 @@ if (require.main === module) {
 module.exports = {
     renderCard,
 };
-
-// ensure card saved

@@ -127,7 +127,7 @@ data: new SlashCommandBuilder()
 
     async execute(interaction) {
         getOrCreatePlayer(interaction.user);
-        if (typeof checkAchievementsForInteraction === 'function') await checkAchievementsForInteraction(interaction);
+        await checkAchievementsForInteraction(interaction);
 
         const reply = await buildAchievementsReply(interaction.user);
         await interaction.reply(reply);

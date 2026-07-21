@@ -6,7 +6,8 @@ const ignored = new Set(['node_modules', '.git', 'assets', 'input', 'templates']
 const patterns = [
     ['clientReady listeners', /(?:client\.(?:on|once)|name\s*:)\s*\(?['"]clientReady['"]/g],
     ['setInterval', /\bsetInterval\s*\(/g],
-    ['cron schedules', /\bcron\.(?:schedule|scheduleJob)\s*\(/g],
+    ['cron schedules', /\bcron\.schedule\s*\(/g],
+    ['Game Lobby runtime calls', /\bsetGameLobbyRuntime\s*\(/g],
 ];
 const results = new Map(patterns.map(([name]) => [name, []]));
 

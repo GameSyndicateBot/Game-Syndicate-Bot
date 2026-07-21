@@ -46,7 +46,7 @@ module.exports = {
         const subcommand = interaction.options.getSubcommand();
 
         if (subcommand === 'status') {
-            const status = "Event Engine активен (09:00 / 15:00 / 21:00)";
+            const status = getQuickEventScheduleStatus();
             const lines = ['# ⚡ Quick Event — статус', ''];
 
             if (status.active && status.activeRound) {

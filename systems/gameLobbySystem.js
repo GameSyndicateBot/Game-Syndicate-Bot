@@ -1,8 +1,3 @@
-
-if (!global.gs_sent_lobbies) {
-    global.gs_sent_lobbies = new Set();
-}
-global.gs_last_lobby = global.gs_last_lobby || null;
 'use strict';
 const {ActionRowBuilder,AttachmentBuilder,ButtonBuilder,ButtonStyle,MessageFlags}=require('discord.js');
 const {db,getSetting}=require('../telegram/ecosystemDb');
@@ -78,8 +73,6 @@ function setGameLobbyRuntime(api,client){
 }
 
 async function publishGameLobby({creatorId,creatorName,game,mapName='',lobbyCode=''}){
-    if(global.gs_last_lobby === arguments[0]?.lobbyCode) return;
-    global.gs_last_lobby = arguments[0]?.lobbyCode;
  const discordReady=await waitForDiscordReady(15000);
  if(!discordReady){
   const error=new Error('Discord ещё запускается. Повтори /game через несколько секунд.');
@@ -94,10 +87,6 @@ async function publishGameLobby({creatorId,creatorName,game,mapName='',lobbyCode
 
  const ch=await state.client.channels.fetch(channelId).catch(()=>null);
  if(!ch?.isTextBased?.())throw new Error('Discord game-lobby не найден.');
-
- const key = `${game}-${mapName}-${lobbyCode}`;
- if (global.gs_sent_lobbies.has(key)) return;
- global.gs_sent_lobbies.add(key);
 
  const createdAt=Date.now(),closesAt=createdAt+AUTO_CLOSE_MS;
  const info=db.prepare('INSERT INTO game_lobbies(creator_discord_id,creator_name,game,map_name,lobby_code,created_at,closes_at) VALUES(?,?,?,?,?,?,?)').run(String(creatorId),creatorName,game,mapName,lobbyCode,createdAt,closesAt);

@@ -36,5 +36,3 @@ if (require.main === module) {
 module.exports = {
     renderCollection,
 };
-
-// ensure card saved

@@ -75,5 +75,3 @@ module.exports = {
     textNode,
     multilineNode,
 };
-
-// ensure card saved

@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE 8",
+  "name": "GS CORE STABLE 6",
   "version": "6.0.0",
-  "buildId": "stable-8-20260721-quick-event",
+  "buildId": "stable-6-20260720",
   "startup": "bothost-cmd-v1"
 }

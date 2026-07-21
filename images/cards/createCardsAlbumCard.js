@@ -385,5 +385,3 @@ async function createCardsAlbumCard(user, allCards, userCards, options = {}) {
 module.exports = {
     createCardsAlbumCard,
 };
-
-// ensure card saved

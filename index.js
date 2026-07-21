@@ -1,5 +1,3 @@
-const fightButtons = require('./events/fightButtons');
-const { startScheduler } = require('./utils/scheduler');
 require('dotenv').config();
 
 const { buildInfo } = require('./utils/buildInfo');
@@ -12,22 +10,6 @@ const { startTelegramBot } = require('./telegram/startTelegramBot');
 
 const fs = require('fs');
 const path = require('path');
-const http = require('http');
-
-// Bothost и другие контейнерные панели ожидают доступный HTTP-порт.
-// Сервер здоровья не мешает Discord-боту и позволяет платформе проверить,
-// что процесс действительно запущен.
-const healthPort = Number(process.env.PORT || 3000);
-const healthServer = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({
-        status: 'ok',
-        service: 'game-syndicate-bot',
-        discordReady: Boolean(client?.isReady?.()),
-        uptime: Math.floor(process.uptime()),
-    }));
-});
-
 const {
     Client,
     Collection,
@@ -57,13 +39,6 @@ const client = new Client({
 
 client.commands = new Collection();
 
-healthServer.listen(healthPort, '0.0.0.0', () => {
-    console.log(`✅ Health server listening on 0.0.0.0:${healthPort}`);
-});
-healthServer.on('error', error => {
-    console.error('❌ Health server error:', error);
-});
-
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
@@ -79,17 +54,7 @@ for (const file of commandFiles) {
     client.commands.set(command.data.name, command);
 }
 
-client.once('ready', () => {
-    startScheduler(client);
-
-    
-      
-    
-    
-    client.application.commands.set(
-        client.commands.map(cmd => cmd.data.toJSON())
-    ).then(()=>console.log("✅ Slash commands registered"));
-    
+client.once('clientReady', () => {
     console.log(`✅ Бот ${client.user.tag} запущен!`);
 });
 
@@ -246,17 +211,7 @@ for (const file of eventFiles) {
         continue;
     }
 
-    const listener = (...args) => {
-        Promise.resolve(event.execute(...args)).catch((error) => {
-            console.error(`❌ Ошибка Discord-события ${event.name}:`, error);
-        });
-    };
-
-    if (event.once) {
-        client.once(event.name, listener);
-    } else {
-        client.on(event.name, listener);
-    }
+    client.on(event.name, (...args) => event.execute(...args));
 }
 
 startTelegramBot(client).catch(error => {
@@ -269,10 +224,6 @@ function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`🛑 Получен ${signal}. Завершаю работу и фиксирую SQLite WAL...`);
-
-    try {
-        healthServer.close();
-    } catch (_) {}
 
     try {
         client.destroy();
@@ -292,18 +243,3 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
 process.once('SIGINT', () => shutdown('SIGINT'));
 
 client.login(process.env.TOKEN);
-
-
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
-
-    if (message.content === 'boss') {
-        const { startQuickEvent } = require('./systems/quickEventSystem');
-        await startQuickEvent(client);
-        message.reply('🔥 Босс запущен');
-    }
-});
-
-client.on('interactionCreate', async (interaction) => {
-    await fightButtons(interaction);
-});

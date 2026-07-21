@@ -1,44 +1,3 @@
-
-if (!global.gs_sent_lobbies) {
-    global.gs_sent_lobbies = new Set();
-}
-
-async function safeSend(bot, chatId, text, opts = {}) {
-    try {
-        return await bot.sendMessage(chatId, text, opts);
-    } catch (err) {
-        if (err.response?.body?.parameters?.retry_after) {
-            const wait = err.response.body.parameters.retry_after * 1000;
-            await new Promise(r => setTimeout(r, wait));
-            return await bot.sendMessage(chatId, text, opts);
-        }
-    }
-}) {
-    try {
-        return await bot.sendMessage(chatId, text, opts);
-    } catch (err) {
-        if (err.response?.body?.parameters?.retry_after) {
-            const wait = err.response.body.parameters.retry_after * 1000;
-            console.log(`⏳ Telegram rate limit, жду ${wait}ms`);
-            await new Promise(r => setTimeout(r, wait));
-            return await bot.sendMessage(chatId, text, opts);
-        }
-        console.error('Telegram send error:', err.message);
-    }
-}) {
-    try {
-        return await safeSend(bot, chatId, text, opts);
-    } catch (err) {
-        if (err.response && err.response.body && err.response.body.parameters?.retry_after) {
-            const wait = err.response.body.parameters.retry_after * 1000;
-            console.log(`⏳ Telegram rate limit, жду ${wait}ms`);
-            await new Promise(r => setTimeout(r, wait));
-            return await safeSend(bot, chatId, text, opts);
-        }
-        console.error('Telegram send error:', err.message);
-    }
-}
-
 const fs = require('fs');
 const path = require('path');
 const {
@@ -232,8 +191,6 @@ async function beginGather(api, message) {
     try {
         await beginPrivateGather(api, from);
     } catch (error) {
-        console.error('Не удалось открыть личный сбор:', error.message);
-
         const warning = await sendMessage(api, chat.id, [
             `@${from.username || userName(from)}, сначала открой личный чат с ботом и нажми Start.`,
             'После этого снова используй /gather.',
@@ -546,25 +503,25 @@ async function handleCommand(api, message, command) {
             .map(value => value.trim())
             .filter(Boolean);
 
-        let game, location, codeLine;
-
-        if (parts.length === 3) {
-            [game, location, codeLine] = parts;
-        } else {
-            const raw = message.text.replace('/game', '').trim();
-            const inlineParts = raw.split(/\s+/);
-            if (inlineParts.length >= 3) {
-                game = inlineParts[0];
-                location = inlineParts[1];
-                codeLine = inlineParts.slice(2).join(' ');
-            } else {
-                await sendMessage(api, chat.id, '❌ Неверный формат. Используй либо 3 строки, либо: /game название место код');
-                return;
-            }
+        if (parts.length !== 3) {
+            await sendMessage(api, chat.id, [
+                '❌ Неверный формат.',
+                '',
+                'Отправь ровно три строки после команды:',
+                '<code>/game',
+                'Goose Goose Duck',
+                'Basement',
+                'ABC123</code>',
+            ].join('\n'), {
+                parse_mode: 'HTML',
+                ...(message.message_thread_id
+                    ? { message_thread_id: message.message_thread_id }
+                    : {}),
+            });
+            return true;
         }
 
-        const mapName = location;
-        const lobbyCode = codeLine;
+        const [game, mapName, lobbyCode] = parts;
 
         if (game.length > 60 || mapName.length > 60 || lobbyCode.length > 40) {
             await sendMessage(
