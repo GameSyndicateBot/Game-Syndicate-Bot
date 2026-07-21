@@ -1,3 +1,4 @@
+const { getPack, getDust } = require('../game/rewards');
 
 const fights = global.fights || (global.fights = new Map());
 
@@ -19,7 +20,12 @@ module.exports = async (interaction) => {
 
     if (fight.isFinished()) {
         const mvp = fight.getMVP();
-        return interaction.reply(`🏆 Победа! MVP: <@${mvp.userId}>`);
+        const dust = getDust(fight.players);
+const pack = getPack();
+return interaction.reply(`🏆 Победа!
+MVP: <@${mvp.userId}>
+🎁 MVP получил: ${pack}
+💰 Все получили: ${dust} пыли`);
     }
 
     fight.nextTurn();
