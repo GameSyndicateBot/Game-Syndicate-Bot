@@ -6,6 +6,7 @@ const { REST, Routes } = require('discord.js');
 
 function loadCommands() {
     const commands = [];
+    const commandNames = new Map();
     const commandsPath = path.join(__dirname, 'commands');
     const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
@@ -17,7 +18,17 @@ function loadCommands() {
             continue;
         }
 
-        commands.push(command.data.toJSON());
+        const json = command.data.toJSON();
+        const previousFile = commandNames.get(json.name);
+        if (previousFile) {
+            throw new Error(
+                `Найдены две локальные команды с именем /${json.name}: ${previousFile} и ${file}. ` +
+                'Удалите дубликат перед регистрацией.',
+            );
+        }
+
+        commandNames.set(json.name, file);
+        commands.push(json);
     }
 
     return commands;
@@ -39,10 +50,7 @@ function resolveTargets(modeOrGuildId) {
     const mode = (modeOrGuildId || 'prod').toLowerCase();
 
     if (/^\d{17,20}$/.test(modeOrGuildId || '')) {
-        return {
-            label: `сервер ${modeOrGuildId}`,
-            guildIds: [modeOrGuildId],
-        };
+        return { label: `сервер ${modeOrGuildId}`, guildIds: [modeOrGuildId] };
     }
 
     const prodGuildId = process.env.PROD_GUILD_ID?.trim() || process.env.GUILD_ID?.trim();
@@ -50,33 +58,35 @@ function resolveTargets(modeOrGuildId) {
 
     switch (mode) {
         case 'dev':
-            if (!devGuildId) {
-                throw new Error('Для deploy:dev укажи DEV_GUILD_ID в переменных окружения.');
-            }
+            if (!devGuildId) throw new Error('Для deploy:dev укажи DEV_GUILD_ID.');
             return { label: 'DEV-сервер', guildIds: [devGuildId] };
-
         case 'prod':
-            if (!prodGuildId) {
-                throw new Error('Для deploy:prod укажи PROD_GUILD_ID или старую переменную GUILD_ID.');
-            }
-            return { label: 'основной сервер', guildIds: [prodGuildId] };
-
+            if (!prodGuildId) throw new Error('Для deploy:prod укажи PROD_GUILD_ID или GUILD_ID.');
+            return { label: 'основной сервер', guildIds: [prodGuildId], clearGlobal: true };
         case 'all': {
             const guildIds = normalizeGuildIds([prodGuildId, devGuildId]);
-            if (guildIds.length === 0) {
-                throw new Error('Для deploy:all укажи PROD_GUILD_ID/GUILD_ID и DEV_GUILD_ID.');
-            }
-            return { label: 'все настроенные серверы', guildIds };
+            if (guildIds.length === 0) throw new Error('Укажи PROD_GUILD_ID/GUILD_ID и/или DEV_GUILD_ID.');
+            return { label: 'все настроенные серверы', guildIds, clearGlobal: true };
         }
-
         case 'global':
             return { label: 'глобально', global: true, guildIds: [] };
-
+        case 'clean': {
+            const guildIds = normalizeGuildIds([prodGuildId, devGuildId]);
+            return { label: 'полная очистка команд', cleanOnly: true, clearGlobal: true, guildIds };
+        }
         default:
-            throw new Error(
-                `Неизвестный режим "${modeOrGuildId}". Используй dev, prod, all, global или ID сервера.`,
-            );
+            throw new Error(`Неизвестный режим "${modeOrGuildId}". Используй dev, prod, all, global, clean или ID сервера.`);
     }
+}
+
+async function clearGlobalCommands(rest, clientId) {
+    await rest.put(Routes.applicationCommands(clientId), { body: [] });
+    console.log('🧹 Старые глобальные команды удалены.');
+}
+
+async function clearGuildCommands(rest, clientId, guildId) {
+    await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: [] });
+    console.log(`🧹 Старые серверные команды удалены на сервере ${guildId}.`);
 }
 
 async function deploy() {
@@ -86,20 +96,32 @@ async function deploy() {
     const target = resolveTargets(process.argv[2]);
     const rest = new REST({ version: '10' }).setToken(token);
 
-    console.log(`🚀 Регистрация ${commands.length} команд: ${target.label}...`);
-
-    if (target.global) {
-        await rest.put(Routes.applicationCommands(clientId), { body: commands });
-        console.log('✅ Глобальные команды зарегистрированы. Обновление в Discord может занять до часа.');
+    if (target.cleanOnly) {
+        if (target.clearGlobal) await clearGlobalCommands(rest, clientId);
+        for (const guildId of target.guildIds) await clearGuildCommands(rest, clientId, guildId);
+        console.log('✅ Все найденные регистрации команд очищены.');
         return;
     }
 
-    for (const guildId of target.guildIds) {
-        await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
-        console.log(`✅ Команды зарегистрированы на сервере ${guildId}`);
+    console.log(`🚀 Регистрация ${commands.length} уникальных команд: ${target.label}...`);
+
+    if (target.global) {
+        await rest.put(Routes.applicationCommands(clientId), { body: commands });
+        console.log('✅ Глобальные команды зарегистрированы. Обновление может занять до часа.');
+        return;
     }
 
-    console.log('✅ Регистрация команд завершена!');
+    // Главная защита от дублей: на production используется только серверная регистрация.
+    // Старый глобальный набор удаляется перед публикацией серверного набора.
+    if (target.clearGlobal) await clearGlobalCommands(rest, clientId);
+
+    for (const guildId of target.guildIds) {
+        await clearGuildCommands(rest, clientId, guildId);
+        await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
+        console.log(`✅ Один комплект команд зарегистрирован на сервере ${guildId}.`);
+    }
+
+    console.log('✅ Регистрация завершена без локальных дублей.');
 }
 
 deploy().catch(error => {
