@@ -59,7 +59,7 @@ function createTelegramApi(token) {
     return async function telegramApi(method, payload = {}) {
         const response = await fetch(`${baseUrl}/${method}`, {
             method: 'POST',
-            headers: { 'content-type': 'application/json' },
+            headers: { 'content-type': 'application/json' }
             body: JSON.stringify(payload),
         });
 
@@ -145,7 +145,7 @@ async function beginGather(api, message) {
         await beginPrivateGather(api, from);
     } catch (error) {
         const warning = await sendMessage(api, chat.id, [
-            `@${from.username || userName(from)}, сначала открой личный чат с ботом и нажми Start.`,
+            `@${from.username || userName(from)}
             'После этого снова используй /gather.',
         ].join('\n')).catch(() => null);
 
@@ -571,16 +571,16 @@ async function startTelegramBot(client) {
     await api('deleteWebhook', { drop_pending_updates: false }).catch(() => null);
     await api('setMyCommands', {
         commands: [
-            { command: 'gather', description: 'создать игровой сбор' },
-            { command: 'cancel', description: 'отменить создание сбора' },
-            { command: 'setgatherchannel', description: 'назначить Telegram-чат сборов' },
-            { command: 'setleavelog', description: 'назначить тему логов выходов' },
-            { command: 'setcrocodile', description: 'назначить тему Крокодила' },
-            { command: 'crocodile', description: 'начать игру Крокодил' },
-            { command: 'croctop', description: 'топ игроков Крокодила' },
-            { command: 'crocstats', description: 'моя статистика Крокодила' },
-            { command: 'crocstop', description: 'остановить текущий раунд' },
-            { command: 'crocreset', description: 'сбросить зависшие раунды' },
+            { command: 'gather', description: 'создать игровой сбор' }
+            { command: 'cancel', description: 'отменить создание сбора' }
+            { command: 'setgatherchannel', description: 'назначить Telegram-чат сборов' }
+            { command: 'setleavelog', description: 'назначить тему логов выходов' }
+            { command: 'setcrocodile', description: 'назначить тему Крокодила' }
+            { command: 'crocodile', description: 'начать игру Крокодил' }
+            { command: 'croctop', description: 'топ игроков Крокодила' }
+            { command: 'crocstats', description: 'моя статистика Крокодила' }
+            { command: 'crocstop', description: 'остановить текущий раунд' }
+            { command: 'crocreset', description: 'сбросить зависшие раунды' }
         ],
     }).catch(error => {
         console.error('⚠️ Не удалось установить команды Telegram:', error.message);
