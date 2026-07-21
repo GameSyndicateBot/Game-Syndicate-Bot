@@ -520,7 +520,8 @@ async function handleCommand(api, message, command) {
             }
         }
 
-        const [game, mapName, lobbyCode] = parts;
+        const mapName = location;
+        const lobbyCode = codeLine;
 
         if (game.length > 60 || mapName.length > 60 || lobbyCode.length > 40) {
             await sendMessage(
