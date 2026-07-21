@@ -20,13 +20,24 @@ async function startQuickEvent(client) {
     }, 2 * 60 * 1000);
 }
 
-async function handleMessage(message) {
-    if (message.content === 'boss') {
+async function handleQuickEventAnswer(message) {
+    // Совместимость с обработчиком messageCreate.
+    // Сейчас quick-event запускается командой `boss`; другие сообщения игнорируются.
+    if (!message || message.author?.bot) return false;
+
+    if (message.content?.trim().toLowerCase() === 'boss') {
         await startQuickEvent(message.client);
+        return true;
     }
+
+    return false;
 }
+
+// Старое имя оставлено для совместимости с другими модулями.
+const handleMessage = handleQuickEventAnswer;
 
 module.exports = {
     startQuickEvent,
-    handleMessage
+    handleQuickEventAnswer,
+    handleMessage,
 };

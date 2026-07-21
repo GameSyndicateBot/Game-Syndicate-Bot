@@ -246,7 +246,17 @@ for (const file of eventFiles) {
         continue;
     }
 
-    client.on(event.name, (...args) => event.execute(...args));
+    const listener = (...args) => {
+        Promise.resolve(event.execute(...args)).catch((error) => {
+            console.error(`❌ Ошибка Discord-события ${event.name}:`, error);
+        });
+    };
+
+    if (event.once) {
+        client.once(event.name, listener);
+    } else {
+        client.on(event.name, listener);
+    }
 }
 
 startTelegramBot(client).catch(error => {
