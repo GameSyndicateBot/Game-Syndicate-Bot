@@ -1,0 +1,12 @@
+ACHIEVEMENTS FIX
+
+1. Оставлена только команда /achievements.
+2. Удалён ошибочный алиас /achievments.
+3. Удалён вызов несуществующей функции checkAchievementsForInteraction,
+   из-за которого команда завершалась TypeError до показа меню.
+4. /achievements теперь сразу создаёт и показывает меню достижений.
+
+После обновления файлов выполни регистрацию slash-команд:
+  npm run deploy:prod
+
+Это удалит старую /achievments из списка Discord и оставит /achievements.
