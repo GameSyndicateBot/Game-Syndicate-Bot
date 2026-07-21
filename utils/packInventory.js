@@ -13,6 +13,10 @@ const PACK_TYPES = Object.freeze({
         id: 'elite',
         name: 'Elite Pack',
     },
+    boss: {
+        id: 'boss',
+        name: 'Boss Pack',
+    },
 });
 
 const PACK_ALIASES = Object.freeze({
@@ -26,6 +30,9 @@ const PACK_ALIASES = Object.freeze({
 
     elite: 'elite',
     elite_pack: 'elite',
+
+    boss: 'boss',
+    boss_pack: 'boss',
 });
 
 function initPackInventoryTable() {
@@ -63,7 +70,7 @@ function normalizePackType(packType) {
 
     if (!normalized || !PACK_TYPES[normalized]) {
         throw new RangeError(
-            `Неизвестный тип пака: ${packType}. Доступно: base, premium, elite.`
+            `Неизвестный тип пака: ${packType}. Доступно: base, premium, elite, boss.`
         );
     }
 

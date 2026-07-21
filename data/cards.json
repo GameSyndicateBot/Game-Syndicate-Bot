@@ -773,7 +773,7 @@
   {
     "id": 2037,
     "code": "B-037",
-    "name": "Boss #037",
+    "name": "Теневой Страж",
     "type": "boss",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -791,7 +791,7 @@
   {
     "id": 2038,
     "code": "B-038",
-    "name": "Boss #038",
+    "name": "Пожиратель Пустоты",
     "type": "boss",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -809,7 +809,7 @@
   {
     "id": 2039,
     "code": "B-039",
-    "name": "Boss #039",
+    "name": "Архонт Хаоса",
     "type": "boss",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -827,7 +827,7 @@
   {
     "id": 2040,
     "code": "B-040",
-    "name": "Boss #040",
+    "name": "Железный Колосс",
     "type": "boss",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -845,7 +845,7 @@
   {
     "id": 2041,
     "code": "B-041",
-    "name": "Boss #041",
+    "name": "Грозовой Тиран",
     "type": "boss",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -863,7 +863,7 @@
   {
     "id": 2042,
     "code": "B-042",
-    "name": "Boss #042",
+    "name": "Костяной Император",
     "type": "boss",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -881,7 +881,7 @@
   {
     "id": 2043,
     "code": "B-043",
-    "name": "Boss #043",
+    "name": "Ледяной Левиафан",
     "type": "boss",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -899,7 +899,7 @@
   {
     "id": 2044,
     "code": "B-044",
-    "name": "Boss #044",
+    "name": "Багровый Дракон",
     "type": "boss",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -917,7 +917,7 @@
   {
     "id": 2045,
     "code": "B-045",
-    "name": "Minion #045",
+    "name": "Тень Бездны",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -935,7 +935,7 @@
   {
     "id": 2046,
     "code": "B-046",
-    "name": "Minion #046",
+    "name": "Искажённая Тень",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -953,7 +953,7 @@
   {
     "id": 2047,
     "code": "B-047",
-    "name": "Minion #047",
+    "name": "Паразит Бездны",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -971,7 +971,7 @@
   {
     "id": 2048,
     "code": "B-048",
-    "name": "Minion #048",
+    "name": "Сгусток Пустоты",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -989,7 +989,7 @@
   {
     "id": 2049,
     "code": "B-049",
-    "name": "Minion #049",
+    "name": "Хаосит",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1007,7 +1007,7 @@
   {
     "id": 2050,
     "code": "B-050",
-    "name": "Minion #050",
+    "name": "Разломный Демон",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1025,7 +1025,7 @@
   {
     "id": 2051,
     "code": "B-051",
-    "name": "Minion #051",
+    "name": "Автоматон",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1043,7 +1043,7 @@
   {
     "id": 2052,
     "code": "B-052",
-    "name": "Minion #052",
+    "name": "Искра Бури",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1061,7 +1061,7 @@
   {
     "id": 2053,
     "code": "B-053",
-    "name": "Minion #053",
+    "name": "Грозовой Элементаль",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1079,7 +1079,7 @@
   {
     "id": 2054,
     "code": "B-054",
-    "name": "Minion #054",
+    "name": "Скелет-Воин",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1097,7 +1097,7 @@
   {
     "id": 2055,
     "code": "B-055",
-    "name": "Minion #055",
+    "name": "Некромант-Призрак",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1115,7 +1115,7 @@
   {
     "id": 2056,
     "code": "B-056",
-    "name": "Minion #056",
+    "name": "Ледяной Осколок",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1133,7 +1133,7 @@
   {
     "id": 2057,
     "code": "B-057",
-    "name": "Minion #057",
+    "name": "Ледяной Голем",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1151,7 +1151,7 @@
   {
     "id": 2058,
     "code": "B-058",
-    "name": "Minion #058",
+    "name": "Драконье Яйцо",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1169,7 +1169,7 @@
   {
     "id": 2059,
     "code": "B-059",
-    "name": "Minion #059",
+    "name": "Дракончик",
     "type": "minion",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1187,7 +1187,7 @@
   {
     "id": 2060,
     "code": "B-060",
-    "name": "Class #060",
+    "name": "Воин",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1205,7 +1205,7 @@
   {
     "id": 2061,
     "code": "B-061",
-    "name": "Class #061",
+    "name": "Паладин",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1223,7 +1223,7 @@
   {
     "id": 2062,
     "code": "B-062",
-    "name": "Class #062",
+    "name": "Страж",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1241,7 +1241,7 @@
   {
     "id": 2063,
     "code": "B-063",
-    "name": "Class #063",
+    "name": "Клирик",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1259,7 +1259,7 @@
   {
     "id": 2064,
     "code": "B-064",
-    "name": "Class #064",
+    "name": "Жрец",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1277,7 +1277,7 @@
   {
     "id": 2065,
     "code": "B-065",
-    "name": "Class #065",
+    "name": "Бард",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1295,7 +1295,7 @@
   {
     "id": 2066,
     "code": "B-066",
-    "name": "Class #066",
+    "name": "Ассасин",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1313,7 +1313,7 @@
   {
     "id": 2067,
     "code": "B-067",
-    "name": "Class #067",
+    "name": "Лучник",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1331,7 +1331,7 @@
   {
     "id": 2068,
     "code": "B-068",
-    "name": "Class #068",
+    "name": "Маг",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1349,7 +1349,7 @@
   {
     "id": 2069,
     "code": "B-069",
-    "name": "Class #069",
+    "name": "Берсерк",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1367,7 +1367,7 @@
   {
     "id": 2070,
     "code": "B-070",
-    "name": "Class #070",
+    "name": "Инженер",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1385,7 +1385,7 @@
   {
     "id": 2071,
     "code": "B-071",
-    "name": "Class #071",
+    "name": "Некромант",
     "type": "class",
     "role": "Boss Pack",
     "series": "BOSS2026",
@@ -1403,7 +1403,7 @@
   {
     "id": 2072,
     "code": "B-072",
-    "name": "Final Card #072",
+    "name": "Багровый Дракон — Финальное испытание",
     "type": "final_card",
     "role": "Boss Pack",
     "series": "BOSS2026",

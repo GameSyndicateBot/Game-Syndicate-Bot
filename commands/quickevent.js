@@ -34,6 +34,11 @@ module.exports = {
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('boss')
+                .setDescription('Запустить регистрацию мирового босса вручную')
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('status')
                 .setDescription('Показать состояние и время следующего Quick Event')
         ),
@@ -44,6 +49,18 @@ module.exports = {
         });
 
         const subcommand = interaction.options.getSubcommand();
+
+        if (subcommand === 'boss') {
+            const { startRegistration } = require('../services/worldBoss/worldBossSystem');
+            const result = await startRegistration(interaction.client, { manual: true });
+            return interaction.editReply({
+                content: result.ok
+                    ? `✅ Регистрация мирового босса запущена в канале <#1526504061870932049>.`
+                    : result.reason === 'active'
+                        ? '❌ Мировой босс уже активен или идёт регистрация.'
+                        : '❌ Не удалось запустить мирового босса: канал не найден.',
+            });
+        }
 
         if (subcommand === 'status') {
             const status = getQuickEventScheduleStatus();

@@ -97,6 +97,11 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
+            if (interaction.customId.startsWith('wb_')) {
+                const { handle } = require('./services/worldBoss/worldBossSystem');
+                return await handle(interaction);
+            }
+
             if (interaction.customId.startsWith('quickevent_')) {
                 const { handleQuickEventComponent } = require('./systems/quickEventSystem');
                 return await handleQuickEventComponent(interaction);

@@ -1,4 +1,5 @@
 const { startQuickEventScheduler } = require('../systems/quickEventSystem');
+const { startScheduler: startWorldBossScheduler } = require('../services/worldBoss/worldBossSystem');
 const { startLuckyDayScheduler } = require('../services/luckyDay');
 const { startAutomaticBackups } = require('../services/automaticBackups');
 const { db, getOrCreatePlayer, updatePlayer } = require('../database/db');
@@ -82,6 +83,7 @@ module.exports = {
 
         startVoiceTrackingTicker(client);
         startQuickEventScheduler(client);
+        startWorldBossScheduler(client);
         startLuckyDayScheduler(client);
         startAutomaticBackups(client);
 

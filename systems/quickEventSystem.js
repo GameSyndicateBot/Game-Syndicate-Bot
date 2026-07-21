@@ -217,7 +217,7 @@ const TYPE_WEIGHTS = [
   ['rarity',4],['avatar',3],['sequence',8],['reverse',7],
   ['emoji_riddle',6],['true_false',6],
   ['loot_share',5],['risk',5],['dont_press',3],['royal_button',3],['dice_tournament',4],
-  ['treasure_chest',6],['lucky_roll',4],['world_boss',2],
+  ['treasure_chest',6],['lucky_roll',4],
 ];
 
 function initTables(){
@@ -1357,6 +1357,13 @@ async function handleQuickEventComponent(interaction){
 
 async function postQuickEvent(client){
   initTables();
+  try {
+    const { isActive } = require('../services/worldBoss/worldBossSystem');
+    if (isActive()) {
+      console.log('[QuickEvent] Обычный ивент пропущен: активен World Boss.');
+      return false;
+    }
+  } catch (_) {}
   db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE status IN ('active','pending')").run();
 
   const channel=await client.channels.fetch(CHANNEL_ID).catch(()=>null);
