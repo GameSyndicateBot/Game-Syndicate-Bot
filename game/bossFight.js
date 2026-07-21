@@ -1,39 +1,46 @@
 
 const { applyEffects } = require('./effects');
+const classes = require('./classes');
+const { spawnMinion } = require('./minions');
 
 function rand(min,max){return Math.floor(Math.random()*(max-min+1))+min;}
 
 class Player{
- constructor(userId,cls){
-  this.userId=userId;
+ constructor(id,cls){
+  const data = classes[cls];
+  this.userId=id;
   this.class=cls;
-  this.hp=120;
-  this.maxHp=120;
+  this.hp=data.hp;
+  this.maxHp=data.hp;
   this.energy=0;
   this.initiative=rand(1,20);
   this.damageDone=0;
   this.alive=true;
   this.effects=[];
+  if(data.passive) data.passive(this);
  }
 }
 
 class Boss{
  constructor(players){
   this.name="Багровый Дракон";
-  this.hp=4000+players*400;
+  this.hp=5000+players*500;
   this.maxHp=this.hp;
   this.phase=1;
   this.effects=[];
+  this.minions=[];
  }
 
  attack(players){
   const alive=players.filter(p=>p.alive);
-  if(!alive.length)return "Босс один";
+  if(!alive.length)return "";
 
   const target=alive[Math.floor(Math.random()*alive.length)];
-  const dmg=rand(50,90);
+  let dmg=rand(60,100);
 
-  target.hp-=dmg;
+  if(target.damageReduction) dmg*=1-target.damageReduction;
+
+  target.hp-=Math.floor(dmg);
 
   if(Math.random()<0.3){
     target.effects.push({type:"burn",value:15,duration:2});
@@ -41,15 +48,22 @@ class Boss{
 
   if(target.hp<=0)target.alive=false;
 
-  return `🐉 Босс ударил <@${target.userId}> на ${dmg}`;
+  return `🐉 Босс ударил <@${target.userId}> на ${Math.floor(dmg)}`;
  }
 
- checkPhase(){
+ summon(players){
+  if(this.minions.length<2){
+    const m = spawnMinion(players);
+    this.minions.push(m);
+    return "👾 Босс призвал миньона";
+  }
+ }
+
+ phaseCheck(){
   if(this.hp<this.maxHp*0.5 && this.phase===1){
     this.phase=2;
-    return "💀 Босс вошел во 2 фазу!";
+    return "💀 Фаза 2!";
   }
-  return null;
  }
 }
 
@@ -63,8 +77,8 @@ class BossFight{
  }
 
  addPlayer(id){
-  const classes=["tank","mage","assassin","healer"];
-  const cls=classes[Math.floor(Math.random()*classes.length)];
+  const keys = Object.keys(classes);
+  const cls = keys[Math.floor(Math.random()*keys.length)];
   this.players.push(new Player(id,cls));
  }
 
@@ -80,38 +94,43 @@ class BossFight{
  current(){return this.turnOrder[this.turnIndex];}
 
  attack(p){
-  const dmg=rand(20,40);
+  let dmg=rand(20,40);
+
+  if(p.class==="assassin" && Math.random()<0.3){
+    dmg*=2;
+    this.log.push("💀 крит!");
+  }
+
   this.boss.hp-=dmg;
   p.energy+=20;
   p.damageDone+=dmg;
-  this.log.push(`⚔️ <@${p.userId}> ${dmg}`);
+  this.log.push(`⚔️ ${dmg}`);
  }
 
  ability(p){
-  if(p.energy<50){this.log.push("❌ нет энергии");return;}
-  const dmg=rand(60,90);
-  this.boss.hp-=dmg;
-  p.energy-=50;
-  p.damageDone+=dmg;
+  if(p.energy<50){this.log.push("❌ энергия");return;}
 
-  if(Math.random()<0.4){
-    this.boss.effects.push({type:"poison",value:20,duration:2});
+  if(p.class==="healer"){
+    p.hp+=40;
+    this.log.push("💚 хил");
+  } else {
+    this.boss.hp-=80;
+    this.log.push("💥 80 урона");
   }
 
-  this.log.push(`💥 ${dmg}`);
+  p.energy-=50;
  }
 
  ulti(p){
-  if(p.energy<100){this.log.push("❌ нет ульты");return;}
-  const dmg=rand(140,200);
-  this.boss.hp-=dmg;
+  if(p.energy<100){this.log.push("❌ ульта");return;}
+
+  this.boss.hp-=180;
   p.energy=0;
-  p.damageDone+=dmg;
-  this.log.push(`🔥 УЛЬТА ${dmg}`);
+  p.damageDone+=180;
+  this.log.push("🔥 УЛЬТА");
  }
 
  nextTurn(){
-  // эффекты
   this.log.push(...applyEffects(this.boss));
   this.players.forEach(pl=>this.log.push(...applyEffects(pl)));
 
@@ -119,10 +138,20 @@ class BossFight{
 
   if(this.turnIndex>=this.turnOrder.length){
     this.turnIndex=0;
+
     this.log.push(this.boss.attack(this.players));
+
+    if(Math.random()<0.4){
+      const s=this.boss.summon(this.players);
+      if(s) this.log.push(s);
+    }
+
+    this.boss.minions.forEach(m=>{
+      this.log.push(m.attack(this.players));
+    });
   }
 
-  const phase=this.boss.checkPhase();
+  const phase=this.boss.phaseCheck();
   if(phase)this.log.push(phase);
  }
 
