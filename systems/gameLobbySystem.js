@@ -1,3 +1,4 @@
+global.gs_last_lobby = global.gs_last_lobby || null;
 'use strict';
 const {ActionRowBuilder,AttachmentBuilder,ButtonBuilder,ButtonStyle,MessageFlags}=require('discord.js');
 const {db,getSetting}=require('../telegram/ecosystemDb');
@@ -73,6 +74,8 @@ function setGameLobbyRuntime(api,client){
 }
 
 async function publishGameLobby({creatorId,creatorName,game,mapName='',lobbyCode=''}){
+    if(global.gs_last_lobby === arguments[0]?.lobbyCode) return;
+    global.gs_last_lobby = arguments[0]?.lobbyCode;
  const discordReady=await waitForDiscordReady(15000);
  if(!discordReady){
   const error=new Error('Discord ещё запускается. Повтори /game через несколько секунд.');

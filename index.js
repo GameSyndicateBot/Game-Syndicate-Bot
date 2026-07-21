@@ -62,6 +62,11 @@ client.once('ready', () => {
     
       
     
+    
+    client.application.commands.set(
+        client.commands.map(cmd => cmd.data.toJSON())
+    ).then(()=>console.log("✅ Slash commands registered"));
+    
     console.log(`✅ Бот ${client.user.tag} запущен!`);
 });
 
