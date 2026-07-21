@@ -20,9 +20,9 @@ function buildShopButtons(user) {
     return new ActionRowBuilder().addComponents(
         ...Object.values(PACK_TYPES).map(pack => new ButtonBuilder()
             .setCustomId(`${BUTTON_PREFIX}${pack.id}`)
-            .setLabel(`${pack.name} • ${pack.cost} Dust`)
+            .setLabel(pack.id === 'boss' ? 'Boss Pack - 1000 Dust (скоро)' : `${pack.name} • ${pack.cost} Dust`)
             .setStyle(pack.id === 'base' ? ButtonStyle.Success : pack.id === 'premium' ? ButtonStyle.Primary : ButtonStyle.Danger)
-            .setDisabled(balance < pack.cost))
+            .setDisabled(Boolean(pack.disabled) || balance < pack.cost))
     );
 }
 
@@ -53,6 +53,10 @@ async function editPanel(interaction, content, panel, fileName) {
 
 async function playBuyAnimation(interaction, user, packId) {
     const pack = PACK_TYPES[packId] ?? PACK_TYPES.base;
+    if (pack.disabled) {
+        const reply = await buildShopReply(user);
+        return interaction.editReply({ ...reply, content: '# Card Shop\nBoss Pack пока недоступен для покупки. Скоро.' });
+    }
     const charge = await createRevealPanel(user, { phase: 'charge', source: pack.name.toUpperCase() });
     await editPanel(interaction, `Открываем ${pack.name}...`, charge, 'shop-charge.png');
     await sleep(650);
@@ -96,6 +100,8 @@ module.exports = {
     async handleComponent(interaction) {
         if (!interaction.customId.startsWith(BUTTON_PREFIX)) return false;
         const packId = interaction.customId.slice(BUTTON_PREFIX.length);
+        const pack = PACK_TYPES[packId];
+        if (!pack) return false;
         await interaction.deferUpdate();
         await playBuyAnimation(interaction, interaction.user, packId);
         return true;

@@ -769,5 +769,653 @@
     },
     "image": "assets/cards/treasure/T001_treasure.png",
     "monthly_limit": 1
+  },
+  {
+    "id": 2037,
+    "code": "B-037",
+    "name": "Boss #037",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/037_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/037_boss.jpg"
+  },
+  {
+    "id": 2038,
+    "code": "B-038",
+    "name": "Boss #038",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/038_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/038_boss.jpg"
+  },
+  {
+    "id": 2039,
+    "code": "B-039",
+    "name": "Boss #039",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/039_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/039_boss.jpg"
+  },
+  {
+    "id": 2040,
+    "code": "B-040",
+    "name": "Boss #040",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/040_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/040_boss.jpg"
+  },
+  {
+    "id": 2041,
+    "code": "B-041",
+    "name": "Boss #041",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/041_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/041_boss.jpg"
+  },
+  {
+    "id": 2042,
+    "code": "B-042",
+    "name": "Boss #042",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/042_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/042_boss.jpg"
+  },
+  {
+    "id": 2043,
+    "code": "B-043",
+    "name": "Boss #043",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/043_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/043_boss.jpg"
+  },
+  {
+    "id": 2044,
+    "code": "B-044",
+    "name": "Boss #044",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/044_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/044_boss.jpg"
+  },
+  {
+    "id": 2045,
+    "code": "B-045",
+    "name": "Minion #045",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/045_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/045_minion.jpg"
+  },
+  {
+    "id": 2046,
+    "code": "B-046",
+    "name": "Minion #046",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/046_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/046_minion.jpg"
+  },
+  {
+    "id": 2047,
+    "code": "B-047",
+    "name": "Minion #047",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/047_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/047_minion.jpg"
+  },
+  {
+    "id": 2048,
+    "code": "B-048",
+    "name": "Minion #048",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/048_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/048_minion.jpg"
+  },
+  {
+    "id": 2049,
+    "code": "B-049",
+    "name": "Minion #049",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/049_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/049_minion.jpg"
+  },
+  {
+    "id": 2050,
+    "code": "B-050",
+    "name": "Minion #050",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/050_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/050_minion.jpg"
+  },
+  {
+    "id": 2051,
+    "code": "B-051",
+    "name": "Minion #051",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/051_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/051_minion.jpg"
+  },
+  {
+    "id": 2052,
+    "code": "B-052",
+    "name": "Minion #052",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/052_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/052_minion.jpg"
+  },
+  {
+    "id": 2053,
+    "code": "B-053",
+    "name": "Minion #053",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/053_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/053_minion.jpg"
+  },
+  {
+    "id": 2054,
+    "code": "B-054",
+    "name": "Minion #054",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/054_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/054_minion.jpg"
+  },
+  {
+    "id": 2055,
+    "code": "B-055",
+    "name": "Minion #055",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/055_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/055_minion.jpg"
+  },
+  {
+    "id": 2056,
+    "code": "B-056",
+    "name": "Minion #056",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/056_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/056_minion.jpg"
+  },
+  {
+    "id": 2057,
+    "code": "B-057",
+    "name": "Minion #057",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/057_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/057_minion.jpg"
+  },
+  {
+    "id": 2058,
+    "code": "B-058",
+    "name": "Minion #058",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/058_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/058_minion.jpg"
+  },
+  {
+    "id": 2059,
+    "code": "B-059",
+    "name": "Minion #059",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта категории Minion из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/059_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/059_minion.jpg"
+  },
+  {
+    "id": 2060,
+    "code": "B-060",
+    "name": "Class #060",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/060_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/060_class.jpg"
+  },
+  {
+    "id": 2061,
+    "code": "B-061",
+    "name": "Class #061",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/061_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/061_class.jpg"
+  },
+  {
+    "id": 2062,
+    "code": "B-062",
+    "name": "Class #062",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/062_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/062_class.jpg"
+  },
+  {
+    "id": 2063,
+    "code": "B-063",
+    "name": "Class #063",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/063_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/063_class.jpg"
+  },
+  {
+    "id": 2064,
+    "code": "B-064",
+    "name": "Class #064",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/064_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/064_class.jpg"
+  },
+  {
+    "id": 2065,
+    "code": "B-065",
+    "name": "Class #065",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/065_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/065_class.jpg"
+  },
+  {
+    "id": 2066,
+    "code": "B-066",
+    "name": "Class #066",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/066_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/066_class.jpg"
+  },
+  {
+    "id": 2067,
+    "code": "B-067",
+    "name": "Class #067",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/067_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/067_class.jpg"
+  },
+  {
+    "id": 2068,
+    "code": "B-068",
+    "name": "Class #068",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/068_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/068_class.jpg"
+  },
+  {
+    "id": 2069,
+    "code": "B-069",
+    "name": "Class #069",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/069_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/069_class.jpg"
+  },
+  {
+    "id": 2070,
+    "code": "B-070",
+    "name": "Class #070",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/070_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/070_class.jpg"
+  },
+  {
+    "id": 2071,
+    "code": "B-071",
+    "name": "Class #071",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта категории Class из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/071_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/071_class.jpg"
+  },
+  {
+    "id": 2072,
+    "code": "B-072",
+    "name": "Final Card #072",
+    "type": "final_card",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "final_card",
+    "description": "Специальная карта категории Final Card из коллекции Boss Pack.",
+    "drop_rarities": [
+      "final_card"
+    ],
+    "images": {
+      "final_card": "assets/cards/boss_pack/072_final_card.jpg"
+    },
+    "image": "assets/cards/boss_pack/072_final_card.jpg"
   }
 ]

@@ -23,15 +23,18 @@ const EDITION_CHANCES = [{ value: 'standard', weight: 100 }];
 const RARITY_NAMES = {
     common: 'Common', rare: 'Rare', epic: 'Epic', legendary: 'Legendary',
     mythic: 'Mithic', exclusive: 'Exclusive', holographic: 'Holographic', treasure: 'Treasure',
+    minion: 'Minion', class: 'Class', boss: 'Boss', final_card: 'Final Card',
 };
 const EDITION_NAMES = { standard: 'Standard' };
 const DISMANTLE_DUST = {
     common: 20, rare: 50, epic: 120, legendary: 300, mythic: 700,
     exclusive: 1500, holographic: 2500, treasure: 0,
+    minion: 100, class: 180, boss: 450, final_card: 900,
 };
 const COLLECTION_SCORE = {
     common: 10, rare: 25, epic: 60, legendary: 150, mythic: 400,
     exclusive: 1000, holographic: 700, treasure: 5000,
+    minion: 40, class: 90, boss: 250, final_card: 600,
 };
 const PACK_TYPES = {
     base: {
@@ -57,6 +60,15 @@ const PACK_TYPES = {
             { value: 'mythic', weight: 30 },
             { value: 'exclusive', weight: 20 },
             { value: 'holographic', weight: 10 },
+        ],
+    },
+    boss: {
+        id: 'boss', name: 'Boss Pack', cost: 1000, disabled: true, collection: 'boss_pack',
+        chances: [
+            { value: 'minion', weight: 40 },
+            { value: 'class', weight: 35 },
+            { value: 'boss', weight: 15 },
+            { value: 'final_card', weight: 10 },
         ],
     },
 };
@@ -140,6 +152,7 @@ function openRandomCard(userId, options = {}) {
     let filtered = pool;
     if (options.series) filtered = filtered.filter(c => c.series === options.series);
     if (options.type) filtered = filtered.filter(c => c.type === options.type);
+    if (options.collection) filtered = filtered.filter(c => c.collection === options.collection);
     if (!filtered.length) throw new Error(`Нет карточек редкости ${rarity}.`);
     const card = filtered[Math.floor(Math.random() * filtered.length)];
     return giveCardToUser(userId, card, { rarity, edition: options.edition, source: options.source ?? 'pack' });
@@ -201,6 +214,7 @@ function buyRandomCardWithDust(userId, options = {}) {
             source: options.source ?? `dust_shop_${pack.id}`,
             allowTreasure: options.allowTreasure !== false,
             rarityChances: pack.chances,
+            collection: pack.collection,
         });
     })();
     return { ok:true, cost, pack, balance:getCardDust(userId), drop };
