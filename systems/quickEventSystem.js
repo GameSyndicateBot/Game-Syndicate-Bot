@@ -7,6 +7,8 @@ const { createQuickEventCard, createQuickEventWinnerCard } = require('../images/
 const { getServerDisplayName } = require('../utils/displayName');
 const { checkAchievements } = require('../utils/checkAchievements');
 const { optionalDiscordId } = require('../utils/env');
+const schedule = require('node-schedule');
+let eventActive = false;
 
 let CHANNEL_ID = optionalDiscordId('QUICK_EVENT_CHANNEL_ID', '1526504061870932049');
 
@@ -1750,3 +1752,21 @@ module.exports = {
   postQuickEvent,
   setConfiguredChannel,
 };
+
+
+function startAutoEvents(client) {
+    [9, 15, 21].forEach(hour => {
+        schedule.scheduleJob(
+            { rule: `0 ${hour} * * *`, tz: 'Europe/Moscow' },
+            () => {
+                if (eventActive) return;
+                eventActive = true;
+                startQuickEvent(client).finally(() => {
+                    eventActive = false;
+                });
+            }
+        );
+    });
+}
+
+module.exports.startAutoEvents = startAutoEvents;

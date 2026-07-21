@@ -1,3 +1,4 @@
+const { startAutoEvents } = require('./systems/quickEventSystem');
 require('dotenv').config();
 
 const { buildInfo } = require('./utils/buildInfo');
