@@ -209,7 +209,7 @@ async function beginGather(api, message) {
 
     try {
         await beginPrivateGather(api, from);
-    } catch (e) { console.error(e.message) }, сначала открой личный чат с ботом и нажми Start.`,
+    } catch (e) { console.error(e.message); },
             'После этого снова используй /gather.',
         ].join('\n')).catch(() => null);
 
