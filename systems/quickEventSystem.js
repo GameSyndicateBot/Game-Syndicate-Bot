@@ -7,7 +7,7 @@ const { createQuickEventCard, createQuickEventWinnerCard } = require('../images/
 const { getServerDisplayName } = require('../utils/displayName');
 const { checkAchievements } = require('../utils/checkAchievements');
 const { optionalDiscordId } = require('../utils/env');
-const schedule = require('node-schedule');
+
 let eventActive = false;
 
 let CHANNEL_ID = optionalDiscordId('QUICK_EVENT_CHANNEL_ID', '1526504061870932049');

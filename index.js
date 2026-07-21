@@ -56,7 +56,7 @@ for (const file of commandFiles) {
     client.commands.set(command.data.name, command);
 }
 
-client.once('ready', ()=>{ startScheduler(client);
+client.once('ready', () => { startScheduler(client); startScheduler(client);
     startAutoEvents(client);
     console.log(`✅ Бот ${client.user.tag} запущен!`);
 });
