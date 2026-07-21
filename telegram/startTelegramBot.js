@@ -1,3 +1,22 @@
+
+if (!global.gs_sent_lobbies) {
+    global.gs_sent_lobbies = new Set();
+}
+
+async function safeSend(bot, chatId, text, opts = {}) {
+    try {
+        return await safeSend(bot, chatId, text, opts);
+    } catch (err) {
+        if (err.response && err.response.body && err.response.body.parameters?.retry_after) {
+            const wait = err.response.body.parameters.retry_after * 1000;
+            console.log(`⏳ Telegram rate limit, жду ${wait}ms`);
+            await new Promise(r => setTimeout(r, wait));
+            return await safeSend(bot, chatId, text, opts);
+        }
+        console.error('Telegram send error:', err.message);
+    }
+}
+
 const fs = require('fs');
 const path = require('path');
 const {
@@ -190,9 +209,7 @@ async function beginGather(api, message) {
 
     try {
         await beginPrivateGather(api, from);
-    } catch (error) {
-        const warning = await sendMessage(api, chat.id, [
-            `@${from.username || userName(from)}, сначала открой личный чат с ботом и нажми Start.`,
+    } catch (e) { console.error(e.message) }, сначала открой личный чат с ботом и нажми Start.`,
             'После этого снова используй /gather.',
         ].join('\n')).catch(() => null);
 

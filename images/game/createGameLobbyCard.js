@@ -1,3 +1,7 @@
+
+if (!global.gs_sent_lobbies) {
+    global.gs_sent_lobbies = new Set();
+}
 'use strict';
 
 const { createCanvas } = require('canvas');
