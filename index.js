@@ -1,5 +1,5 @@
+const fightButtons = require('./events/fightButtons');
 const { startScheduler } = require('./utils/scheduler');
-const { startAutoEvents } = require('./systems/quickEventSystem');
 require('dotenv').config();
 
 const { buildInfo } = require('./utils/buildInfo');
@@ -58,8 +58,10 @@ for (const file of commandFiles) {
 
 client.once('ready', () => {
     startScheduler(client);
-    startScheduler(client); startScheduler(client); startScheduler(client);
-    startAutoEvents(client);
+
+    
+      
+    
     console.log(`✅ Бот ${client.user.tag} запущен!`);
 });
 
@@ -258,4 +260,8 @@ client.on('messageCreate', async (message) => {
         await startQuickEvent(client);
         message.reply('🔥 Босс запущен');
     }
+});
+
+client.on('interactionCreate', async (interaction) => {
+    await fightButtons(interaction);
 });
