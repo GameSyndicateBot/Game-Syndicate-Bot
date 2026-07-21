@@ -1,4 +1,5 @@
-const { fights } = require('../commands/event');
+
+const fights = global.fights || (global.fights = new Map());
 
 module.exports = async (interaction) => {
     if (!interaction.isButton()) return;
@@ -9,7 +10,7 @@ module.exports = async (interaction) => {
     const player = fight.current();
 
     if (player.userId !== interaction.user.id) {
-        return interaction.reply({ content: "Не твой ход", ephemeral: true });
+        return interaction.reply({content:"Не твой ход", ephemeral:true});
     }
 
     if (interaction.customId === "attack") fight.attack(player);
@@ -18,13 +19,13 @@ module.exports = async (interaction) => {
 
     if (fight.isFinished()) {
         const mvp = fight.getMVP();
-        return interaction.reply(`🏆 Босс убит! MVP: <@${mvp.userId}>`);
+        return interaction.reply(`🏆 Победа! MVP: <@${mvp.userId}>`);
     }
 
     fight.nextTurn();
 
     await interaction.update({
-        content: fight.log.join("\n") + `\n\nХод: <@${fight.current().userId}>`,
+        content: fight.log.join("\n") + `\n\nХод: <@${fight.current().userId}>`
     });
 
     fight.log = [];
