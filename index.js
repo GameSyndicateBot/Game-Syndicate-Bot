@@ -1,3 +1,4 @@
+const { startScheduler } = require('./utils/scheduler');
 const { startAutoEvents } = require('./systems/quickEventSystem');
 require('dotenv').config();
 
@@ -55,7 +56,7 @@ for (const file of commandFiles) {
     client.commands.set(command.data.name, command);
 }
 
-client.once('clientReady', () => {
+client.once('ready', ()=>{ startScheduler(client);
     startAutoEvents(client);
     console.log(`✅ Бот ${client.user.tag} запущен!`);
 });
