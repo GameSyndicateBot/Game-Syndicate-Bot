@@ -503,22 +503,21 @@ async function handleCommand(api, message, command) {
             .map(value => value.trim())
             .filter(Boolean);
 
-        if (parts.length !== 3) {
-            await sendMessage(api, chat.id, [
-                '❌ Неверный формат.',
-                '',
-                'Отправь ровно три строки после команды:',
-                '<code>/game',
-                'Goose Goose Duck',
-                'Basement',
-                'ABC123</code>',
-            ].join('\n'), {
-                parse_mode: 'HTML',
-                ...(message.message_thread_id
-                    ? { message_thread_id: message.message_thread_id }
-                    : {}),
-            });
-            return true;
+        let game, location, codeLine;
+
+        if (parts.length === 3) {
+            [game, location, codeLine] = parts;
+        } else {
+            const raw = message.text.replace('/game', '').trim();
+            const inlineParts = raw.split(/\s+/);
+            if (inlineParts.length >= 3) {
+                game = inlineParts[0];
+                location = inlineParts[1];
+                codeLine = inlineParts.slice(2).join(' ');
+            } else {
+                await sendMessage(api, chat.id, '❌ Неверный формат. Используй либо 3 строки, либо: /game название место код');
+                return;
+            }
         }
 
         const [game, mapName, lobbyCode] = parts;
