@@ -10,28 +10,28 @@ const {
 } = require('./template');
 
 const TARGETS = Object.freeze({
-    common: { label: 'COMMON', stars: 1, rgb: [185, 189, 197] }
-    rare: { label: 'RARE', stars: 2, rgb: [0, 107, 255] }
-    epic: { label: 'EPIC', stars: 3, rgb: [168, 85, 247] }
-    legendary: { label: 'LEGENDARY', stars: 4, rgb: [245, 184, 0] }
-    mythic: { label: 'MYTHIC', stars: 5, rgb: [239, 43, 43] }
+    common: { label: 'COMMON', stars: 1, rgb: [185, 189, 197] },
+    rare: { label: 'RARE', stars: 2, rgb: [0, 107, 255] },
+    epic: { label: 'EPIC', stars: 3, rgb: [168, 85, 247] },
+    legendary: { label: 'LEGENDARY', stars: 4, rgb: [245, 184, 0] },
+    mythic: { label: 'MYTHIC', stars: 5, rgb: [239, 43, 43] },
 });
 
 // Zones that belong to rarity styling. The information panel is deliberately excluded,
 // therefore grey text and purple icons stay untouched on every rarity.
 const STYLE_ZONES = Object.freeze([
-    { x: 0, y: 0, width: 1054, height: 210 }
-    { x: 0, y: 0, width: 58, height: 1492 }
-    { x: 996, y: 0, width: 58, height: 1492 }
-    { x: 0, y: 845, width: 1054, height: 205 }
-    { x: 0, y: 1342, width: 1054, height: 150 }
+    { x: 0, y: 0, width: 1054, height: 210 },
+    { x: 0, y: 0, width: 58, height: 1492 },
+    { x: 996, y: 0, width: 58, height: 1492 },
+    { x: 0, y: 845, width: 1054, height: 205 },
+    { x: 0, y: 1342, width: 1054, height: 150 },
 ]);
 
 // Only the universal outer contour is taken from template 000001.
 const TEMPLATE_FRAME_ZONES = Object.freeze([
-    { x: 0, y: 0, width: 1054, height: 74 }
-    { x: 0, y: 0, width: 38, height: 1492 }
-    { x: 1016, y: 0, width: 38, height: 1492 }
+    { x: 0, y: 0, width: 1054, height: 74 },
+    { x: 0, y: 0, width: 38, height: 1492 },
+    { x: 1016, y: 0, width: 38, height: 1492 },
 ]);
 
 function ensureDir(dir) {
@@ -163,7 +163,8 @@ function maskSvg(rects) {
 
     return Buffer.from(
         `<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_SIZE.width}" height="${CARD_SIZE.height}">` +
-        `<rect width="100%" height="100%" fill="rgba(0,0,0,0)"/>${shapes}</svg>`);
+        `<rect width="100%" height="100%" fill="rgba(0,0,0,0)"/>${shapes}</svg>`,
+    );
 }
 
 async function buildTemplateFrame(rarity) {
@@ -248,11 +249,11 @@ async function buildReferenceCard(inputPath, rarity, outputPath) {
             width: info.width,
             height: info.height,
             channels: info.channels,
-        }
+        },
     })
         .composite([
-            { input: frame, left: 0, top: 0, blend: 'over' }
-            { input: labelsSvg(rarity), left: 0, top: 0, blend: 'over' }
+            { input: frame, left: 0, top: 0, blend: 'over' },
+            { input: labelsSvg(rarity), left: 0, top: 0, blend: 'over' },
         ])
         .png({ compressionLevel: 9 })
         .toFile(outputPath);

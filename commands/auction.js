@@ -254,7 +254,8 @@ module.exports={
             const id=interaction.options.getInteger('номер',true),l=getListing(id);if(!l||l.seller_id!==interaction.user.id||l.status!=='active')return interaction.reply({content:'❌ Активное объявление не найдено.',flags: MessageFlags.Ephemeral});
             db.prepare("UPDATE card_auction_listings SET status='cancelled' WHERE id=?").run(id);await refresh(interaction.client,id);return interaction.reply({content:`✅ Объявление #${id} снято с продажи.`,flags: MessageFlags.Ephemeral});
         }
-    }
+    },
+
     async handleComponent(interaction){
         if(!interaction.customId.startsWith('auction_'))return false;
         const parts=interaction.customId.split('_');const action=parts[1],raw=parts[2];

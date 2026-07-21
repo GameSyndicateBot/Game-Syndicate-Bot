@@ -43,7 +43,7 @@ async function fetchMessages(channelId, token) {
             headers: {
                 Authorization: `Bot ${token}`,
                 'User-Agent': 'GameSyndicateBot/2.3.1',
-            }
+            },
         }
     );
 

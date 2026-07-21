@@ -93,5 +93,5 @@ module.exports = {
         return interaction.editReply({
             content: '❌ Неизвестная подкоманда Quick Event.',
         });
-    }
+    },
 };

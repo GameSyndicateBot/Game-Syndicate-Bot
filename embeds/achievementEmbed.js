@@ -10,8 +10,8 @@ function createAchievementEmbed(user, achievement) {
         .setTitle(`🥇 ${achievement.title}`)
         .setDescription(achievement.description)
         .addFields(
-            { name: '⭐ Награда', value: `+${achievement.xp} XP`, inline: true }
-            { name: '👤 Игрок', value: `${user}`, inline: true }
+            { name: '⭐ Награда', value: `+${achievement.xp} XP`, inline: true },
+            { name: '👤 Игрок', value: `${user}`, inline: true },
             { name: '💎 Редкость', value: 'Обычная', inline: true }
         )
         .setFooter({

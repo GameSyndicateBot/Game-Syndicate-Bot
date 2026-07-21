@@ -215,8 +215,8 @@ function keyboard(round) {
             inline_keyboard: [
                 [{ text: '👁 Посмотреть задание', callback_data: `croc_show:${round.id}` }],
                 [
-                    { text: '↩ Предыдущее', callback_data: `croc_prev:${round.id}` }
-                    { text: '🔄 Новое', callback_data: `croc_new:${round.id}` }
+                    { text: '↩ Предыдущее', callback_data: `croc_prev:${round.id}` },
+                    { text: '🔄 Новое', callback_data: `croc_new:${round.id}` },
                 ],
             ],
         };
@@ -407,7 +407,7 @@ async function expireClaimedHost(roundId) {
         await apiRef('editMessageReplyMarkup', {
             chat_id: round.chat_id,
             message_id: round.message_id,
-            reply_markup: { inline_keyboard: [] }
+            reply_markup: { inline_keyboard: [] },
         }).catch(() => null);
     }
 
@@ -512,7 +512,7 @@ async function handleCommand(api, message, command, checkAdmin) {
                 '⛔ Настроить тему «Крокодил» может только администратор группы.',
                 message.message_thread_id
                     ? { message_thread_id: message.message_thread_id }
-                    : {}
+                    : {},
             );
             return true;
         }
@@ -547,7 +547,7 @@ async function handleCommand(api, message, command, checkAdmin) {
                     '🐊 Раунд уже идёт.',
                     message.message_thread_id
                         ? { message_thread_id: message.message_thread_id }
-                        : {}
+                        : {},
                 );
                 return true;
             }
@@ -562,7 +562,7 @@ async function handleCommand(api, message, command, checkAdmin) {
                 await api('editMessageReplyMarkup', {
                     chat_id: current.chat_id,
                     message_id: current.message_id,
-                    reply_markup: { inline_keyboard: [] }
+                    reply_markup: { inline_keyboard: [] },
                 }).catch(() => null);
             }
         }
@@ -614,14 +614,14 @@ async function handleCommand(api, message, command, checkAdmin) {
                 await api('editMessageReplyMarkup', {
                     chat_id: round.chat_id,
                     message_id: round.message_id,
-                    reply_markup: { inline_keyboard: [] }
+                    reply_markup: { inline_keyboard: [] },
                 }).catch(() => null);
             }
             if (round.result_message_id) {
                 await api('editMessageReplyMarkup', {
                     chat_id: round.chat_id,
                     message_id: round.result_message_id,
-                    reply_markup: { inline_keyboard: [] }
+                    reply_markup: { inline_keyboard: [] },
                 }).catch(() => null);
             }
         }
@@ -760,7 +760,7 @@ async function handleMessage(api, message) {
     await api('editMessageReplyMarkup', {
         chat_id: round.chat_id,
         message_id: round.message_id,
-        reply_markup: { inline_keyboard: [] }
+        reply_markup: { inline_keyboard: [] },
     }).catch(() => null);
 
     // Результат раунда публикуется отдельным сообщением.
@@ -844,7 +844,8 @@ async function handleLike(api, callback, round) {
         callback.id,
         awarded
             ? '🏆 Второй лайк! Ведущему начислено успешное объяснение.'
-            : `💜 Лайк принят. Всего: ${likes}`);
+            : `💜 Лайк принят. Всего: ${likes}`,
+    );
     if (awarded) {
         await send(api, round.chat_id, [
             '🏆 <b>Отличное объяснение!</b>',

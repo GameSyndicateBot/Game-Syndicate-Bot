@@ -318,7 +318,8 @@ module.exports = {
             await refreshPublicMessage(interaction.client, id);
             return interaction.reply({ content: `✅ Сделка #${id} отменена.`, flags: MessageFlags.Ephemeral });
         }
-    }
+    },
+
     async handleComponent(interaction) {
         if (!interaction.customId.startsWith('trade_')) return false;
         const [, action, raw] = interaction.customId.split('_');
@@ -448,5 +449,5 @@ module.exports = {
         }
 
         return false;
-    }
+    },
 };

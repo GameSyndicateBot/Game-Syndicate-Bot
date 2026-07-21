@@ -49,7 +49,7 @@ module.exports = {
                 message: {
                     author: user,
                     guild: message.guild,
-                }
+                },
                 player: giver,
                 member: giverMember,
             });
@@ -78,7 +78,7 @@ module.exports = {
                 message: {
                     author,
                     guild: message.guild,
-                }
+                },
                 player: receiver,
                 member: receiverMember,
             });
@@ -87,5 +87,5 @@ module.exports = {
         } else {
             updatePlayer(receiver);
         }
-    }
+    },
 };

@@ -64,5 +64,5 @@ data: new SlashCommandBuilder()
         return interaction.editReply({
             files: [attachment],
         });
-    }
+    },
 };

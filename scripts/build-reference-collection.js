@@ -62,7 +62,8 @@ async function main() {
             const outputPath = path.join(
                 OUTPUT,
                 source.id,
-                `${source.id}_${rarity}.png`);
+                `${source.id}_${rarity}.png`,
+            );
 
             await buildReferenceCard(inputPath, rarity, outputPath);
         }

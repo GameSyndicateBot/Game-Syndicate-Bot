@@ -17,19 +17,19 @@ const { createAchievementCategoryCard } = require('../images/achievements/create
 const PAGE_SIZE = 8;
 
 const categories = [
-    { label: 'Обзор', value: 'overview', emoji: '📚' }
-    { label: 'Сообщения', value: 'messages', emoji: '💬' }
-    { label: 'Уровни', value: 'levels', emoji: '⭐' }
-    { label: 'Голос', value: 'voice', emoji: '🎙' }
-    { label: 'Реакции', value: 'reactions', emoji: '❤️' }
-    { label: 'Сервер', value: 'server', emoji: '📅' }
-    { label: 'Коллекция', value: 'collection', emoji: '🏆' }
-    { label: 'Игровые вечера', value: 'events', emoji: '🎮' }
-    { label: 'Quick Events', value: 'quick_events', emoji: '⚡' }
-    { label: 'Ежедневки', value: 'daily', emoji: '🎯' }
-    { label: 'Серии', value: 'streaks', emoji: '🔥' }
-    { label: 'Особые', value: 'special', emoji: '🌙' }
-    { label: 'XP', value: 'xp', emoji: '⚡' }
+    { label: 'Обзор', value: 'overview', emoji: '📚' },
+    { label: 'Сообщения', value: 'messages', emoji: '💬' },
+    { label: 'Уровни', value: 'levels', emoji: '⭐' },
+    { label: 'Голос', value: 'voice', emoji: '🎙' },
+    { label: 'Реакции', value: 'reactions', emoji: '❤️' },
+    { label: 'Сервер', value: 'server', emoji: '📅' },
+    { label: 'Коллекция', value: 'collection', emoji: '🏆' },
+    { label: 'Игровые вечера', value: 'events', emoji: '🎮' },
+    { label: 'Quick Events', value: 'quick_events', emoji: '⚡' },
+    { label: 'Ежедневки', value: 'daily', emoji: '🎯' },
+    { label: 'Серии', value: 'streaks', emoji: '🔥' },
+    { label: 'Особые', value: 'special', emoji: '🌙' },
+    { label: 'XP', value: 'xp', emoji: '⚡' },
 ];
 
 function getUnlockedIds(userId) {
@@ -131,7 +131,8 @@ data: new SlashCommandBuilder()
 
         const reply = await buildAchievementsReply(interaction.user);
         await interaction.reply(reply);
-    }
+    },
+
     async handleComponent(interaction) {
         const parts = interaction.customId.split('_');
 
@@ -184,5 +185,5 @@ data: new SlashCommandBuilder()
         }
 
         return false;
-    }
+    },
 };

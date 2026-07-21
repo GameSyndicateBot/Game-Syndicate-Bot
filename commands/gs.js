@@ -43,42 +43,42 @@ const topTypes = {
         label: 'XP',
         emoji: '⭐',
         column: 'xp',
-    }
+    },
     messages: {
         label: 'Сообщения',
         emoji: '💬',
         column: 'messages',
-    }
+    },
     voice: {
         label: 'Голосовой онлайн',
         emoji: '🎙️',
         column: null,
-    }
+    },
     achievements: {
         label: 'Достижения',
         emoji: '🏅',
         column: 'achievements',
-    }
+    },
     given_reactions: {
         label: 'Поставленные реакции',
         emoji: '👍',
         column: 'given_reactions',
-    }
+    },
     received_reactions: {
         label: 'Полученные реакции',
         emoji: '💜',
         column: 'received_reactions',
-    }
+    },
     achievement_points: {
         label: 'Achievement Points',
         emoji: '🏆',
         column: 'achievement_points',
-    }
+    },
     events: {
         label: 'Игровые вечера',
         emoji: '🎮',
         column: 'events_count',
-    }
+    },
 };
 
 
@@ -531,7 +531,8 @@ module.exports = {
 
         const reply = await buildHubReply(interaction.user);
         return interaction.editReply(reply);
-    }
+    },
+
     async handleComponent(interaction) {
         const parts = interaction.customId.split('_');
 
@@ -612,7 +613,8 @@ module.exports = {
         }
 
         return false;
-    }
+    },
+
     buildHubReply,
     buildProfileReply,
     buildTopReply,

@@ -8,11 +8,11 @@ module.exports={name:'guildMemberUpdate',async execute(oldMember,newMember){
     if(added.size||removed.size){
         const audit=await getAuditExecutor(newMember.guild,AuditLogEvent.MemberRoleUpdate,newMember.id);
         await sendLog(newMember.guild,{section:'Участники и роли',title:'Роли участника изменены',color:added.size&&removed.size?0x3B82F6:added.size?0x22C55E:0xEF4444,thumbnail:newMember.user.displayAvatarURL({size:256}),fields:[
-            {name:'Участник',value:formatUser(newMember.user),inline:false}
-            {name:'Добавлены',value:added.map(r=>`${r}  \`${r.id}\``).join('\n')||'—',inline:false}
-            {name:'Сняты',value:removed.map(r=>`${r}  \`${r.id}\``).join('\n')||'—',inline:false}
-            {name:'Исполнитель',value:mod(audit),inline:false}
-            {name:'Причина',value:cutText(audit?.reason||'Не указана'),inline:false}
+            {name:'Участник',value:formatUser(newMember.user),inline:false},
+            {name:'Добавлены',value:added.map(r=>`${r}  \`${r.id}\``).join('\n')||'—',inline:false},
+            {name:'Сняты',value:removed.map(r=>`${r}  \`${r.id}\``).join('\n')||'—',inline:false},
+            {name:'Исполнитель',value:mod(audit),inline:false},
+            {name:'Причина',value:cutText(audit?.reason||'Не указана'),inline:false},
         ]});
     }
     if(oldMember.displayName!==newMember.displayName){

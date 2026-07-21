@@ -22,15 +22,15 @@ module.exports = {
                     name: '👤 Пользователь',
                     value: formatUser(ban.user),
                     inline: true,
-                }
+                },
                 {
                     name: '🛡️ Модератор',
                     value: audit?.executor
                         ? formatUser(audit.executor)
                         : 'Неизвестно',
                     inline: true,
-                }
+                },
             ],
         });
-    }
+    },
 };

@@ -37,14 +37,14 @@ function drawCrown(ctx, x, y, size = 20, color = '#FBBF24') {
 }
 
 const streakConfig = [
-    { type: 'daily_claim', icon: '▲', title: 'Ежедневные задания' }
-    { type: 'chat', icon: '●', title: 'Серия сообщений' }
-    { type: 'voice', icon: '◉', title: 'Голосовая активность' }
-    { type: 'given_reactions', icon: '+', title: 'Выданные реакции' }
-    { type: 'received_reactions', icon: '♥', title: 'Полученные реакции' }
-    { type: 'achievement', icon: '★', title: 'Достижения' }
-    { type: 'level_up', icon: '★', title: 'Повышение уровня' }
-    { type: 'event', icon: '◆', title: 'Игровые вечера' }
+    { type: 'daily_claim', icon: '▲', title: 'Ежедневные задания' },
+    { type: 'chat', icon: '●', title: 'Серия сообщений' },
+    { type: 'voice', icon: '◉', title: 'Голосовая активность' },
+    { type: 'given_reactions', icon: '+', title: 'Выданные реакции' },
+    { type: 'received_reactions', icon: '♥', title: 'Полученные реакции' },
+    { type: 'achievement', icon: '★', title: 'Достижения' },
+    { type: 'level_up', icon: '★', title: 'Повышение уровня' },
+    { type: 'event', icon: '◆', title: 'Игровые вечера' },
 ];
 
 function getStreakValue(streaks, type, field) {

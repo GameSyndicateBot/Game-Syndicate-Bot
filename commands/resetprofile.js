@@ -22,5 +22,5 @@ module.exports = {
             content: `♻️ Профиль пользователя ${targetUser} был полностью сброшен.`,
             flags: MessageFlags.Ephemeral,
         });
-    }
+    },
 };

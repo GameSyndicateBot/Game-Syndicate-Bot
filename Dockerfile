@@ -12,6 +12,7 @@ ENV NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
 ENV NPM_CONFIG_FETCH_TIMEOUT=300000
 ENV DATABASE_PATH=/app/shared/database.sqlite
 ENV BACKUP_DIR=/app/shared/backups
+ENV PORT=3000
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -48,5 +49,10 @@ RUN mkdir -p /opt/gs-data \
     && test -f /opt/gs-data/achievements.json \
     && test -f /opt/gs-data/cards.json \
     && chmod -R 755 /opt/gs-data
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "require('http').get('http://127.0.0.1:' + (process.env.PORT || 3000), r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 CMD ["sh", "/app/scripts/container-entrypoint.sh"]

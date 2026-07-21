@@ -237,26 +237,31 @@ function drawFlash(ctx, accent) {
 
 function getPhaseState(phase) {
     const states = {
-        idle: { group: 'idle', ring: 0.7, open: 0, packScale: 1, shake: 0, flash: 0, cardAlpha: 0 }
-        charge: { group: 'charge', ring: 0.9, open: 0.15, packScale: 1, shake: 0, flash: 0, cardAlpha: 0 }
-        charge_1: { group: 'charge', ring: 0.75, open: 0.08, packScale: 0.96, shake: -8, flash: 0, cardAlpha: 0 }
-        charge_2: { group: 'charge', ring: 1.02, open: 0.18, packScale: 1.02, shake: 7, flash: 0, cardAlpha: 0 }
-        charge_3: { group: 'charge', ring: 1.22, open: 0.30, packScale: 1.07, shake: -5, flash: 0, cardAlpha: 0 }
-        open: { group: 'open', ring: 1.2, open: 0.72, packScale: 1.05, shake: 0, flash: 0, cardAlpha: 0 }
-        shake_1: { group: 'shake', ring: 1.18, open: 0.34, packScale: 1.06, shake: -18, flash: 0, cardAlpha: 0 }
-        shake_2: { group: 'shake', ring: 1.26, open: 0.42, packScale: 1.09, shake: 18, flash: 0, cardAlpha: 0 }
-        shake_3: { group: 'shake', ring: 1.36, open: 0.56, packScale: 1.12, shake: -12, flash: 0, cardAlpha: 0 }
-        open_1: { group: 'open', ring: 1.38, open: 0.72, packScale: 1.10, shake: 0, flash: 0, cardAlpha: 0 }
-        open_2: { group: 'open', ring: 1.50, open: 0.92, packScale: 1.04, shake: 0, flash: 0, cardAlpha: 0.25 }
-        flash: { group: 'flash', ring: 1.35, open: 1, packScale: 1, shake: 0, flash: 0.78, cardAlpha: 0 }
-        flash_1: { group: 'flash', ring: 1.65, open: 1, packScale: 1, shake: 0, flash: 0.65, cardAlpha: 0 }
-        flash_2: { group: 'flash', ring: 1.95, open: 1, packScale: 1, shake: 0, flash: 0.92, cardAlpha: 0 }
-        rarity: { group: 'rarity', ring: 1.4, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 0 }
-        rarity_1: { group: 'rarity', ring: 1.25, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 0 }
-        rarity_2: { group: 'rarity', ring: 1.55, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 0 }
-        card_1: { group: 'card', ring: 1.1, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 0.55 }
-        card_2: { group: 'card', ring: 1.25, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 0.82 }
-        result: { group: 'result', ring: 0.8, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 1 }
+        idle: { group: 'idle', ring: 0.7, open: 0, packScale: 1, shake: 0, flash: 0, cardAlpha: 0 },
+        charge: { group: 'charge', ring: 0.9, open: 0.15, packScale: 1, shake: 0, flash: 0, cardAlpha: 0 },
+        charge_1: { group: 'charge', ring: 0.75, open: 0.08, packScale: 0.96, shake: -8, flash: 0, cardAlpha: 0 },
+        charge_2: { group: 'charge', ring: 1.02, open: 0.18, packScale: 1.02, shake: 7, flash: 0, cardAlpha: 0 },
+        charge_3: { group: 'charge', ring: 1.22, open: 0.30, packScale: 1.07, shake: -5, flash: 0, cardAlpha: 0 },
+
+        open: { group: 'open', ring: 1.2, open: 0.72, packScale: 1.05, shake: 0, flash: 0, cardAlpha: 0 },
+        shake_1: { group: 'shake', ring: 1.18, open: 0.34, packScale: 1.06, shake: -18, flash: 0, cardAlpha: 0 },
+        shake_2: { group: 'shake', ring: 1.26, open: 0.42, packScale: 1.09, shake: 18, flash: 0, cardAlpha: 0 },
+        shake_3: { group: 'shake', ring: 1.36, open: 0.56, packScale: 1.12, shake: -12, flash: 0, cardAlpha: 0 },
+
+        open_1: { group: 'open', ring: 1.38, open: 0.72, packScale: 1.10, shake: 0, flash: 0, cardAlpha: 0 },
+        open_2: { group: 'open', ring: 1.50, open: 0.92, packScale: 1.04, shake: 0, flash: 0, cardAlpha: 0.25 },
+
+        flash: { group: 'flash', ring: 1.35, open: 1, packScale: 1, shake: 0, flash: 0.78, cardAlpha: 0 },
+        flash_1: { group: 'flash', ring: 1.65, open: 1, packScale: 1, shake: 0, flash: 0.65, cardAlpha: 0 },
+        flash_2: { group: 'flash', ring: 1.95, open: 1, packScale: 1, shake: 0, flash: 0.92, cardAlpha: 0 },
+
+        rarity: { group: 'rarity', ring: 1.4, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 0 },
+        rarity_1: { group: 'rarity', ring: 1.25, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 0 },
+        rarity_2: { group: 'rarity', ring: 1.55, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 0 },
+
+        card_1: { group: 'card', ring: 1.1, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 0.55 },
+        card_2: { group: 'card', ring: 1.25, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 0.82 },
+        result: { group: 'result', ring: 0.8, open: 1, packScale: 1, shake: 0, flash: 0, cardAlpha: 1 },
     };
 
     return states[phase] ?? states.charge;

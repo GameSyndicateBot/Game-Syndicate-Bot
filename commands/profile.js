@@ -37,5 +37,5 @@ module.exports = {
 
         const reply = await buildProfileReply(targetUser, interaction.guild);
         return interaction.editReply(reply);
-    }
+    },
 };

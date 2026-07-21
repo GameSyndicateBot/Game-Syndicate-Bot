@@ -283,7 +283,8 @@ async function prepareArt(card, configPath) {
 
     if (!artPath || !fs.existsSync(artPath)) {
         throw new Error(
-            `Не найден арт карточки: ${artPath ?? 'путь не указан'}`);
+            `Не найден арт карточки: ${artPath ?? 'путь не указан'}`,
+        );
     }
 
     return sharp(artPath)
@@ -293,7 +294,7 @@ async function prepareArt(card, configPath) {
             {
                 fit: 'cover',
                 position: card.artPosition ?? 'centre',
-            }
+            },
         )
         .png()
         .toBuffer();
@@ -319,7 +320,8 @@ async function createCard(configPath, rarityName) {
 
     const templatePath = path.join(
         TEMPLATES_DIR,
-        `${rarity}.png`);
+        `${rarity}.png`,
+    );
 
     if (!fs.existsSync(templatePath)) {
         throw new Error(`Не найден шаблон: ${templatePath}`);
@@ -331,7 +333,8 @@ async function createCard(configPath, rarityName) {
     const outputPath = path.join(
         OUTPUT_DIR,
         id,
-        `${id}_${rarity}.png`);
+        `${id}_${rarity}.png`,
+    );
 
     fs.mkdirSync(path.dirname(outputPath), {
         recursive: true,
@@ -341,19 +344,19 @@ async function createCard(configPath, rarityName) {
         .resize(
             LAYOUT.canvas.width,
             LAYOUT.canvas.height,
-            { fit: 'fill' }
+            { fit: 'fill' },
         )
         .composite([
             {
                 input: art,
                 left: LAYOUT.art.x,
                 top: LAYOUT.art.y,
-            }
+            },
             {
                 input: overlay,
                 left: 0,
                 top: 0,
-            }
+            },
         ])
         .png({ compressionLevel: 9 })
         .toFile(outputPath);

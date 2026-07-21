@@ -23,9 +23,9 @@ function mainEmbed(interaction) {
   return new EmbedBuilder().setColor(0x8B5CF6).setTitle('🏴 GAME SYNDICATE • CONTROL PANEL')
     .setDescription('Настройка действующего сервера без редактирования кода и без сброса данных.')
     .addFields(
-      { name: '📡 Каналы', value: `${configured}/${Object.keys(CHANNELS).length} настроено`, inline: true }
-      { name: '🧰 Управление', value: 'Доступно администраторам', inline: true }
-      { name: '🚀 Быстрый старт', value: 'Откройте «Каналы» и назначьте основные точки публикации.', inline: false }
+      { name: '📡 Каналы', value: `${configured}/${Object.keys(CHANNELS).length} настроено`, inline: true },
+      { name: '🧰 Управление', value: 'Доступно администраторам', inline: true },
+      { name: '🚀 Быстрый старт', value: 'Откройте «Каналы» и назначьте основные точки публикации.', inline: false },
     ).setFooter({ text: 'Game Syndicate • Server Control' });
 }
 
@@ -70,7 +70,7 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   async execute(interaction) {
     await interaction.reply({ embeds:[mainEmbed(interaction)], components:mainRows(ownerSuffix(interaction)), flags:MessageFlags.Ephemeral });
-  }
+  },
   async handleComponent(interaction) {
     const parts=interaction.customId.split(':'); const type=parts[1], owner=parts[2], extra=parts[3];
     if(!isOwner(interaction,owner)) return interaction.reply({content:'Откройте собственную панель командой `/control`.',flags:MessageFlags.Ephemeral});
@@ -96,6 +96,6 @@ module.exports = {
       }
       return interaction.update({embeds:[channelsEmbed(interaction)],components:channelRows(owner)});
     }
-  }
+  },
   diagnosticsEmbed, mainEmbed, mainRows,
 };

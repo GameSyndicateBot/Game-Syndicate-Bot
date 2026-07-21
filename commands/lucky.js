@@ -75,5 +75,5 @@ module.exports = {
             content: notes.length ? notes.join('\n') : '🍀 Lucky Day проходит ежедневно в **12:00 МСК** среди тех, кто вчера полностью закрыл ежедневные задания.',
             files: [new AttachmentBuilder(panel, { name: 'lucky-day-stats.png' })],
         });
-    }
+    },
 };

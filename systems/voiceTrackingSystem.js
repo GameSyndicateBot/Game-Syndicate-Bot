@@ -139,7 +139,7 @@ async function settleVoiceSession(member, guild, { close = false } = {}) {
             message: {
                 author: member.user,
                 guild,
-            }
+            },
             player,
             member,
         });

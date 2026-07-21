@@ -13,31 +13,31 @@ function getRarityStyle(rarity) {
             ru: 'Обычное',
             main: '#22C55E',
             glow: '#16A34A',
-        }
+        },
         rare: {
             label: 'RARE',
             ru: 'Редкое',
             main: '#3B82F6',
             glow: '#2563EB',
-        }
+        },
         epic: {
             label: 'EPIC',
             ru: 'Эпическое',
             main: '#8B5CF6',
             glow: '#A855F7',
-        }
+        },
         legendary: {
             label: 'LEGENDARY',
             ru: 'Легендарное',
             main: '#F59E0B',
             glow: '#FBBF24',
-        }
+        },
         mythic: {
             label: 'MYTHIC',
             ru: 'Мифическое',
             main: '#DC2626',
             glow: '#EF4444',
-        }
+        },
     };
 
     return styles[rarity] || styles.common;

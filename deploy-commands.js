@@ -74,7 +74,8 @@ function resolveTargets(modeOrGuildId) {
 
         default:
             throw new Error(
-                `Неизвестный режим "${modeOrGuildId}". Используй dev, prod, all, global или ID сервера.`);
+                `Неизвестный режим "${modeOrGuildId}". Используй dev, prod, all, global или ID сервера.`,
+            );
     }
 }
 

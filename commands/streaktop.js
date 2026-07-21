@@ -27,14 +27,14 @@ module.exports = {
                 .setDescription('Тип серии')
                 .setRequired(true)
                 .addChoices(
-                    { name: '🔥 Ежедневные задания', value: 'daily_claim' }
-                    { name: '💬 Сообщения', value: 'chat' }
-                    { name: '🎙 Голос', value: 'voice' }
-                    { name: '👍 Выданные реакции', value: 'given_reactions' }
-                    { name: '❤️ Полученные реакции', value: 'received_reactions' }
-                    { name: '🏆 Достижения', value: 'achievement' }
-                    { name: '⭐ Повышение уровня', value: 'level_up' }
-                    { name: '🎮 Игровые вечера', value: 'event' }
+                    { name: '🔥 Ежедневные задания', value: 'daily_claim' },
+                    { name: '💬 Сообщения', value: 'chat' },
+                    { name: '🎙 Голос', value: 'voice' },
+                    { name: '👍 Выданные реакции', value: 'given_reactions' },
+                    { name: '❤️ Полученные реакции', value: 'received_reactions' },
+                    { name: '🏆 Достижения', value: 'achievement' },
+                    { name: '⭐ Повышение уровня', value: 'level_up' },
+                    { name: '🎮 Игровые вечера', value: 'event' },
                 )
         )
         .addStringOption(option =>
@@ -43,8 +43,8 @@ module.exports = {
                 .setDescription('Что показывать')
                 .setRequired(true)
                 .addChoices(
-                    { name: 'Текущая серия', value: 'current' }
-                    { name: 'Рекорд', value: 'best' }
+                    { name: 'Текущая серия', value: 'current' },
+                    { name: 'Рекорд', value: 'best' },
                 )
         ),
 
@@ -83,5 +83,5 @@ module.exports = {
         return interaction.editReply({
             files: [attachment],
         });
-    }
+    },
 };

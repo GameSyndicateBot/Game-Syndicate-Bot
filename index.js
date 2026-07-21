@@ -12,6 +12,22 @@ const { startTelegramBot } = require('./telegram/startTelegramBot');
 
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+
+// Bothost и другие контейнерные панели ожидают доступный HTTP-порт.
+// Сервер здоровья не мешает Discord-боту и позволяет платформе проверить,
+// что процесс действительно запущен.
+const healthPort = Number(process.env.PORT || 3000);
+const healthServer = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({
+        status: 'ok',
+        service: 'game-syndicate-bot',
+        discordReady: Boolean(client?.isReady?.()),
+        uptime: Math.floor(process.uptime()),
+    }));
+});
+
 const {
     Client,
     Collection,
@@ -40,6 +56,13 @@ const client = new Client({
 });
 
 client.commands = new Collection();
+
+healthServer.listen(healthPort, '0.0.0.0', () => {
+    console.log(`✅ Health server listening on 0.0.0.0:${healthPort}`);
+});
+healthServer.on('error', error => {
+    console.error('❌ Health server error:', error);
+});
 
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -236,6 +259,10 @@ function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`🛑 Получен ${signal}. Завершаю работу и фиксирую SQLite WAL...`);
+
+    try {
+        healthServer.close();
+    } catch (_) {}
 
     try {
         client.destroy();

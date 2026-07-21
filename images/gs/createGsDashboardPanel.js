@@ -193,18 +193,18 @@ async function createGsDashboardPanel(user, data = {}) {
     });
 
     const tiles=[
-        {icon:'profile',title:'Профиль',subtitle:'уровень и статистика',accent:'#FBBF24',value:`Lv.${level}`}
-        {icon:'cards',title:'Коллекция',subtitle:'альбом карточек',accent:'#A855F7',value:`${cardStats.unique}/${cardStats.available}`}
-        {icon:'trophy',title:'Достижения',subtitle:'прогресс и награды',accent:'#F59E0B',value:totalAchievements?`${achievements}/${totalAchievements}`:''}
-        {icon:'leaderboard',title:'Топы',subtitle:'рейтинги сервера',accent:'#3B82F6'}
-        {icon:'pack',title:'Daily Pack',subtitle:'бесплатный набор',accent:'#22C55E'}
-        {icon:'dust',title:'GS Dust',subtitle:'распыление копий',accent:'#C084FC',value:String(dust)}
-        {icon:'shop',title:'Card Shop',subtitle:'карты за Dust',accent:'#FBBF24'}
-        {icon:'daily',title:'Ежедневки',subtitle:'задания дня',accent:'#22C55E'}
-        {icon:'trade',title:'Обмен',subtitle:'сделки между игроками',accent:'#60A5FA'}
-        {icon:'auction',title:'Аукцион',subtitle:'покупка и продажа',accent:'#F97316'}
-        {icon:'streak',title:'Серии',subtitle:'активность и рекорды',accent:'#EF4444'}
-        {icon:'forecast',title:'Прогноз',subtitle:'предсказание дня',accent:'#C084FC'}
+        {icon:'profile',title:'Профиль',subtitle:'уровень и статистика',accent:'#FBBF24',value:`Lv.${level}`},
+        {icon:'cards',title:'Коллекция',subtitle:'альбом карточек',accent:'#A855F7',value:`${cardStats.unique}/${cardStats.available}`},
+        {icon:'trophy',title:'Достижения',subtitle:'прогресс и награды',accent:'#F59E0B',value:totalAchievements?`${achievements}/${totalAchievements}`:''},
+        {icon:'leaderboard',title:'Топы',subtitle:'рейтинги сервера',accent:'#3B82F6'},
+        {icon:'pack',title:'Daily Pack',subtitle:'бесплатный набор',accent:'#22C55E'},
+        {icon:'dust',title:'GS Dust',subtitle:'распыление копий',accent:'#C084FC',value:String(dust)},
+        {icon:'shop',title:'Card Shop',subtitle:'карты за Dust',accent:'#FBBF24'},
+        {icon:'daily',title:'Ежедневки',subtitle:'задания дня',accent:'#22C55E'},
+        {icon:'trade',title:'Обмен',subtitle:'сделки между игроками',accent:'#60A5FA'},
+        {icon:'auction',title:'Аукцион',subtitle:'покупка и продажа',accent:'#F97316'},
+        {icon:'streak',title:'Серии',subtitle:'активность и рекорды',accent:'#EF4444'},
+        {icon:'forecast',title:'Прогноз',subtitle:'предсказание дня',accent:'#C084FC'},
     ];
     const startX=90,startY=390,gapX=24,gapY=20,tileW=337,tileH=130;
     tiles.forEach((item,i)=>{const col=i%4,row=Math.floor(i/4);drawTile(ctx,startX+col*(tileW+gapX),startY+row*(tileH+gapY),tileW,tileH,item);});

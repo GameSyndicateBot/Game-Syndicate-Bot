@@ -185,7 +185,7 @@ async function prepareArt(card) {
             .resize(
                 layout.art.width,
                 layout.art.height,
-                { fit: 'cover' }
+                { fit: 'cover' },
             )
             .png()
             .toBuffer();
@@ -211,7 +211,7 @@ async function prepareArt(card) {
         .resize(
             layout.art.width,
             layout.art.height,
-            { fit: 'cover' }
+            { fit: 'cover' },
         )
         .png()
         .toBuffer();
@@ -226,7 +226,8 @@ async function renderCard(id, rarityName, outputPath) {
     const templatePath = path.join(
         ROOT,
         'templates',
-        `${rarityName}.png`);
+        `${rarityName}.png`,
+    );
 
     const artBuffer = await prepareArt(card);
     const textOverlay = buildTextOverlay(
@@ -236,26 +237,26 @@ async function renderCard(id, rarityName, outputPath) {
 
     fs.mkdirSync(
         path.dirname(outputPath),
-        { recursive: true }
+        { recursive: true },
     );
 
     await sharp(templatePath)
         .resize(
             layout.canvas.width,
             layout.canvas.height,
-            { fit: 'fill' }
+            { fit: 'fill' },
         )
         .composite([
             {
                 input: artBuffer,
                 left: layout.art.x,
                 top: layout.art.y,
-            }
+            },
             {
                 input: textOverlay,
                 left: 0,
                 top: 0,
-            }
+            },
         ])
         .png({ compressionLevel: 9 })
         .toFile(outputPath);

@@ -8,13 +8,13 @@ const {
 } = require('../database/db');
 
 const RARITY_CHANCES = [
-    { value: 'common', weight: 50 }
-    { value: 'rare', weight: 27 }
-    { value: 'epic', weight: 14 }
-    { value: 'legendary', weight: 5 }
-    { value: 'mythic', weight: 2 }
-    { value: 'exclusive', weight: 1.2 }
-    { value: 'holographic', weight: 0.8 }
+    { value: 'common', weight: 50 },
+    { value: 'rare', weight: 27 },
+    { value: 'epic', weight: 14 },
+    { value: 'legendary', weight: 5 },
+    { value: 'mythic', weight: 2 },
+    { value: 'exclusive', weight: 1.2 },
+    { value: 'holographic', weight: 0.8 },
 ];
 
 const TREASURE_CHANCE = 0.0002; // 0.02%: примерно 1 раз на 5000 открытий
@@ -37,28 +37,28 @@ const PACK_TYPES = {
     base: {
         id: 'base', name: 'Base Pack', cost: 200,
         chances: RARITY_CHANCES,
-    }
+    },
     premium: {
         id: 'premium', name: 'Premium Pack', cost: 700,
         chances: [
-            { value: 'rare', weight: 35 }
-            { value: 'epic', weight: 35 }
-            { value: 'legendary', weight: 18 }
-            { value: 'mythic', weight: 7 }
-            { value: 'exclusive', weight: 3 }
-            { value: 'holographic', weight: 2 }
+            { value: 'rare', weight: 35 },
+            { value: 'epic', weight: 35 },
+            { value: 'legendary', weight: 18 },
+            { value: 'mythic', weight: 7 },
+            { value: 'exclusive', weight: 3 },
+            { value: 'holographic', weight: 2 },
         ],
-    }
+    },
     elite: {
         id: 'elite', name: 'Elite Pack', cost: 1600,
         chances: [
-            { value: 'epic', weight: 15 }
-            { value: 'legendary', weight: 25 }
-            { value: 'mythic', weight: 30 }
-            { value: 'exclusive', weight: 20 }
-            { value: 'holographic', weight: 10 }
+            { value: 'epic', weight: 15 },
+            { value: 'legendary', weight: 25 },
+            { value: 'mythic', weight: 30 },
+            { value: 'exclusive', weight: 20 },
+            { value: 'holographic', weight: 10 },
         ],
-    }
+    },
 };
 const RANDOM_CARD_DUST_COST = PACK_TYPES.base.cost;
 

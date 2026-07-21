@@ -40,34 +40,34 @@ module.exports = {
                     name: member.user.bot ? 'Бот' : 'Участник',
                     value: formatUser(member.user),
                     inline: false,
-                }
+                },
                 {
                     name: 'На сервере с',
                     value: member.joinedTimestamp
                         ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>`
                         : 'Неизвестно',
                     inline: true,
-                }
+                },
                 {
                     name: 'Ролей',
                     value: String(Math.max(0, member.roles.cache.size - 1)),
                     inline: true,
-                }
+                },
                 ...(kicked
                     ? [
                         {
                             name: 'Модератор',
                             value: formatUser(audit.executor),
                             inline: false,
-                        }
+                        },
                         {
                             name: 'Причина',
                             value: audit.reason || 'Не указана',
                             inline: false,
-                        }
+                        },
                     ]
                     : []),
             ],
         });
-    }
+    },
 };

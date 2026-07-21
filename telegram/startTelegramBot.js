@@ -122,7 +122,7 @@ function createTelegramApi(token) {
         } else {
             requestOptions = {
                 method: 'POST',
-                headers: { 'content-type': 'application/json' }
+                headers: { 'content-type': 'application/json' },
                 body: JSON.stringify(cleanPayload),
             };
         }
@@ -209,7 +209,11 @@ async function beginGather(api, message) {
 
     try {
         await beginPrivateGather(api, from);
-    } catch (e) { console.error(e.message); }
+    } catch (error) {
+        console.error('Не удалось открыть личный сбор:', error.message);
+
+        const warning = await sendMessage(api, chat.id, [
+            `@${from.username || userName(from)}, сначала открой личный чат с ботом и нажми Start.`,
             'После этого снова используй /gather.',
         ].join('\n')).catch(() => null);
 
@@ -352,8 +356,8 @@ async function sendLeaveLog(api, update) {
                 path: farewellImagePath,
                 filename: 'gs-telegram-farewell.png',
                 contentType: 'image/png',
-            }
-        }
+            },
+        },
     });
 
     console.log(
@@ -846,17 +850,17 @@ async function startTelegramBot(client) {
     await api('deleteWebhook', { drop_pending_updates: false }).catch(() => null);
     await api('setMyCommands', {
         commands: [
-            { command: 'gs', description: 'призвать участников группы' }
-            { command: 'gsregister', description: 'изменить личный эмодзи для GS-созыва' }
-            { command: 'game', description: 'создать игровое лобби' }
-            { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' }
-            { command: 'setleavelog', description: 'назначить тему логов выходов' }
-            { command: 'setcrocodile', description: 'назначить тему Крокодила' }
-            { command: 'crocodile', description: 'начать игру Крокодил' }
-            { command: 'croctop', description: 'топ игроков Крокодила' }
-            { command: 'crocstats', description: 'личная статистика Крокодила' }
-            { command: 'crocstop', description: 'остановить текущий раунд' }
-            { command: 'crocreset', description: 'сбросить зависшие раунды' }
+            { command: 'gs', description: 'призвать участников группы' },
+            { command: 'gsregister', description: 'изменить личный эмодзи для GS-созыва' },
+            { command: 'game', description: 'создать игровое лобби' },
+            { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' },
+            { command: 'setleavelog', description: 'назначить тему логов выходов' },
+            { command: 'setcrocodile', description: 'назначить тему Крокодила' },
+            { command: 'crocodile', description: 'начать игру Крокодил' },
+            { command: 'croctop', description: 'топ игроков Крокодила' },
+            { command: 'crocstats', description: 'личная статистика Крокодила' },
+            { command: 'crocstop', description: 'остановить текущий раунд' },
+            { command: 'crocreset', description: 'сбросить зависшие раунды' },
         ],
     }).catch(error => {
         console.error('⚠️ Не удалось установить команды Telegram:', error.message);

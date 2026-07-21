@@ -107,5 +107,5 @@ module.exports = {
             updateStreak(message.author.id, 'level_up');
             await sendLevelUpMessage(message, player, player.level);
         }
-    }
+    },
 };

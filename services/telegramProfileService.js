@@ -132,14 +132,14 @@ function getCardStats(telegramUserId) {
         : [];
 
     const result = {
-        common: { copies: 0, unique: 0 }
-        rare: { copies: 0, unique: 0 }
-        epic: { copies: 0, unique: 0 }
-        legendary: { copies: 0, unique: 0 }
-        mythic: { copies: 0, unique: 0 }
-        exclusive: { copies: 0, unique: 0 }
-        holographic: { copies: 0, unique: 0 }
-        treasure: { copies: 0, unique: 0 }
+        common: { copies: 0, unique: 0 },
+        rare: { copies: 0, unique: 0 },
+        epic: { copies: 0, unique: 0 },
+        legendary: { copies: 0, unique: 0 },
+        mythic: { copies: 0, unique: 0 },
+        exclusive: { copies: 0, unique: 0 },
+        holographic: { copies: 0, unique: 0 },
+        treasure: { copies: 0, unique: 0 },
     };
 
     for (const row of rows) {

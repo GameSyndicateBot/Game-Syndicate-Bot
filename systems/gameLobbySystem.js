@@ -95,16 +95,14 @@ async function publishGameLobby({creatorId,creatorName,game,mapName='',lobbyCode
  const ch=await state.client.channels.fetch(channelId).catch(()=>null);
  if(!ch?.isTextBased?.())throw new Error('Discord game-lobby не найден.');
 
+ const key = `${game}-${mapName}-${lobbyCode}`;
+ if (global.gs_sent_lobbies.has(key)) return;
+ global.gs_sent_lobbies.add(key);
+
  const createdAt=Date.now(),closesAt=createdAt+AUTO_CLOSE_MS;
  const info=db.prepare('INSERT INTO game_lobbies(creator_discord_id,creator_name,game,map_name,lobby_code,created_at,closes_at) VALUES(?,?,?,?,?,?,?)').run(String(creatorId),creatorName,game,mapName,lobbyCode,createdAt,closesAt);
-const key = `${game}-${mapName}-${lobbyCode}`;
-if (global.gs_sent_lobbies.has(key)) return;
-global.gs_sent_lobbies.add(key);
  let l=getLobby(info.lastInsertRowid);
  const card=await createGameLobbyCard({game,mapName,code:lobbyCode,creatorName,createdAt,closesAt,status:'open'});
-const key = `${game}-${mapName}-${lobbyCode}`;
-if (global.gs_sent_lobbies.has(key)) return;
-global.gs_sent_lobbies.add(key);
  const msg=await ch.send({content:'@everyone',files:[new AttachmentBuilder(card,{name:`gs-game-lobby-${l.id}.png`})],components:rows(l),allowedMentions:{parse:['everyone']}});
  db.prepare('UPDATE game_lobbies SET discord_channel_id=?,discord_message_id=? WHERE id=?').run(channelId,msg.id,l.id);
  const tg=getSetting('telegram_gatherings_chat_id'),thread=getSetting('telegram_gatherings_thread_id');
