@@ -1770,3 +1770,13 @@ function startAutoEvents(client) {
 }
 
 module.exports.startAutoEvents = startAutoEvents;
+
+
+async function startQuickEventSafe(client){
+    if(eventActive) return;
+    eventActive = true;
+    try{
+        await startQuickEvent(client);
+    }catch(e){ console.error(e); }
+    finally{ eventActive = false; }
+}
