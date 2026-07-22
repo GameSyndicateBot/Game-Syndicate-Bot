@@ -4,7 +4,7 @@ const CLASSES = {
   warrior:{name:'Воин',role:'tank',cardId:2060,maxHp:180,damage:[28,36],miss:6,skill:{name:'Перехват',cost:40},ultimate:{name:'Несокрушимый удар',cost:100}},
   paladin:{name:'Паладин',role:'tank',cardId:2061,maxHp:170,damage:[24,32],miss:7,skill:{name:'Щит веры',cost:40},ultimate:{name:'Благословение света',cost:100}},
   guardian:{name:'Страж',role:'tank',cardId:2062,maxHp:200,damage:[22,30],miss:5,skill:{name:'Стальная защита',cost:40},ultimate:{name:'Провокация',cost:100}},
-  cleric:{name:'Клирик',role:'healer',cardId:2063,maxHp:120,damage:[18,24],miss:6,skill:{name:'Благословение',cost:40},ultimate:{name:'Божественное исцеление',cost:100}},
+  cleric:{name:'Клирик',role:'healer',cardId:2063,maxHp:120,damage:[18,24],miss:6,skill:{name:'Передача жизни',cost:40},selfSkill:{name:'Малое исцеление',cost:20,heal:10},ultimate:{name:'Божественное исцеление',cost:100}},
   priest:{name:'Жрец',role:'healer',cardId:2064,maxHp:125,damage:[20,26],miss:6,skill:{name:'Молитва жизни',cost:40},ultimate:{name:'Воскрешение',cost:100}},
   bard:{name:'Бард',role:'healer',cardId:2065,maxHp:130,damage:[18,25],miss:7,skill:{name:'Воодушевление',cost:40},ultimate:{name:'Гимн героев',cost:100}},
   assassin:{name:'Ассасин',role:'dps',cardId:2066,maxHp:100,damage:[26,40],miss:15,skill:{name:'Удар из тени',cost:40},ultimate:{name:'Смертельный удар',cost:100}},

@@ -2,7 +2,7 @@
 
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags,
-  StringSelectMenuBuilder,
+  StringSelectMenuBuilder, PermissionsBitField,
 } = require('discord.js');
 const { db, getOrCreatePlayer, addCardDust } = require('../../database/db');
 const { addPack } = require('../../utils/packInventory');
@@ -18,6 +18,9 @@ const SKILL_CD = 2;
 const ULT_CD = 5;
 const CRIT_CHANCE = 10;
 const CRIT_MULTIPLIER = 1.75;
+const BOSS_CRIT_CHANCE = 10;
+const BOSS_CRIT_MULTIPLIER = 1.75;
+const SELF_HEAL_CD = 1;
 
 let clientRef = null;
 let scheduler = null;
@@ -77,12 +80,13 @@ function buildClassPool(n) {
   while (out.length < n) out.push(pick(Object.keys(CLASSES).filter(k => ['dps', 'support'].includes(CLASSES[k].role))));
   return shuffle(out);
 }
-function scaledHp(base, n) { return Math.round(base * (0.72 + 0.28 * n)); }
+function scaledHp(base, n) { return Math.round(base * (0.72 + 0.28 * n) * 1.15); }
 
 function buttons(b) {
   if (b.status === 'registration') return [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`wb_join_${b.id}`).setLabel('Вступить').setEmoji('⚔️').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`wb_leave_${b.id}`).setLabel('Покинуть').setEmoji('🚪').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`wb_force_start_${b.id}`).setLabel('Начать сейчас').setEmoji('▶️').setStyle(ButtonStyle.Danger),
   )];
   if (b.status === 'class_roll') return [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`wb_classroll_${b.id}`).setLabel('Бросить d20 за класс').setEmoji('🎲').setStyle(ButtonStyle.Primary),
@@ -94,12 +98,16 @@ function buttons(b) {
     new ButtonBuilder().setCustomId(`wb_initroll_${b.id}`).setLabel('Бросить d20 на ход').setEmoji('🎲').setStyle(ButtonStyle.Primary),
   )];
   if (b.status !== 'active') return [];
-  return [new ActionRowBuilder().addComponents(
+  const rows = [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`wb_attack_${b.id}`).setLabel('Атака').setEmoji('🗡️').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`wb_skill_${b.id}`).setLabel('Способность').setEmoji('🔋').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`wb_ult_${b.id}`).setLabel('Ульта').setEmoji('💥').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId(`wb_status_${b.id}`).setLabel('Мой статус').setEmoji('📋').setStyle(ButtonStyle.Secondary),
   )];
+  if (battlePlayers(b.id).some(p => p.status === 'alive' && p.class_key === 'cleric')) rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`wb_selfheal_${b.id}`).setLabel('Самохил Клирика · 20⚡').setEmoji('✨').setStyle(ButtonStyle.Success),
+  ));
+  return rows;
 }
 
 function summonsText(state) {
@@ -119,7 +127,7 @@ function buildEmbed(b, players) {
   const current = b.status === 'active' ? alive[b.turn_index % Math.max(1, alive.length)] : null;
   const e = new EmbedBuilder().setColor(['registration','class_roll','class_select','initiative_roll'].includes(b.status) ? 0x8b5cf6 : b.status === 'active' ? 0xdc2626 : 0x22c55e)
     .setTitle(`👹 Мировой босс — ${b.boss_name}`)
-    .setDescription(`❤️ **${b.boss_hp}/${b.boss_max_hp} HP**\n${hpBar(b.boss_hp, b.boss_max_hp, 20)}`);
+    .setDescription(`❤️ **${b.boss_hp}/${b.boss_max_hp} HP**\n${hpBar(b.boss_hp, b.boss_max_hp, 20)}${b.status === 'active' ? `\n🔥 **Ярость: ${Number(state.rage || 0)}/100**` : ''}`);
   if (b.status === 'registration') e.addFields({ name: 'Регистрация', value: `До <t:${Math.floor(b.registration_ends_at / 1000)}:R>\nМинимум: **4** • Участников: **${players.length}**` });
   if (b.status === 'class_roll') e.addFields({ name: '🎲 Бросок за выбор класса', value: `Бросили: **${Object.keys(state.classRolls || {}).length}/${players.length}**\nКаждый участник нажимает кнопку ниже.` });
   if (b.status === 'class_select') {
@@ -145,7 +153,7 @@ async function startRegistration(client, { manual = false } = {}) {
     db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE status IN ('active','pending')").run();
     const ch = await clientRef.channels.fetch(CHANNEL_ID).catch(() => null); if (!ch?.isTextBased()) return { ok: false, reason: 'channel' };
     const boss = pick(BOSSES), now = Date.now();
-    const st = { bossCardId: boss.cardId, allowedMinions: [...boss.minions], minions: [], summons: [], log: [manual ? '🛠️ Босс вызван вручную.' : '⏰ Босс появился по расписанию.'] };
+    const st = { bossCardId: boss.cardId, allowedMinions: [...boss.minions], minions: [], summons: [], rage: 0, lastDestroyRound: -99, lastGroupCurseRound: -99, log: [manual ? '🛠️ Босс вызван вручную.' : '⏰ Босс появился по расписанию.'] };
     const info = db.prepare(`INSERT INTO world_boss_battles(channel_id,boss_card_id,boss_name,boss_hp,boss_max_hp,status,registration_ends_at,state_json,created_at) VALUES(?,?,?,?,?,'registration',?,?,?)`).run(CHANNEL_ID, boss.cardId, boss.name, boss.baseHp, boss.baseHp, now + REGISTRATION_MS, JSON.stringify(st), now);
     const id = Number(info.lastInsertRowid), b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
     const msg = await ch.send({ content: '## 🌍 GS WORLD BOSS', embeds: [buildEmbed(b, [])], components: buttons(b) });
@@ -210,7 +218,9 @@ function damageTarget(id, target, amount) {
 }
 function hurtEnemy(b, state, amount) {
   if (state.minions?.length) { const m = state.minions.find(x => x.hp > 0); if (m) { const dealt = Math.min(amount, m.hp); m.hp -= amount; state.minions = state.minions.filter(x => x.hp > 0); saveState(b, state); return { dealt, target: m.name, minion: true }; } }
-  const dealt = Math.min(amount, b.boss_hp); db.prepare('UPDATE world_boss_battles SET boss_hp=MAX(0,boss_hp-?) WHERE id=?').run(amount, b.id); return { dealt, target: b.boss_name, minion: false };
+  const dealt = Math.min(amount, b.boss_hp); db.prepare('UPDATE world_boss_battles SET boss_hp=MAX(0,boss_hp-?) WHERE id=?').run(amount, b.id);
+  state.rage = clamp(Number(state.rage || 0) + Math.min(8, Math.max(1, Math.ceil(dealt / 50))), 0, 100); saveState(b, state);
+  return { dealt, target: b.boss_name, minion: false };
 }
 function applyDamageBuff(p, base) { const e = effects(p); let d = base; if (e.rageTurns > 0) d *= 1.4; if (e.damageBuffTurns > 0) d *= 1 + Number(e.damageBuff || 0); if (e.groupDamageRounds > 0) d *= 1 + Number(e.groupDamage || 0); if (e.doubleNext) { d *= 2; e.doubleNext = false; updateEffects(p.battle_id, p.user_id, e); } return Math.round(d); }
 function healPlayer(id, healerId, target, amount) { const nh = Math.min(target.max_hp, target.hp + amount), actual = nh - target.hp; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(nh, id, target.user_id); if (actual > 0) db.prepare('UPDATE world_boss_players SET healing_done=healing_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(actual, actual, id, healerId); return actual; }
@@ -218,7 +228,7 @@ function validTargets(id, kind) { const ps = battlePlayers(id); return kind === 
 function actionTargets(id, player, action, kind) { let list = validTargets(id, kind); if (player.class_key === 'cleric' && action === 'skill') list = list.filter(x => x.user_id !== player.user_id); return list; }
 function targetKind(classKey, action) { if (action === 'skill' && ['paladin','cleric','bard'].includes(classKey)) return 'alive'; if (action === 'ult' && ['cleric'].includes(classKey)) return 'alive'; if (action === 'ult' && classKey === 'priest') return 'dead'; return null; }
 function targetMenu(id, action, targets) { return new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`wb_target_${action}_${id}`).setPlaceholder('Выберите цель').addOptions(targets.slice(0, 25).map(t => ({ label: `${CLASSES[t.class_key]?.name || 'Игрок'} • ${t.hp}/${t.max_hp} HP`, value: t.user_id, description: t.status === 'dead' ? 'Погиб' : `Энергия: ${t.energy}` })))); }
-function tickCooldowns(e, used) { if (used !== 'skill' && e.skillCd > 0) e.skillCd--; if (used !== 'ult' && e.ultCd > 0) e.ultCd--; }
+function tickCooldowns(e, used) { if (used !== 'skill' && e.skillCd > 0) e.skillCd--; if (used !== 'selfheal' && e.selfHealCd > 0) e.selfHealCd--; if (used !== 'ult' && e.ultCd > 0) e.ultCd--; if (e.skillSilencedTurns > 0) e.skillSilencedTurns--; if (e.ultSilencedTurns > 0) e.ultSilencedTurns--; }
 
 async function perform(id, userId, action, auto = false, targetId = null) {
   if (busy) return { ok: false, reason: 'busy' }; busy = true;
@@ -230,12 +240,19 @@ async function perform(id, userId, action, auto = false, targetId = null) {
       const miss = auto ? 50 : c.miss;
       if (Math.random() * 100 < miss) text = `💨 <@${userId}> (${c.name}) ${auto ? 'автоатакой ' : ''}промахивается.`;
       else { let dmg = applyDamageBuff(p, rand(...c.damage)); const crit = Math.random() * 100 < CRIT_CHANCE; if (crit) dmg = Math.round(dmg * CRIT_MULTIPLIER); const r = hurtEnemy(b, state, dmg); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, userId); text = `🗡️ <@${userId}> наносит **${r.dealt}** → ${r.target}${crit ? ' • 💥 КРИТ!' : ''}.`; }
-      energy = clamp(energy + (text.includes('промах') ? 15 : 20), 0, 100); tickCooldowns(e, 'attack');
+      energy = clamp(energy + (text.includes('промах') ? 15 : 20), 0, 100);
+    } else if (action === 'selfheal') {
+      if (p.class_key !== 'cleric') return { ok: false, reason: 'class' };
+      if (Number(e.selfHealCd || 0) > 0) return { ok: false, reason: 'cooldown', cd: e.selfHealCd };
+      if (energy < 20) return { ok: false, reason: 'energy' };
+      energy -= 20; const healed = healPlayer(id, userId, p, 10); text = `✨ <@${userId}> восстанавливает себе **${healed} HP**.`; e.selfHealCd = SELF_HEAL_CD;
     } else if (action === 'skill') {
+      if (Number(e.skillSilencedTurns || 0) > 0) return { ok: false, reason: 'silenced_skill', cd: e.skillSilencedTurns };
       if (Number(e.skillCd || 0) > 0) return { ok: false, reason: 'cooldown', cd: e.skillCd }; if (energy < 40) return { ok: false, reason: 'energy' };
       const kind = targetKind(p.class_key, action); if (kind && !targetId) return { ok: false, reason: 'target', kind };
       energy -= 40; text = useSkill(b, p, c, e, state, targetId); e.skillCd = SKILL_CD;
     } else if (action === 'ult') {
+      if (Number(e.ultSilencedTurns || 0) > 0) return { ok: false, reason: 'silenced_ult', cd: e.ultSilencedTurns };
       if (Number(e.ultCd || 0) > 0) return { ok: false, reason: 'cooldown', cd: e.ultCd }; if (energy < 100) return { ok: false, reason: 'energy' };
       const kind = targetKind(p.class_key, action); if (kind && !targetId) return { ok: false, reason: 'target', kind };
       energy = 0; text = useUlt(b, p, c, e, state, targetId); e.ultCd = ULT_CD;
@@ -296,16 +313,86 @@ async function nextTurn(id) {
   if (ni >= alive.length) { await summonsAct(b); b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (b.boss_hp <= 0) return finish(id, true); await bossTurn(id); b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); alive = battlePlayers(id).filter(x => x.status === 'alive'); if (!alive.length) return finish(id, false); ni = 0; db.prepare('UPDATE world_boss_battles SET round_no=round_no+1 WHERE id=?').run(id); }
   db.prepare('UPDATE world_boss_battles SET turn_index=?,turn_deadline=? WHERE id=?').run(ni, Date.now() + TURN_MS, id); await refresh(id); armTurn(id);
 }
+function damagePlayerSummons(state, ratio = 0.55) {
+  let total = 0;
+  for (const summon of state.summons || []) {
+    const hit = Math.max(1, Math.round(rand(14, 24) * ratio));
+    summon.hp = Math.max(0, summon.hp - hit); total += hit;
+  }
+  state.summons = (state.summons || []).filter(s => s.hp > 0 && s.rounds > 0);
+  return total;
+}
+function applyBossCurse(id, state, players, type, rounds = 2) {
+  if (!players.length) return null;
+  const target = pick(players), e = effects(target);
+  if (type === 'skill') { e.skillSilencedTurns = Math.max(Number(e.skillSilencedTurns || 0), rounds); updateEffects(id, target.user_id, e); return `🔒 <@${target.user_id}> не может использовать способности **${rounds} хода**.`; }
+  if (type === 'ult') { e.ultSilencedTurns = Math.max(Number(e.ultSilencedTurns || 0), rounds); updateEffects(id, target.user_id, e); return `⛓️ <@${target.user_id}> не может использовать ульту **${rounds} хода**.`; }
+  return null;
+}
+function destroyRandomSummon(state) {
+  const list = state.summons || []; if (!list.length) return null;
+  const chosen = pick(list);
+  if (chosen.type === 'golem' && Math.random() < 0.5) return `🛡️ ${chosen.name} выдерживает попытку уничтожения.`;
+  const idx = list.indexOf(chosen); if (idx >= 0) list.splice(idx, 1);
+  return `💀 Босс уничтожает призыв **${chosen.name}** игрока <@${chosen.owner}>.`;
+}
 async function bossTurn(id) {
-  let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const boss = BOSSES.find(x => x.cardId === b.boss_card_id), players = battlePlayers(id).filter(x => x.status === 'alive'); if (!players.length) return;
-  let target = players.find(x => effects(x).tauntRounds > 0) || players.find(x => effects(x).interceptRounds > 0) || pick(players), text;
-  if (Math.random() * 100 < boss.miss) text = `💨 ${boss.name} промахивается.`; else { const r = damageTarget(id, target, rand(...boss.damage)); text = `👹 ${boss.name} атакует <@${target.user_id}>: **${r.hpDamage} HP**${r.absorbed ? `, щит поглотил ${r.absorbed}` : ''}.`; }
-  addLog(b, text); b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const state = stateOf(b);
-  if (b.round_no % boss.summonEvery === 0 && state.minions.length < 3) { const minionId = pick(boss.minions); const cfg = MINIONS[minionId]; state.minions.push({ cardId: minionId, ownerBossCardId: boss.cardId, name: cfg.name, hp: cfg.maxHp, maxHp: cfg.maxHp, damage: cfg.damage, miss: cfg.miss }); state.log.push(`👾 **${boss.name}** призывает своего миньона: **${cfg.name}**.`); }
-  for (const m of state.minions) { const aliveNow = battlePlayers(id).filter(x => x.status === 'alive'); if (!aliveNow.length) break; const t = pick(aliveNow); if (Math.random() * 100 >= m.miss) { const r = damageTarget(id, t, rand(...m.damage)); state.log.push(`👾 ${m.name} → <@${t.user_id}>: **${r.hpDamage} HP**.`); } }
+  let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+  const boss = BOSSES.find(x => x.cardId === b.boss_card_id), players = battlePlayers(id).filter(x => x.status === 'alive'); if (!players.length) return;
+  const state = stateOf(b); state.rage = clamp(Number(state.rage || 0) + 18, 0, 100);
+  const target = players.find(x => effects(x).tauntRounds > 0) || players.find(x => effects(x).interceptRounds > 0) || pick(players);
+  let text = '';
+
+  if (state.rage >= 100) {
+    let total = 0;
+    for (const p of players) { const r = damageTarget(id, p, rand(Math.round(boss.damage[0] * 0.99), Math.round(boss.damage[1] * 1.16))); total += r.hpDamage; }
+    const summonDamage = damagePlayerSummons(state, 1);
+    state.rage = 0;
+    text = `🔥 **${boss.name} впадает в ярость!** Ультимативная массовая атака наносит группе **${total} HP**${summonDamage ? ` и ${summonDamage} урона призывам` : ''}.`;
+  } else {
+    const roll = Math.random() * 100;
+    if (roll < 45) {
+      if (Math.random() * 100 < boss.miss) text = `💨 ${boss.name} промахивается.`;
+      else {
+        let damage = rand(Math.round(boss.damage[0] * 1.1), Math.round(boss.damage[1] * 1.1)); const crit = Math.random() * 100 < BOSS_CRIT_CHANCE;
+        if (crit) damage = Math.round(damage * BOSS_CRIT_MULTIPLIER);
+        const r = damageTarget(id, target, damage);
+        text = `👹 ${boss.name} атакует <@${target.user_id}>: **${r.hpDamage} HP**${r.absorbed ? `, щит поглотил ${r.absorbed}` : ''}${crit ? ' • 💥 КРИТ!' : ''}.`;
+      }
+    } else if (roll < 65) {
+      let total = 0;
+      for (const p of players) { const r = damageTarget(id, p, rand(Math.round(boss.damage[0] * 0.66), Math.round(boss.damage[1] * 0.77))); total += r.hpDamage; }
+      const summonDamage = damagePlayerSummons(state, 0.65);
+      text = `💥 ${boss.name} применяет массовую атаку: группе нанесено **${total} HP**${summonDamage ? `, призывам — ${summonDamage}` : ''}.`;
+    } else if (roll < 77) {
+      text = applyBossCurse(id, state, players, 'skill', 2) || `👹 ${boss.name} готовит новую атаку.`;
+    } else if (roll < 84) {
+      const candidates = players.filter(p => p.energy >= 70); text = applyBossCurse(id, state, candidates.length ? candidates : players, 'ult', 2) || `👹 ${boss.name} готовит новую атаку.`;
+    } else if (roll < 87 && b.round_no - Number(state.lastGroupCurseRound || -99) >= 5) {
+      for (const p of players) { const e = effects(p); e.skillSilencedTurns = Math.max(Number(e.skillSilencedTurns || 0), 1); updateEffects(id, p.user_id, e); }
+      state.lastGroupCurseRound = b.round_no; text = `🌑 **Великое молчание!** Вся группа лишена способностей на 1 ход.`;
+    } else if (roll < 92 && (state.summons || []).length && b.round_no - Number(state.lastDestroyRound || -99) >= 2) {
+      text = destroyRandomSummon(state) || `👹 ${boss.name} не смог разрушить призыв.`; state.lastDestroyRound = b.round_no;
+    } else if (state.minions.length < 3) {
+      const minionId = pick(boss.minions), cfg = MINIONS[minionId];
+      state.minions.push({ cardId: minionId, ownerBossCardId: boss.cardId, name: cfg.name, hp: cfg.maxHp, maxHp: cfg.maxHp, damage: cfg.damage, miss: cfg.miss });
+      text = `👾 **${boss.name}** призывает своего миньона: **${cfg.name}**.`;
+    } else {
+      let damage = rand(Math.round(boss.damage[0] * 1.1), Math.round(boss.damage[1] * 1.1)), crit = Math.random() * 100 < BOSS_CRIT_CHANCE; if (crit) damage = Math.round(damage * BOSS_CRIT_MULTIPLIER);
+      const r = damageTarget(id, target, damage); text = `👹 ${boss.name} атакует <@${target.user_id}>: **${r.hpDamage} HP**${crit ? ' • 💥 КРИТ!' : ''}.`;
+    }
+  }
+
+  state.log.push(text);
+  for (const m of state.minions) {
+    const aliveNow = battlePlayers(id).filter(x => x.status === 'alive'); if (!aliveNow.length) break;
+    const t = pick(aliveNow);
+    if (Math.random() * 100 >= m.miss) { const r = damageTarget(id, t, rand(...m.damage)); state.log.push(`👾 ${m.name} → <@${t.user_id}>: **${r.hpDamage} HP**.`); }
+  }
   state.log = state.log.slice(-12); saveState(b, state);
   for (const p of battlePlayers(id)) { const e = effects(p); for (const k of ['guardRounds','tauntRounds','interceptRounds','groupDamageRounds']) if (e[k] > 0) e[k]--; updateEffects(id, p.user_id, e); }
 }
+
 function mvpPack() { const r = Math.random() * 100; if (r < 5) return 'boss'; if (r < 18) return 'elite'; if (r < 45) return 'premium'; return 'base'; }
 async function finish(id, win) {
   clearTimer(id); let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (!b || !['active','registration','class_roll','class_select','initiative_roll'].includes(b.status)) return;
@@ -320,6 +407,13 @@ async function handle(interaction) {
   init(); const idMatch = interaction.customId.match(/_(\d+)$/), id = idMatch ? Number(idMatch[1]) : 0, b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
   if (!b) { await interaction.reply({ content: 'Событие не найдено.', flags: MessageFlags.Ephemeral }); return true; }
   const uid = interaction.user.id;
+  if (interaction.customId === `wb_force_start_${id}`) {
+    const isAdmin = interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator) || interaction.guild?.ownerId === uid;
+    if (!isAdmin) { await interaction.reply({ content: 'Только администратор может начать бой досрочно.', flags: MessageFlags.Ephemeral }); return true; }
+    if (b.status !== 'registration') { await interaction.reply({ content: 'Сбор уже завершён.', flags: MessageFlags.Ephemeral }); return true; }
+    if (battlePlayers(id).length < 4) { await interaction.reply({ content: 'Нужно минимум 4 участника.', flags: MessageFlags.Ephemeral }); return true; }
+    clearTimer(id); await interaction.reply({ content: '▶️ Администратор принудительно начал бой.', flags: MessageFlags.Ephemeral }); await beginBattle(id); return true;
+  }
   if (interaction.customId === `wb_join_${id}` || interaction.customId === `wb_leave_${id}`) {
     if (b.status !== 'registration') { await interaction.reply({ content: 'Регистрация уже завершена.', flags: MessageFlags.Ephemeral }); return true; }
     if (interaction.customId.includes('join')) { getOrCreatePlayer(interaction.user); db.prepare('INSERT OR IGNORE INTO world_boss_players(battle_id,user_id,joined_at) VALUES(?,?,?)').run(id, uid, Date.now()); await interaction.reply({ content: '✅ Ты вступил в бой.', flags: MessageFlags.Ephemeral }); }
@@ -338,16 +432,16 @@ async function handle(interaction) {
   if (interaction.customId === `wb_initroll_${id}`) {
     if (b.status !== 'initiative_roll') return interaction.reply({ content: 'Сейчас не этап инициативы.', flags: MessageFlags.Ephemeral }); const s = stateOf(b); if (s.initiativeRolls?.[uid] != null) return interaction.reply({ content: `Ты уже выбросил **${s.initiativeRolls[uid]}**.`, flags: MessageFlags.Ephemeral }); let roll = rand(1,20); s.initiativeRolls[uid] = roll; s.log.push(`⚔️ <@${uid}> выбрасывает инициативу **${roll}**.`); saveState(b,s); await interaction.reply({ content:`🎲 Инициатива: **${roll}**`, flags:MessageFlags.Ephemeral }); await refresh(id); if(allHave(s.initiativeRolls,battlePlayers(id))) await startCombat(id); return true;
   }
-  if (interaction.customId === `wb_status_${id}`) { const c = CLASSES[p.class_key], e = effects(p), st = stateOf(b), ownSummons = (st.summons || []).filter(x => x.owner === uid); return interaction.reply({ content: `${roleIcon(c.role)} **${c.name}**\n❤️ ${p.hp}/${p.max_hp}${e.shield ? ` • 🛡️ ${e.shield}` : ''}\n🔋 ${p.energy}/100\n💥 Крит обычной атаки: ${CRIT_CHANCE}% ×${CRIT_MULTIPLIER}\n🔁 Способность: ${e.skillCd || 0} ход(а) КД\n🔁 Ульта: ${e.ultCd || 0} ход(а) КД\n🗡️ Урон: ${p.damage_done}\n💚 Лечение: ${p.healing_done}${ownSummons.length ? `\n\n**Призывы:**\n${ownSummons.map(s => `${s.icon} ${s.name}: ${s.hp}/${s.maxHp} HP, ${s.rounds} р.`).join('\n')}` : ''}`, flags: MessageFlags.Ephemeral }); }
+  if (interaction.customId === `wb_status_${id}`) { const c = CLASSES[p.class_key], e = effects(p), st = stateOf(b), ownSummons = (st.summons || []).filter(x => x.owner === uid); return interaction.reply({ content: `${roleIcon(c.role)} **${c.name}**\n❤️ ${p.hp}/${p.max_hp}${e.shield ? ` • 🛡️ ${e.shield}` : ''}\n🔋 ${p.energy}/100\n💥 Крит обычной атаки: ${CRIT_CHANCE}% ×${CRIT_MULTIPLIER}\n🔁 Способность: ${e.skillCd || 0} ход(а) КД${p.class_key === 'cleric' ? `\n✨ Самохил: ${e.selfHealCd || 0} ход(а) КД` : ''}${e.skillSilencedTurns ? `\n🔒 Способность запрещена: ${e.skillSilencedTurns} ход(а)` : ''}${e.ultSilencedTurns ? `\n⛓️ Ульта запрещена: ${e.ultSilencedTurns} ход(а)` : ''}\n🔁 Ульта: ${e.ultCd || 0} ход(а) КД\n🗡️ Урон: ${p.damage_done}\n💚 Лечение: ${p.healing_done}${ownSummons.length ? `\n\n**Призывы:**\n${ownSummons.map(s => `${s.icon} ${s.name}: ${s.hp}/${s.maxHp} HP, ${s.rounds} р.`).join('\n')}` : ''}`, flags: MessageFlags.Ephemeral }); }
   const targetSelect = interaction.customId.match(/^wb_target_(skill|ult)_\d+$/); if (interaction.isStringSelectMenu() && targetSelect) { const r = await perform(id, uid, targetSelect[1], false, interaction.values[0]); return interaction.reply({ content: resultText(r), flags: MessageFlags.Ephemeral }); }
-  const actMatch = interaction.customId.match(/^wb_(attack|skill|ult)_\d+$/); if (actMatch) {
+  const actMatch = interaction.customId.match(/^wb_(attack|skill|selfheal|ult)_\d+$/); if (actMatch) {
     const action = actMatch[1], kind = targetKind(p.class_key, action);
     if (kind) { const targets = actionTargets(id, p, action, kind); if (!targets.length) return interaction.reply({ content: kind === 'dead' ? 'Нет погибших союзников.' : 'Нет доступных целей.', flags: MessageFlags.Ephemeral }); return interaction.reply({ content: 'Выбери цель:', components: [targetMenu(id, action, targets)], flags: MessageFlags.Ephemeral }); }
     const r = await perform(id, uid, action); return interaction.reply({ content: resultText(r), flags: MessageFlags.Ephemeral });
   }
   return false;
 }
-function resultText(r) { if (r?.ok) return `✅ ${r.text}`; if (r?.reason === 'turn') return '⏳ Сейчас не твой ход.'; if (r?.reason === 'energy') return '🔋 Недостаточно энергии.'; if (r?.reason === 'cooldown') return `🔁 Действие на перезарядке: ещё ${r.cd} ход(а).`; return 'Событие уже завершено или действие недоступно.'; }
+function resultText(r) { if (r?.ok) return `✅ ${r.text}`; if (r?.reason === 'turn') return '⏳ Сейчас не твой ход.'; if (r?.reason === 'energy') return '🔋 Недостаточно энергии.'; if (r?.reason === 'cooldown') return `🔁 Действие на перезарядке: ещё ${r.cd} ход(а).`; if (r?.reason === 'silenced_skill') return `🔒 Босс запретил способности ещё на ${r.cd} ход(а).`; if (r?.reason === 'silenced_ult') return `⛓️ Босс запретил ульту ещё на ${r.cd} ход(а).`; if (r?.reason === 'class') return 'Эта кнопка доступна только Клирику.'; return 'Событие уже завершено или действие недоступно.'; }
 function nextSlotDelay() { const now = Date.now(); for (let d = 0; d < 2; d++) for (const h of SLOTS) { const base = new Date(now + d * 86400000), parts = moscowParts(base), utc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), h - 3, 0, 0); if (utc > now + 1000) return utc - now; } return 6 * 3600000; }
 function schedulerTick() { const p = moscowParts(), h = Number(p.hour), min = Number(p.minute), key = dateKey(); if (SLOTS.includes(h) && min < 2) { const done = db.prepare('SELECT 1 FROM world_boss_schedule WHERE date_key=? AND slot_hour=?').get(key, h); if (!done) { db.prepare('INSERT INTO world_boss_schedule(date_key,slot_hour,created_at) VALUES(?,?,?)').run(key, h, Date.now()); startRegistration(clientRef).then(r => { if (r.ok) db.prepare('UPDATE world_boss_schedule SET battle_id=? WHERE date_key=? AND slot_hour=?').run(r.id, key, h); }).catch(console.error); } } scheduler = setTimeout(schedulerTick, Math.min(nextSlotDelay(), 60000)); scheduler.unref?.(); }
 function startScheduler(client) { init(); clientRef = client; if (scheduler) clearTimeout(scheduler); const a = activeBattle(); if (a) { if (a.status === 'registration') setTimer(a.id, () => beginBattle(a.id).catch(console.error), a.registration_ends_at - Date.now()); else if (a.status === 'class_select') armStageTimer(a.id); else if (a.status === 'active') armTurn(a.id); refresh(a.id).catch(() => {}); } if (AUTO_SCHEDULE_ENABLED) { schedulerTick(); console.log('[WorldBoss] Автозапуск включён: 09:00, 15:00, 21:00 МСК'); } else console.log('[WorldBoss] Тестовый режим: автозапуск отключён, доступен только ручной запуск'); }
