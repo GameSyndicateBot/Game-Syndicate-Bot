@@ -1,18 +1,18 @@
 'use strict';
 
 const CLASSES = {
-  warrior:{name:'Воин',role:'tank',damageType:'physical',physicalResist:18,magicResist:-8,cardId:2060,maxHp:180,damage:[28,36],miss:6,skill:{name:'Перехват',cost:40},ultimate:{name:'Несокрушимый удар',cost:100}},
-  paladin:{name:'Паладин',role:'tank',damageType:'holy',physicalResist:12,magicResist:10,cardId:2061,maxHp:170,damage:[24,32],miss:7,skill:{name:'Щит веры',cost:40},ultimate:{name:'Благословение света',cost:100}},
-  guardian:{name:'Страж',role:'tank',damageType:'physical',physicalResist:25,magicResist:-12,cardId:2062,maxHp:200,damage:[22,30],miss:5,skill:{name:'Стальная защита',cost:40},ultimate:{name:'Провокация',cost:100}},
-  cleric:{name:'Клирик',role:'healer',damageType:'holy',physicalResist:-12,magicResist:12,cardId:2063,maxHp:120,damage:[18,24],miss:6,skill:{name:'Передача жизни',cost:40},selfSkill:{name:'Малое исцеление',cost:20,heal:25},ultimate:{name:'Божественное исцеление',cost:100}},
-  priest:{name:'Жрец',role:'healer',damageType:'holy',physicalResist:-15,magicResist:15,cardId:2064,maxHp:125,damage:[20,26],miss:6,skill:{name:'Молитва жизни',cost:40},ultimate:{name:'Воскрешение',cost:100}},
-  bard:{name:'Бард',role:'healer',damageType:'magic',physicalResist:-8,magicResist:8,cardId:2065,maxHp:130,damage:[18,25],miss:7,skill:{name:'Воодушевление',cost:40},ultimate:{name:'Гимн героев',cost:100}},
-  assassin:{name:'Ассасин',role:'dps',damageType:'physical',physicalResist:3,magicResist:-5,cardId:2066,maxHp:100,damage:[36,46],miss:15,skill:{name:'Удар из тени',cost:40},ultimate:{name:'Смертельный удар',cost:100}},
-  archer:{name:'Лучник',role:'dps',damageType:'physical',physicalResist:5,magicResist:-6,cardId:2067,maxHp:110,damage:[35,48],miss:10,skill:{name:'3 удара',cost:40},ultimate:{name:'Дождь стрел',cost:100}},
-  mage:{name:'Маг',role:'dps',damageType:'magic',physicalResist:-18,magicResist:20,cardId:2068,maxHp:95,damage:[25,38],miss:8,skill:{name:'Огненный шар',cost:40},ultimate:{name:'Метеор',cost:100}},
-  berserker:{name:'Берсерк',role:'dps',damageType:'physical',physicalResist:8,magicResist:-10,cardId:2069,maxHp:150,damage:[38,48],miss:10,skill:{name:'Тройной удар',cost:40},ultimate:{name:'Кровавая ярость',cost:100}},
-  engineer:{name:'Инженер',role:'support',damageType:'physical',physicalResist:10,magicResist:-5,cardId:2070,maxHp:125,damage:[30,40],miss:9,skill:{name:'Турель',cost:40},ultimate:{name:'Голем',cost:100}},
-  necromancer:{name:'Некромант',role:'support',damageType:'magic',physicalResist:-10,magicResist:18,cardId:2071,maxHp:115,damage:[32,43],miss:10,skill:{name:'Скелет',cost:40},ultimate:{name:'Армия',cost:100}},
+  warrior:{name:'Воин',role:'tank',resourceType:'rage',damageType:'physical',physicalResist:18,magicResist:-8,cardId:2060,maxHp:180,damage:[28,36],miss:6,skill:{name:'Перехват',cost:40},ultimate:{name:'Несокрушимый удар',cost:100}},
+  paladin:{name:'Паладин',role:'tank',resourceType:'rage',damageType:'holy',physicalResist:12,magicResist:10,cardId:2061,maxHp:170,damage:[24,32],miss:7,skill:{name:'Щит веры',cost:40},ultimate:{name:'Благословение света',cost:100}},
+  guardian:{name:'Страж',role:'tank',resourceType:'rage',damageType:'physical',physicalResist:25,magicResist:-12,cardId:2062,maxHp:200,damage:[22,30],miss:5,skill:{name:'Стальная защита',cost:40},ultimate:{name:'Провокация',cost:100}},
+  cleric:{name:'Клирик',role:'healer',resourceType:'energy',damageType:'holy',physicalResist:-12,magicResist:12,cardId:2063,maxHp:120,damage:[18,24],miss:6,skill:{name:'Передача жизни',cost:40},ultimate:{name:'Божественное исцеление',cost:100}},
+  priest:{name:'Жрец',role:'healer',resourceType:'mana',damageType:'holy',physicalResist:-15,magicResist:15,cardId:2064,maxHp:125,damage:[20,26],miss:6,skill:{name:'Молитва жизни',cost:40},ultimate:{name:'Воскрешение',cost:100}},
+  bard:{name:'Бард',role:'healer',resourceType:'mana',damageType:'magic',physicalResist:-8,magicResist:8,cardId:2065,maxHp:130,damage:[18,25],miss:7,skill:{name:'Воодушевление',cost:40},ultimate:{name:'Гимн героев',cost:100}},
+  assassin:{name:'Ассасин',role:'dps',resourceType:'energy',damageType:'physical',physicalResist:3,magicResist:-5,cardId:2066,maxHp:100,damage:[36,46],miss:15,skill:{name:'Удар из тени',cost:40},ultimate:{name:'Смертельный удар',cost:100}},
+  archer:{name:'Лучник',role:'dps',resourceType:'energy',damageType:'physical',physicalResist:5,magicResist:-6,cardId:2067,maxHp:110,damage:[35,48],miss:10,skill:{name:'3 удара',cost:40},ultimate:{name:'Дождь стрел',cost:100}},
+  mage:{name:'Маг',role:'dps',resourceType:'mana',damageType:'magic',physicalResist:-18,magicResist:20,cardId:2068,maxHp:95,damage:[25,38],miss:8,skill:{name:'Огненный шар',cost:40},ultimate:{name:'Метеор',cost:100}},
+  berserker:{name:'Берсерк',role:'dps',resourceType:'energy',damageType:'physical',physicalResist:8,magicResist:-10,cardId:2069,maxHp:150,damage:[38,48],miss:10,skill:{name:'Тройной удар',cost:40},ultimate:{name:'Кровавая ярость',cost:100}},
+  engineer:{name:'Инженер',role:'support',resourceType:'energy',damageType:'physical',physicalResist:10,magicResist:-5,cardId:2070,maxHp:125,damage:[30,40],miss:9,skill:{name:'Турель',cost:40},ultimate:{name:'Голем',cost:100}},
+  necromancer:{name:'Некромант',role:'support',resourceType:'mana',damageType:'magic',physicalResist:-10,magicResist:18,cardId:2071,maxHp:115,damage:[32,43],miss:10,skill:{name:'Скелет',cost:40},ultimate:{name:'Армия',cost:100}},
 };
 
 const MINIONS = {
