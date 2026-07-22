@@ -1,12 +1,13 @@
 'use strict';
 
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, AttachmentBuilder,
   StringSelectMenuBuilder, PermissionsBitField,
 } = require('discord.js');
 const { db, getOrCreatePlayer, addCardDust } = require('../../database/db');
 const { addPack } = require('../../utils/packInventory');
 const { CLASSES, MINIONS, BOSSES } = require('./config');
+const { createWorldBossBattleCard, cardFile } = require('../../images/worldBoss/createWorldBossBattleCard');
 
 const CHANNEL_ID = process.env.WORLD_BOSS_CHANNEL_ID || '1529226831797158130';
 const AUTO_SCHEDULE_ENABLED = String(process.env.WORLD_BOSS_AUTO_SCHEDULE || 'false').toLowerCase() === 'true';
@@ -100,10 +101,15 @@ function buttons(b) {
   if (b.status !== 'active') return [];
   const rows = [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`wb_attack_${b.id}`).setLabel('Атака').setEmoji('🗡️').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`wb_skill_${b.id}`).setLabel('Способность').setEmoji('🔋').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`wb_skill_${b.id}`).setLabel('Способность').setEmoji('✨').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`wb_ult_${b.id}`).setLabel('Ульта').setEmoji('💥').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`wb_status_${b.id}`).setLabel('Мой статус').setEmoji('📋').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`wb_status_${b.id}`).setLabel('Моя карта').setEmoji('🎴').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`wb_log_${b.id}`).setLabel('Журнал').setEmoji('📖').setStyle(ButtonStyle.Secondary),
   )];
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`wb_summons_${b.id}`).setLabel('Мои призывы').setEmoji('🤖').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`wb_enemies_${b.id}`).setLabel('Враги').setEmoji('👾').setStyle(ButtonStyle.Secondary),
+  ));
   if (battlePlayers(b.id).some(p => p.status === 'alive' && p.class_key === 'cleric')) rows.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`wb_selfheal_${b.id}`).setLabel('Самохил Клирика · 20⚡').setEmoji('✨').setStyle(ButtonStyle.Success),
   ));
@@ -145,7 +151,26 @@ function buildEmbed(b, players) {
   if (state.log?.length) e.addFields({ name: 'Последние действия', value: state.log.slice(-7).join('\n').slice(0, 1024) });
   return e.setFooter({ text: 'Game Syndicate • World Boss' });
 }
-async function refresh(id) { const b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (!b || !clientRef) return; const ch = await clientRef.channels.fetch(b.channel_id).catch(() => null); const msg = ch && b.message_id ? await ch.messages.fetch(b.message_id).catch(() => null) : null; if (msg) await msg.edit({ embeds: [buildEmbed(b, battlePlayers(id))], components: buttons(b) }).catch(() => {}); }
+async function refresh(id) {
+  const b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (!b || !clientRef) return;
+  const ch = await clientRef.channels.fetch(b.channel_id).catch(() => null);
+  const msg = ch && b.message_id ? await ch.messages.fetch(b.message_id).catch(() => null) : null; if (!msg) return;
+  const players = battlePlayers(id), state = stateOf(b), alive = players.filter(p => p.status === 'alive');
+  const current = b.status === 'active' && alive.length ? alive[b.turn_index % alive.length] : null;
+  for (const player of players) {
+    const member = await ch.guild?.members.fetch(player.user_id).catch(() => null);
+    player.displayName = member?.displayName || member?.user?.globalName || member?.user?.username || `Игрок ${player.user_id.slice(-4)}`;
+  }
+  try {
+    const buffer = await createWorldBossBattleCard({ battle: b, players, state, effectsByUser: Object.fromEntries(players.map(player => [player.user_id, effects(player)])), currentUserId: current?.user_id || null });
+    const attachment = new AttachmentBuilder(buffer, { name: `world-boss-${id}.png` });
+    const embed = buildEmbed(b, players).setImage(`attachment://world-boss-${id}.png`);
+    await msg.edit({ content: '## 🌍 GS WORLD BOSS', embeds: [embed], components: buttons(b), files: [attachment], attachments: [] });
+  } catch (error) {
+    console.error('[WorldBoss] Battle card render failed:', error);
+    await msg.edit({ embeds: [buildEmbed(b, players)], components: buttons(b) }).catch(() => {});
+  }
+}
 
 async function startRegistration(client, { manual = false } = {}) {
   init(); clientRef = client || clientRef; if (busy || activeBattle()) return { ok: false, reason: 'active' }; busy = true;
@@ -158,6 +183,7 @@ async function startRegistration(client, { manual = false } = {}) {
     const id = Number(info.lastInsertRowid), b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
     const msg = await ch.send({ content: '## 🌍 GS WORLD BOSS', embeds: [buildEmbed(b, [])], components: buttons(b) });
     db.prepare('UPDATE world_boss_battles SET message_id=? WHERE id=?').run(msg.id, id);
+    await refresh(id);
     setTimer(id, () => beginBattle(id).catch(console.error), REGISTRATION_MS); return { ok: true, id };
   } finally { busy = false; }
 }
@@ -432,7 +458,47 @@ async function handle(interaction) {
   if (interaction.customId === `wb_initroll_${id}`) {
     if (b.status !== 'initiative_roll') return interaction.reply({ content: 'Сейчас не этап инициативы.', flags: MessageFlags.Ephemeral }); const s = stateOf(b); if (s.initiativeRolls?.[uid] != null) return interaction.reply({ content: `Ты уже выбросил **${s.initiativeRolls[uid]}**.`, flags: MessageFlags.Ephemeral }); let roll = rand(1,20); s.initiativeRolls[uid] = roll; s.log.push(`⚔️ <@${uid}> выбрасывает инициативу **${roll}**.`); saveState(b,s); await interaction.reply({ content:`🎲 Инициатива: **${roll}**`, flags:MessageFlags.Ephemeral }); await refresh(id); if(allHave(s.initiativeRolls,battlePlayers(id))) await startCombat(id); return true;
   }
-  if (interaction.customId === `wb_status_${id}`) { const c = CLASSES[p.class_key], e = effects(p), st = stateOf(b), ownSummons = (st.summons || []).filter(x => x.owner === uid); return interaction.reply({ content: `${roleIcon(c.role)} **${c.name}**\n❤️ ${p.hp}/${p.max_hp}${e.shield ? ` • 🛡️ ${e.shield}` : ''}\n🔋 ${p.energy}/100\n💥 Крит обычной атаки: ${CRIT_CHANCE}% ×${CRIT_MULTIPLIER}\n🔁 Способность: ${e.skillCd || 0} ход(а) КД${p.class_key === 'cleric' ? `\n✨ Самохил: ${e.selfHealCd || 0} ход(а) КД` : ''}${e.skillSilencedTurns ? `\n🔒 Способность запрещена: ${e.skillSilencedTurns} ход(а)` : ''}${e.ultSilencedTurns ? `\n⛓️ Ульта запрещена: ${e.ultSilencedTurns} ход(а)` : ''}\n🔁 Ульта: ${e.ultCd || 0} ход(а) КД\n🗡️ Урон: ${p.damage_done}\n💚 Лечение: ${p.healing_done}${ownSummons.length ? `\n\n**Призывы:**\n${ownSummons.map(s => `${s.icon} ${s.name}: ${s.hp}/${s.maxHp} HP, ${s.rounds} р.`).join('\n')}` : ''}`, flags: MessageFlags.Ephemeral }); }
+  if (interaction.customId === `wb_status_${id}`) {
+    const c = CLASSES[p.class_key], e = effects(p), file = cardFile(c.cardId, 'class');
+    const content = `${roleIcon(c.role)} **${c.name}**
+❤️ ${p.hp}/${p.max_hp}${e.shield ? ` • 🛡️ ${e.shield}` : ''}
+⚡ ${p.energy}/100
+🗡️ Урон ${c.damage[0]}–${c.damage[1]} • промах ${c.miss}% • крит ${CRIT_CHANCE}% ×${CRIT_MULTIPLIER}
+
+✨ **${c.skill.name}** — ${c.skill.cost} энергии • КД ${e.skillCd || 0}
+${p.class_key === 'cleric' ? `💚 **${c.selfSkill.name}** — ${c.selfSkill.cost} энергии, +${c.selfSkill.heal} HP • КД ${e.selfHealCd || 0}
+` : ''}💥 **${c.ultimate.name}** — ${c.ultimate.cost} энергии • КД ${e.ultCd || 0}${e.skillSilencedTurns ? `
+🔒 Способность заблокирована: ${e.skillSilencedTurns}` : ''}${e.ultSilencedTurns ? `
+⛓️ Ульта заблокирована: ${e.ultSilencedTurns}` : ''}
+
+📊 Нанесено: ${p.damage_done} • Вылечено: ${p.healing_done}`;
+    const payload = { content, flags: MessageFlags.Ephemeral };
+    if (require('fs').existsSync(file)) payload.files = [new AttachmentBuilder(file, { name: `class-${c.cardId}.jpg` })];
+    return interaction.reply(payload);
+  }
+  if (interaction.customId === `wb_log_${id}`) {
+    const lines = (stateOf(b).log || []).slice(-20);
+    return interaction.reply({ content: `## 📖 Журнал боя
+${lines.length ? lines.map((x, i) => `**${i + 1}.** ${x}`).join('\n') : 'Журнал пока пуст.'}`, flags: MessageFlags.Ephemeral });
+  }
+  if (interaction.customId === `wb_summons_${id}`) {
+    const own = (stateOf(b).summons || []).filter(x => x.owner === uid);
+    return interaction.reply({ content: own.length ? `## 🤖 Мои призывы
+${own.map((x, i) => `**${x.icon || '▫️'} ${x.name}${own.length > 1 ? ` #${i + 1}` : ''}**
+❤️ ${x.hp}/${x.maxHp} • ⏳ ${x.rounds} раунд(а)`).join('\n\n')}` : 'У тебя сейчас нет активных призывов.', flags: MessageFlags.Ephemeral });
+  }
+  if (interaction.customId === `wb_enemies_${id}`) {
+    const st = stateOf(b), boss = BOSSES.find(x => x.cardId === b.boss_card_id), file = cardFile(b.boss_card_id, 'boss'), files = [];
+    if (require('fs').existsSync(file)) files.push(new AttachmentBuilder(file, { name: `boss-${b.boss_card_id}.jpg` }));
+    const enemyText = (st.minions || []).length ? st.minions.map(m => `👾 **${m.name}** — ❤️ ${m.hp}/${m.maxHp}`).join('\n') : 'Миньоны босса пока не призваны.';
+    return interaction.reply({ content: `## 👹 ${b.boss_name}
+❤️ ${b.boss_hp}/${b.boss_max_hp}
+🔥 Ярость ${Number(st.rage || 0)}/100
+
+${enemyText}
+
+Может призывать: ${(boss?.minions || []).map(mid => MINIONS[mid]?.name).filter(Boolean).join(', ') || '—'}`, files, flags: MessageFlags.Ephemeral });
+  }
   const targetSelect = interaction.customId.match(/^wb_target_(skill|ult)_\d+$/); if (interaction.isStringSelectMenu() && targetSelect) { const r = await perform(id, uid, targetSelect[1], false, interaction.values[0]); return interaction.reply({ content: resultText(r), flags: MessageFlags.Ephemeral }); }
   const actMatch = interaction.customId.match(/^wb_(attack|skill|selfheal|ult)_\d+$/); if (actMatch) {
     const action = actMatch[1], kind = targetKind(p.class_key, action);
