@@ -1217,5 +1217,135 @@
     "category": "quick_events",
     "type": "quick_event_unique_types",
     "target": 10
+  },
+  {
+    "id": "cards_common_complete",
+    "title": "Собрание обычных",
+    "description": "Собрать все карточки редкости Common.",
+    "xp": 1500,
+    "points": 50,
+    "rarity": "rare",
+    "category": "collection",
+    "type": "card_rarity_complete",
+    "card_rarity": "common"
+  },
+  {
+    "id": "cards_rare_complete",
+    "title": "Редкая коллекция",
+    "description": "Собрать все карточки редкости Rare.",
+    "xp": 2200,
+    "points": 70,
+    "rarity": "epic",
+    "category": "collection",
+    "type": "card_rarity_complete",
+    "card_rarity": "rare"
+  },
+  {
+    "id": "cards_epic_complete",
+    "title": "Эпический архив",
+    "description": "Собрать все карточки редкости Epic.",
+    "xp": 3500,
+    "points": 100,
+    "rarity": "legendary",
+    "category": "collection",
+    "type": "card_rarity_complete",
+    "card_rarity": "epic"
+  },
+  {
+    "id": "cards_legendary_complete",
+    "title": "Зал легенд",
+    "description": "Собрать все карточки редкости Legendary.",
+    "xp": 5000,
+    "points": 140,
+    "rarity": "legendary",
+    "category": "collection",
+    "type": "card_rarity_complete",
+    "card_rarity": "legendary"
+  },
+  {
+    "id": "cards_mythic_complete",
+    "title": "Мифический пантеон",
+    "description": "Собрать все карточки редкости Mithic.",
+    "xp": 7500,
+    "points": 190,
+    "rarity": "mythic",
+    "category": "collection",
+    "type": "card_rarity_complete",
+    "card_rarity": "mythic"
+  },
+  {
+    "id": "cards_exclusive_complete",
+    "title": "Закрытый клуб",
+    "description": "Собрать все карточки Exclusive.",
+    "xp": 9000,
+    "points": 220,
+    "rarity": "mythic",
+    "category": "collection",
+    "type": "card_rarity_complete",
+    "card_rarity": "exclusive"
+  },
+  {
+    "id": "cards_holographic_complete",
+    "title": "Голографический архив",
+    "description": "Собрать все карточки Holographic.",
+    "xp": 12000,
+    "points": 280,
+    "rarity": "mythic",
+    "category": "collection",
+    "type": "card_rarity_complete",
+    "card_rarity": "holographic"
+  },
+  {
+    "id": "boss_cards_complete",
+    "title": "Охотник на боссов",
+    "description": "Собрать все карточки Boss из Boss Pack.",
+    "xp": 4500,
+    "points": 130,
+    "rarity": "legendary",
+    "category": "collection",
+    "type": "boss_pack_type_complete",
+    "card_type": "boss"
+  },
+  {
+    "id": "minion_cards_complete",
+    "title": "Повелитель миньонов",
+    "description": "Собрать все карточки Minion из Boss Pack.",
+    "xp": 4000,
+    "points": 120,
+    "rarity": "legendary",
+    "category": "collection",
+    "type": "boss_pack_type_complete",
+    "card_type": "minion"
+  },
+  {
+    "id": "class_cards_complete",
+    "title": "Мастер всех классов",
+    "description": "Собрать все карточки Class из Boss Pack.",
+    "xp": 5000,
+    "points": 145,
+    "rarity": "legendary",
+    "category": "collection",
+    "type": "boss_pack_type_complete",
+    "card_type": "class"
+  },
+  {
+    "id": "boss_pack_complete",
+    "title": "Хроники мирового босса",
+    "description": "Собрать весь Boss Pack, включая финальную карточку.",
+    "xp": 15000,
+    "points": 320,
+    "rarity": "mythic",
+    "category": "collection",
+    "type": "boss_pack_complete"
+  },
+  {
+    "id": "all_cards_complete",
+    "title": "Абсолютный коллекционер",
+    "description": "Собрать все доступные карточки и все их варианты редкости.",
+    "xp": 30000,
+    "points": 500,
+    "rarity": "mythic",
+    "category": "collection",
+    "type": "all_cards_complete"
   }
 ]

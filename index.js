@@ -56,6 +56,17 @@ for (const file of commandFiles) {
 
 client.once('clientReady', () => {
     console.log(`✅ Бот ${client.user.tag} запущен!`);
+
+    // Пересчитываем пропущенные серии реакций и выдаём достижения
+    // по уже накопленной статистике и коллекциям карточек.
+    setTimeout(async () => {
+        try {
+            const { backfillAchievements } = require('./services/achievementBackfill');
+            await backfillAchievements(client);
+        } catch (error) {
+            console.error('[Achievements Backfill] Ошибка запуска:', error);
+        }
+    }, 15000);
 });
 
 client.on('interactionCreate', async interaction => {

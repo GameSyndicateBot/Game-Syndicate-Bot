@@ -82,7 +82,25 @@ function drawCategoryRow(ctx, category, unlocked, total, x, y, w) {
 }
 
 async function createAchievementsOverviewCard(user, achievements, unlockedIds) {
-    const canvas = createCanvas(1200, 1180);
+    const categoriesOrder = [
+        'messages',
+        'levels',
+        'voice',
+        'reactions',
+        'server',
+        'collection',
+        'events',
+        'quick_events',
+        'daily',
+        'streaks',
+        'special',
+        'xp',
+    ];
+    const visibleCategoryCount = categoriesOrder.filter(category =>
+        achievements.some(achievement => (achievement.category || 'other') === category)
+    ).length;
+    const canvasHeight = Math.max(1180, 245 + visibleCategoryCount * 78 + 135);
+    const canvas = createCanvas(1200, canvasHeight);
     const ctx = canvas.getContext('2d');
     installIconRenderer(ctx);
 
@@ -116,13 +134,13 @@ async function createAchievementsOverviewCard(user, achievements, unlockedIds) {
         }
     }
 
-    const bg = ctx.createLinearGradient(0, 0, 1200, 1180);
+    const bg = ctx.createLinearGradient(0, 0, 1200, canvasHeight);
     bg.addColorStop(0, '#030008');
     bg.addColorStop(0.45, '#160827');
     bg.addColorStop(1, '#05000A');
 
     ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, 1200, 1180);
+    ctx.fillRect(0, 0, 1200, canvasHeight);
 
     ctx.globalAlpha = 0.07;
     ctx.fillStyle = '#C084FC';
@@ -132,14 +150,14 @@ async function createAchievementsOverviewCard(user, achievements, unlockedIds) {
 
     ctx.strokeStyle = '#8B5CF6';
     ctx.lineWidth = 5;
-    roundRect(ctx, 35, 35, 1130, 1110, 34);
+    roundRect(ctx, 35, 35, 1130, canvasHeight - 70, 34);
     ctx.stroke();
 
     ctx.shadowColor = '#A855F7';
     ctx.shadowBlur = 30;
     ctx.strokeStyle = '#C084FC';
     ctx.lineWidth = 2;
-    roundRect(ctx, 52, 52, 1096, 1076, 26);
+    roundRect(ctx, 52, 52, 1096, canvasHeight - 104, 26);
     ctx.stroke();
     ctx.shadowBlur = 0;
 
@@ -172,21 +190,6 @@ async function createAchievementsOverviewCard(user, achievements, unlockedIds) {
 
     drawProgressBar(ctx, 220, 170, 865, 28, totalProgress);
 
-    const categoriesOrder = [
-        'messages',
-        'levels',
-        'voice',
-        'reactions',
-        'server',
-        'collection',
-        'events',
-        'quick_events',
-        'daily',
-        'streaks',
-        'special',
-        'xp',
-    ];
-
     let y = 245;
 
     for (const category of categoriesOrder) {
@@ -208,7 +211,7 @@ async function createAchievementsOverviewCard(user, achievements, unlockedIds) {
     ctx.fillStyle = '#A78BFA';
     ctx.font = 'bold 22px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('Выбери категорию в меню ниже, чтобы открыть список достижений', 600, 1100);
+    ctx.fillText('Выбери категорию в меню ниже, чтобы открыть список достижений', 600, canvasHeight - 70);
     ctx.textAlign = 'left';
 
     return canvas.toBuffer('image/png');

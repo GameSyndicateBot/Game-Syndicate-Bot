@@ -22,6 +22,7 @@ const { createAchievementCard } = require('../images/achievements/createAchievem
 const { grantAchievementRoles } = require('./grantAchievementRoles');
 const { grantCategoryRoles } = require('./grantCategoryRoles');
 const { getEffectiveJoinedTimestamp } = require('./memberJoinOverrides');
+const { isCardCollectionAchievementCompleted } = require('./cardCollectionProgress');
 
 try {
     const migration = rebalancePreviouslyUnlockedAchievements();
@@ -153,7 +154,7 @@ function isAchievementCompleted(achievement, player, member) {
 
         case 'streak': {
             const streak = getUserStreak(player.user_id, achievement.streak_type);
-            return (streak?.current ?? 0) >= achievement.target;
+            return Math.max(streak?.current ?? 0, streak?.best ?? 0) >= achievement.target;
         }
 
         case 'daily_claimed_quests':
@@ -173,6 +174,12 @@ function isAchievementCompleted(achievement, player, member) {
 
         case 'quick_event_unique_types':
             return getQuickEventStats(player.user_id).uniqueTypes >= achievement.target;
+
+        case 'card_rarity_complete':
+        case 'boss_pack_type_complete':
+        case 'boss_pack_complete':
+        case 'all_cards_complete':
+            return isCardCollectionAchievementCompleted(player.user_id, achievement);
 
         default:
             return false;

@@ -3,6 +3,7 @@ const {
     updatePlayer,
     incrementPlayerStat,
     updateDailyProgress,
+    updateStreak,
 } = require('../database/db');
 
 const { checkAchievements } = require('../utils/checkAchievements');
@@ -43,6 +44,7 @@ module.exports = {
             .catch(() => null);
 
         updateDailyProgress(user.id, 'given_reactions', 1);
+        updateStreak(user.id, 'given_reactions');
 
         if (giverMember) {
             const giverResult = await checkAchievements({
@@ -72,6 +74,7 @@ module.exports = {
             .catch(() => null);
 
         updateDailyProgress(author.id, 'received_reactions', 1);
+        updateStreak(author.id, 'received_reactions');
 
         if (receiverMember) {
             const receiverResult = await checkAchievements({
