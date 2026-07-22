@@ -67,6 +67,122 @@ console.log(
         : 0
 );
 
+
+// GS EXPEDITIONS V15.1 — независимый RPG-модуль.
+// Таблицы создаются безопасно и не меняют существующий прогресс игроков.
+db.exec(`
+    CREATE TABLE IF NOT EXISTS heroes (
+        hero_number INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        gender TEXT NOT NULL CHECK(gender IN ('male','female')),
+        class_key TEXT NOT NULL,
+        origin_key TEXT NOT NULL,
+        level INTEGER NOT NULL DEFAULT 1,
+        xp INTEGER NOT NULL DEFAULT 0,
+        hp INTEGER NOT NULL,
+        max_hp INTEGER NOT NULL,
+        strength INTEGER NOT NULL,
+        defense INTEGER NOT NULL,
+        dexterity INTEGER NOT NULL,
+        intelligence INTEGER NOT NULL,
+        luck INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'ready',
+        recovery_until TEXT,
+        card_background TEXT NOT NULL DEFAULT 'default',
+        card_border TEXT NOT NULL DEFAULT 'default',
+        title TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS hero_items (
+        item_key TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        item_type TEXT NOT NULL,
+        rarity TEXT NOT NULL DEFAULT 'common',
+        description TEXT NOT NULL DEFAULT '',
+        slot TEXT,
+        bonuses_json TEXT NOT NULL DEFAULT '{}',
+        lore TEXT NOT NULL DEFAULT '',
+        is_consumable INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS hero_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        item_key TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        durability INTEGER,
+        acquired_from TEXT,
+        acquired_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, item_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS hero_equipment (
+        user_id TEXT NOT NULL,
+        slot TEXT NOT NULL,
+        inventory_id INTEGER,
+        equipped_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, slot)
+    );
+
+    CREATE TABLE IF NOT EXISTS hero_companions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        companion_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        rarity TEXT NOT NULL DEFAULT 'common',
+        level INTEGER NOT NULL DEFAULT 1,
+        xp INTEGER NOT NULL DEFAULT 0,
+        active INTEGER NOT NULL DEFAULT 0,
+        acquired_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS hero_artifacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        artifact_key TEXT NOT NULL,
+        equipped INTEGER NOT NULL DEFAULT 0,
+        acquired_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, artifact_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS hero_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS hero_reputation (
+        user_id TEXT NOT NULL,
+        location_key TEXT NOT NULL,
+        reputation INTEGER NOT NULL DEFAULT 0,
+        rank INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, location_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS hero_expeditions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        location_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        returns_at TEXT NOT NULL,
+        resolved_at TEXT,
+        result_json TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_hero_history_user ON hero_history(user_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_hero_inventory_user ON hero_inventory(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hero_expeditions_user_status ON hero_expeditions(user_id, status);
+`);
+
 db.prepare(`
     CREATE TABLE IF NOT EXISTS players (
         user_id TEXT PRIMARY KEY,
@@ -705,6 +821,15 @@ function removeCardDust(userId, amount) {
 
 
 function resetPlayer(userId) {
+    // Полный сброс профиля также очищает RPG-героя и связанные записи.
+    db.prepare(`DELETE FROM hero_history WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM hero_reputation WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM hero_expeditions WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM hero_equipment WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM hero_inventory WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM hero_companions WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM hero_artifacts WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM heroes WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM player_achievements WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM player_level_notifications WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM daily_progress WHERE user_id = ?`).run(userId);

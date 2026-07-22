@@ -1,0 +1,12 @@
+GS CORE STABLE V15.1 — TEST REPORT
+
+PASS: node --check commands/hero.js
+PASS: node --check systems/hero/heroData.js
+PASS: node --check systems/hero/heroService.js
+PASS: node --check images/hero/createHeroCard.js
+PASS: node --check database/db.js
+PASS: scripts/check-syntax.js — 200 JS files
+
+Runtime integration test was not executed in the build container because the uploaded
+archive does not contain node_modules. The production Docker/npm install process will
+install dependencies from package.json as usual.
