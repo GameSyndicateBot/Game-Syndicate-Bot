@@ -1197,17 +1197,6 @@
     "target": 5
   },
   {
-    "id": "quick_event_streak_10",
-    "title": "Властелин скорости",
-    "description": "Победить в 10 Quick Events подряд.",
-    "xp": 7500,
-    "points": 140,
-    "rarity": "legendary",
-    "category": "quick_events",
-    "type": "quick_event_best_streak",
-    "target": 10
-  },
-  {
     "id": "quick_event_all_types",
     "title": "Универсал Quick Event",
     "description": "Победить во всех 10 типах Quick Event хотя бы по одному разу.",

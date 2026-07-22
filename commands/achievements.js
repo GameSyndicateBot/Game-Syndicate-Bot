@@ -156,8 +156,21 @@ data: new SlashCommandBuilder()
         if (parts[1] === 'prev' || parts[1] === 'next') {
             const action = parts[1];
             const ownerId = parts[2];
-            const category = parts[3];
-            const currentPage = Number(parts[4]);
+
+            // Названия категорий могут содержать подчёркивания, например
+            // quick_events. Поэтому категорию нельзя брать только из parts[3]:
+            // последняя часть всегда является номером страницы, а все части
+            // между ownerId и страницей составляют полное имя категории.
+            const currentPage = Number(parts.at(-1));
+            const category = parts.slice(3, -1).join('_');
+
+            if (!category || !Number.isInteger(currentPage)) {
+                await interaction.reply({
+                    content: 'Не удалось определить страницу достижений. Открой команду заново.',
+                    flags: MessageFlags.Ephemeral,
+                });
+                return true;
+            }
 
             if (interaction.user.id !== ownerId) {
                 await interaction.reply({
