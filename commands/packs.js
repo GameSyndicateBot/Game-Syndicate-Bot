@@ -43,6 +43,11 @@ const PACK_META = Object.freeze({
         style: ButtonStyle.Danger,
         description: 'Элитный набор с самыми высокими шансами топовых редкостей.',
     },
+    boss: {
+        emoji: '👹',
+        style: ButtonStyle.Secondary,
+        description: 'Boss Pack — будущий набор мирового босса. Пока недоступен.',
+    },
 });
 
 function buttonId(packId, userId) {
@@ -67,8 +72,8 @@ function buildInventoryEmbed(user, inventory, notice = null) {
         })
         .addFields(
             ...inventory.map(pack => ({
-                name: `${PACK_META[pack.id].emoji} ${pack.name}`,
-                value: `В наличии: **${pack.amount}**\n${PACK_META[pack.id].description}`,
+                name: `${PACK_META[pack.id]?.emoji || '📦'} ${pack.name}`,
+                value: `В наличии: **${pack.amount}**\n${PACK_META[pack.id]?.description || 'Набор карточек.'}${CARD_PACK_TYPES[pack.id]?.disabled ? '\n**Скоро**' : ''}`,
                 inline: true,
             }))
         )
@@ -87,7 +92,7 @@ function buildInventoryButtons(userId, inventory) {
                 .setLabel(`Открыть ${pack.name}`)
                 .setEmoji(PACK_META[pack.id].emoji)
                 .setStyle(PACK_META[pack.id].style)
-                .setDisabled((amounts.get(pack.id) ?? 0) <= 0)
+                .setDisabled(Boolean(CARD_PACK_TYPES[pack.id]?.disabled) || (amounts.get(pack.id) ?? 0) <= 0)
             )
         ),
         new ActionRowBuilder().addComponents(
