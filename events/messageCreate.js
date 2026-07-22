@@ -72,10 +72,9 @@ module.exports = {
     name: 'messageCreate',
 
     async execute(message) {
-        if (!message.guild) return;
         if (message.author.bot) return;
-
         await handleQuickEventAnswer(message);
+        if (!message.guild) return;
 
         getOrCreatePlayer(message.author);
         incrementPlayerStat(message.author.id, 'messages', 1);

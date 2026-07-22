@@ -213,6 +213,62 @@ const TRUE_FALSE = [
   {prompt:'Верно или неверно: мифическая редкость ниже обычной?',answers:['неверно','нет']}
 ];
 
+
+const WORD_HUNT_WORDS = [
+  'БОСС','ТАНК','МАГ','БАРД','ЖРЕЦ','КЛИРИК','ВОИН','ЛУЧНИК','ДРАКОН','ПОРТАЛ',
+  'КАРТА','ПЫЛЬ','ПАК','ИГРА','КЛАН','ГЕРОЙ','ЩИТ','МЕЧ','ТУРЕЛЬ','СКЕЛЕТ'
+];
+const MOVIE_EMOJI = [
+  {prompt:'🧙‍♂️💍🌋',answers:['властелин колец','the lord of the rings']},
+  {prompt:'🦖🏝️🚙',answers:['парк юрского периода','jurassic park']},
+  {prompt:'🚢🧊💔',answers:['титаник','titanic']},
+  {prompt:'👻🔫🚫',answers:['охотники за привидениями','ghostbusters']},
+  {prompt:'🕷️🧑🏙️',answers:['человек паук','человек-паук','spider-man','spiderman']},
+  {prompt:'🤖🚗💥',answers:['трансформеры','transformers']},
+  {prompt:'🧊👸⛄',answers:['холодное сердце','frozen']},
+  {prompt:'🏴‍☠️⚓🏝️',answers:['пираты карибского моря','pirates of the caribbean']},
+  {prompt:'🦁👑🌅',answers:['король лев','the lion king']},
+  {prompt:'💊🕶️🟢',answers:['матрица','the matrix']}
+];
+const GAME_EMOJI = [
+  {prompt:'🧱⛏️🌙',answers:['minecraft','майнкрафт']},
+  {prompt:'🚗⚽🥅',answers:['rocket league','рокет лига']},
+  {prompt:'🚌🏝️🔫',answers:['fortnite','фортнайт']},
+  {prompt:'🪂🔫🍳',answers:['pubg','пабг']},
+  {prompt:'🐺⚔️🧪',answers:['ведьмак','the witcher','witcher']},
+  {prompt:'🚀👨‍🚀🔪',answers:['among us','амонг ас']},
+  {prompt:'🏙️🚗💰',answers:['gta','grand theft auto','гта']},
+  {prompt:'⚔️🐉🔥',answers:['dark souls','дарк соулс']},
+  {prompt:'🧟🌱🏠',answers:['plants vs zombies','растения против зомби']},
+  {prompt:'🔫🟥🔵',answers:['counter strike','counter-strike','cs2','кс']}
+];
+const BOMB_THEMES = [
+  {name:'Животные',emoji:'🐾',words:['кот','кошка','собака','волк','лиса','медведь','тигр','лев','рысь','заяц','кролик','слон','жираф','обезьяна','лошадь','корова','коза','овца','хомяк','дельфин','акула','кит','панда','енот','олень']},
+  {name:'Игры',emoji:'🎮',words:['minecraft','fortnite','pubg','valorant','overwatch','terraria','skyrim','witcher','dota','warcraft','portal','half life','stalker','metro','elden ring','roblox','among us','cs2','gta']},
+  {name:'Еда',emoji:'🍕',words:['пицца','бургер','суши','борщ','суп','салат','паста','рис','гречка','картошка','котлета','чебурек','шаурма','хлеб','сыр','яблоко','банан','персик','торт','мороженое']},
+  {name:'Страны',emoji:'🌍',words:['украина','польша','германия','франция','италия','испания','канада','япония','китай','индия','бразилия','аргентина','норвегия','швеция','финляндия','турция','греция','египет']}
+];
+function makeWordHunt(){
+  const count=randomInt(5,7), words=shuffle(WORD_HUNT_WORDS).slice(0,count), noise='АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЭЮЯ';
+  let field='';
+  for(const word of words){
+    field += [...Array(randomInt(2,5))].map(()=>pick(noise)).join('') + word;
+  }
+  field += [...Array(randomInt(3,7))].map(()=>pick(noise)).join('');
+  return {prompt:field,display:field,answers:words.map(x=>x.toLowerCase()),hiddenWords:words,required:Math.min(5,words.length)};
+}
+function musicEvent(){
+  const root=path.join(__dirname,'..','assets','quickEvents','music');
+  let tracks=[];
+  try{
+    const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));
+    tracks=(manifest.tracks||[]).filter(t=>t.file&&t.title&&t.artist&&fs.existsSync(path.join(root,t.file)));
+  }catch{}
+  if(!tracks.length) return {unavailable:true,prompt:'Музыкальная база пока пуста.',answers:[]};
+  const t=pick(tracks);
+  return {prompt:'Угадай название песни и исполнителя по фрагменту.',answers:[`${t.title} ${t.artist}`,`${t.artist} ${t.title}`],musicFile:path.join(root,t.file),title:t.title,artist:t.artist};
+}
+
 const TYPE_WEIGHTS = [
   ['unscramble',14],['math',13],['typing',9],['finish',10],
   ['odd',9],['color',8],['memory',8],['reaction',5],
@@ -220,6 +276,7 @@ const TYPE_WEIGHTS = [
   ['emoji_riddle',6],['true_false',6],
   ['loot_share',5],['risk',5],['dont_press',3],['royal_button',3],['dice_tournament',4],
   ['treasure_chest',6],['lucky_roll',4],
+  ['word_hunt',8],['music_guess',4],['movie_guess',6],['game_guess',6],['bomb',5],['mafia_light',2],
 ];
 
 function initTables(){
@@ -563,6 +620,12 @@ async function buildEvent(client,type,diff){
     prompt:'Система выбирает случайного активного участника.',
     answers:[],
   };
+  if(type==='word_hunt') return makeWordHunt();
+  if(type==='movie_guess'){const item=pick(MOVIE_EMOJI);return {prompt:item.prompt,answers:item.answers};}
+  if(type==='game_guess'){const item=pick(GAME_EMOJI);return {prompt:item.prompt,answers:item.answers};}
+  if(type==='music_guess') return musicEvent();
+  if(type==='bomb'){const theme=pick(BOMB_THEMES);return {prompt:`${theme.emoji} Тема: ${theme.name}`,answers:[],theme,used:[],players:[],lastUserId:null,explodeAt:Date.now()+randomInt(35,60)*1000};}
+  if(type==='mafia_light') return {prompt:'Регистрация в Mafia Lite длится 2 минуты.',answers:[],phase:'registration',players:[],alive:[],mafiaId:null,votes:{},roundNo:0};
   if(type==='world_boss'){
     const maxHp = diff === 'hard' ? 1800 : diff === 'medium' ? 1400 : 1000;
     return {
@@ -767,6 +830,7 @@ function multiEventComponents(roundId,type,phase='active'){
   if(type==='dont_press'&&phase==='temptation') return [new ActionRowBuilder().addComponents(quickButton(`quickevent_dont_bomb_${roundId}`,'НАЖАТЬ?','❓',ButtonStyle.Primary))];
   if(type==='royal_button') return [new ActionRowBuilder().addComponents(quickButton(`quickevent_royal_${roundId}`,'Захватить трон','👑',ButtonStyle.Primary))];
   if(type==='dice_tournament') return [new ActionRowBuilder().addComponents(quickButton(`quickevent_dice_${roundId}`,'Бросить D12','🎲',ButtonStyle.Primary))];
+  if(type==='mafia_light'&&phase==='registration') return [new ActionRowBuilder().addComponents(quickButton(`quickevent_mafia_join_${roundId}`,'Записаться','🔫',ButtonStyle.Success))];
   return [];
 }
 
@@ -1357,7 +1421,71 @@ function memoryButton(roundId){
     new ButtonBuilder().setCustomId(`quickevent_memory_${roundId}`).setLabel('Показать последовательность').setEmoji('🧠').setStyle(ButtonStyle.Primary)
   );
 }
+
+async function handleMafiaJoin(interaction,roundId){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='mafia_light' AND status='active'").get(roundId);
+  if(!round)return interaction.reply({content:'Игра уже завершена.',flags:MessageFlags.Ephemeral});
+  const payload=JSON.parse(round.payload_json||'{}');
+  if(payload.phase!=='registration')return interaction.reply({content:'Регистрация уже закрыта.',flags:MessageFlags.Ephemeral});
+  payload.players=payload.players||[];
+  if(!payload.players.includes(interaction.user.id))payload.players.push(interaction.user.id);
+  db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(payload),roundId);
+  markParticipation(roundId,interaction.user.id);
+  await interaction.reply({content:`✅ Ты записан. Участников: **${payload.players.length}**`,flags:MessageFlags.Ephemeral});
+  return true;
+}
+async function startMafia(channel,roundId){
+  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND status='active'").get(roundId);if(!round)return;
+  const p=JSON.parse(round.payload_json||'{}');
+  if((p.players||[]).length<4){db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE id=?").run(roundId);return channel.send('## 🔫 Mafia Lite отменена\nНужно минимум 4 участника.');}
+  p.phase='night';p.alive=[...p.players];p.mafiaId=pick(p.players);p.roundNo=1;p.votes={};
+  db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(p),roundId);
+  for(const id of p.players){const u=await channel.client.users.fetch(id).catch(()=>null);if(u)await u.send(id===p.mafiaId?'🔪 Ты убийца в Mafia Lite. Ночью отправь мне: `убить ID_игрока` или упомяни жертву.':'🙂 Ты мирный в Mafia Lite. Днём голосуй сообщением `голос @игрок`.').catch(()=>{});}
+  await channel.send(`## 🌙 Mafia Lite — ночь ${p.roundNo}\nРоли отправлены в ЛС. Убийца выбирает жертву. Ночь длится **45 секунд**.`);
+  addRuntimeTimer(roundId,setTimeout(()=>resolveMafiaNight(channel,roundId).catch(console.error),45*1000));
+}
+async function resolveMafiaNight(channel,roundId){
+  const r=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND status='active'").get(roundId);if(!r)return;
+  const p=JSON.parse(r.payload_json||'{}');if(p.phase!=='night')return;
+  let victim=p.nightVictimId;
+  if(!victim||!p.alive.includes(victim)||victim===p.mafiaId) victim=pick(p.alive.filter(x=>x!==p.mafiaId));
+  p.alive=p.alive.filter(x=>x!==victim);p.phase='day';p.votes={};delete p.nightVictimId;
+  db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(p),roundId);
+  await channel.send(`## ☀️ Mafia Lite — день ${p.roundNo}\nНочью погиб <@${victim}>.\nЖивые игроки голосуют: **голос @игрок**. На голосование 60 секунд.`);
+  if(await checkMafiaEnd(channel,r,p))return;
+  addRuntimeTimer(roundId,setTimeout(()=>resolveMafiaVote(channel,roundId).catch(console.error),60*1000));
+}
+async function resolveMafiaVote(channel,roundId){
+  const r=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND status='active'").get(roundId);if(!r)return;
+  const p=JSON.parse(r.payload_json||'{}');if(p.phase!=='day')return;
+  const counts={};for(const target of Object.values(p.votes||{}))counts[target]=(counts[target]||0)+1;
+  const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]);const kicked=sorted[0]?.[0]||null;
+  if(kicked){p.alive=p.alive.filter(x=>x!==kicked);await channel.send(`🗳️ По итогам голосования выгнан <@${kicked}>.`);}else await channel.send('🗳️ Голоса не собраны — никто не выгнан.');
+  if(await checkMafiaEnd(channel,r,p))return;
+  p.phase='night';p.roundNo=Number(p.roundNo||1)+1;p.votes={};db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(p),roundId);
+  await channel.send(`## 🌙 Mafia Lite — ночь ${p.roundNo}\nУбийца снова выбирает жертву. 45 секунд.`);
+  addRuntimeTimer(roundId,setTimeout(()=>resolveMafiaNight(channel,roundId).catch(console.error),45*1000));
+}
+async function checkMafiaEnd(channel,round,p){
+  const mafiaAlive=p.alive.includes(p.mafiaId), civilians=p.alive.filter(x=>x!==p.mafiaId);
+  if(mafiaAlive&&civilians.length>1)return false;
+  db.prepare("UPDATE quick_event_rounds SET status='solved',solved_at=? WHERE id=?").run(Date.now(),round.id);clearRuntimeTimers(round.id);
+  if(mafiaAlive){const u=await channel.client.users.fetch(p.mafiaId).catch(()=>null);if(u){const rw=grantReward(u,pickReward('hard',p.tier||'normal'),round.id);recordQuickEventWin(u.id,'mafia_light',round.id);await channel.send(`## 🔪 Победа убийцы\n<@${u.id}> остаётся один на один и получает **${rw.label}**.`);}}
+  else{const winners=civilians;const bank=randomInt(300,600),each=Math.max(1,Math.floor(bank/Math.max(1,winners.length)));for(const id of winners){const u=await channel.client.users.fetch(id).catch(()=>null);if(u){grantDust(u,each,'mafia_civilians');recordQuickEventWin(id,'mafia_light',round.id);}}await channel.send(`## 🙂 Победа мирных\nУбийца был изгнан. **${bank} Dust** поделены между победителями.`);}
+  return true;
+}
+async function resolveBomb(channel,roundId){
+  const r=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND status='active'").get(roundId);if(!r)return;
+  const p=JSON.parse(r.payload_json||'{}'), players=[...new Set(p.players||[])];
+  db.prepare("UPDATE quick_event_rounds SET status='solved',solved_at=? WHERE id=?").run(Date.now(),roundId);
+  const losers=p.lastUserId?[p.lastUserId]:[],winners=players.filter(x=>!losers.includes(x));
+  const bank=randomInt(180,400),each=winners.length?Math.floor(bank/winners.length):0;
+  for(const id of winners){const u=await channel.client.users.fetch(id).catch(()=>null);if(u&&each>0){grantDust(u,each,'bomb');recordQuickEventWin(id,'bomb',roundId);}}
+  await channel.send(`## 💥 БАХ!\nБомба взорвалась у ${p.lastUserId?`<@${p.lastUserId}>`:'никого'}.\n${winners.length?`Остальные участники делят **${bank} Dust** — по **${each}**.`:'Награда никому не досталась.'}`);
+}
+
 async function handleQuickEventComponent(interaction){
+  if(interaction.customId.startsWith('quickevent_mafia_join_')) return handleMafiaJoin(interaction,Number(interaction.customId.slice('quickevent_mafia_join_'.length)));
   if(!interaction.isButton())return false;
   initTables();
 
@@ -1436,14 +1564,15 @@ async function postQuickEvent(client){
 
   const roundId=Number(info.lastInsertRowid);
 
-  if(['loot_share','risk','dont_press','royal_button','dice_tournament'].includes(type)){
-    const titles={loot_share:'💰 ДЕЛЁЖ ДОБЫЧИ',risk:'🎰 РИСК',dont_press:'❓ НАЖАТЬ ИЛИ НЕ НАЖИМАТЬ?',royal_button:'👑 КОРОЛЕВСКАЯ КНОПКА',dice_tournament:'🎲 ТУРНИР D12'};
+  if(['loot_share','risk','dont_press','royal_button','dice_tournament','mafia_light'].includes(type)){
+    const titles={loot_share:'💰 ДЕЛЁЖ ДОБЫЧИ',risk:'🎰 РИСК',dont_press:'❓ НАЖАТЬ ИЛИ НЕ НАЖИМАТЬ?',royal_button:'👑 КОРОЛЕВСКАЯ КНОПКА',dice_tournament:'🎲 ТУРНИР D12',mafia_light:'🔫 MAFIA LITE'};
     const descriptions={
       loot_share:`В общем запасе **${event.bank} GS Dust**. Один участник может забрать долю только один раз.`,
       risk:'Выбери: гарантированные **35 Dust** или риск ради более крупной награды. Один выбор на игрока.',
       dont_press:'Регистрация длится **20 секунд**. Затем появится загадка: в одном раунде надо нажать кнопку, в другом — не нажимать. Правило скрыто до конца.',
       royal_button:'Ивент длится **2 минуты**. Перехватывай трон и удерживай его суммарно дольше остальных. Повторный клик владельца не считается, захват доступен не чаще раза в секунду.',
       dice_tournament:'Один бросок **D12** на игрока. Через **5 минут** лучший результат заберёт приз.',
+      mafia_light:'Регистрация длится **2 минуты**. Минимум 4 игрока. Один убийца, остальные мирные. Роли придут в ЛС.',
     };
     const message=await channel.send({content:`## ${titles[type]}
 ${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont_press'?'registration':'active')});
@@ -1453,9 +1582,24 @@ ${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont
     if(type==='dont_press') addRuntimeTimer(roundId,setTimeout(()=>startDontPressTemptation(channel,roundId).catch(console.error),20*1000));
     if(type==='royal_button') addRuntimeTimer(roundId,setTimeout(()=>resolveRoyalButton(channel,roundId).catch(console.error),2*60*1000));
     if(type==='dice_tournament') addRuntimeTimer(roundId,setTimeout(()=>resolveDiceTournament(channel,roundId).catch(console.error),5*60*1000));
+    if(type==='mafia_light') addRuntimeTimer(roundId,setTimeout(()=>startMafia(channel,roundId).catch(console.error),2*60*1000));
     return;
   }
 
+  if(type==='music_guess'){
+    if(event.unavailable){
+      db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE id=?").run(roundId);
+      await channel.send('## 🎵 Угадай музыку\nМузыкальная база пуста. Добавь клипы и manifest.json в `assets/quickEvents/music/`.');
+      return;
+    }
+    const message=await channel.send({content:'## 🎵 Угадай музыку\nПрослушай фрагмент и напиши **название песни и исполнителя**.',files:[new AttachmentBuilder(event.musicFile,{name:path.basename(event.musicFile)})]});
+    db.prepare("UPDATE quick_event_rounds SET message_id=?,status='active',activated_at=? WHERE id=?").run(message.id,Date.now(),roundId);return;
+  }
+  if(type==='bomb'){
+    const message=await channel.send(`## 💣 БОМБА\n${event.prompt}\nПиши подходящие слова. Повторяться нельзя. Бомба взорвётся в случайный момент — проиграет тот, кто написал последним.`);
+    db.prepare("UPDATE quick_event_rounds SET message_id=?,status='active',activated_at=? WHERE id=?").run(message.id,Date.now(),roundId);
+    addRuntimeTimer(roundId,setTimeout(()=>resolveBomb(channel,roundId).catch(console.error),Math.max(5000,event.explodeAt-Date.now())));return;
+  }
   if(type==='lucky_roll'){
     const card=await createQuickEventCard(event,'active');
     await channel.send({
@@ -1489,6 +1633,12 @@ ${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont
     return;
   }
 
+  if(type==='word_hunt') return makeWordHunt();
+  if(type==='movie_guess'){const item=pick(MOVIE_EMOJI);return {prompt:item.prompt,answers:item.answers};}
+  if(type==='game_guess'){const item=pick(GAME_EMOJI);return {prompt:item.prompt,answers:item.answers};}
+  if(type==='music_guess') return musicEvent();
+  if(type==='bomb'){const theme=pick(BOMB_THEMES);return {prompt:`${theme.emoji} Тема: ${theme.name}`,answers:[],theme,used:[],players:[],lastUserId:null,explodeAt:Date.now()+randomInt(35,60)*1000};}
+  if(type==='mafia_light') return {prompt:'Регистрация в Mafia Lite длится 2 минуты.',answers:[],phase:'registration',players:[],alive:[],mafiaId:null,votes:{},roundNo:0};
   if(type==='world_boss'){
     const card=await createQuickEventCard(event,'active');
     const message=await channel.send({
@@ -1513,9 +1663,10 @@ ${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont
   if(type==='reaction')phase='ready';
   const card=await createQuickEventCard(event,phase);
   const components=type==='memory'?[memoryButton(roundId)]:[];
+  const specialTitle={word_hunt:'## 🔎 КТО БЫСТРЕЕ?\nНайди и напиши **5 спрятанных слов** одним сообщением.',movie_guess:'## 🎬 УГАДАЙ ФИЛЬМ\nКакой фильм зашифрован эмодзи?',game_guess:'## 🎮 УГАДАЙ ИГРУ\nКакая игра зашифрована эмодзи?'}[type];
   const content=type==='memory'
     ?'## ⚡ GS Quick Event\nНажми кнопку, запомни последовательность и отправь её в чат.'
-    :'## ⚡ GS Quick Event\nСобытие начинается!';
+    :(specialTitle||'## ⚡ GS Quick Event\nСобытие начинается!');
   const message=await channel.send({
     content,
     files:[new AttachmentBuilder(card,{name:'gs-quick-event.png'})],
@@ -1533,15 +1684,45 @@ ${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont
 }
 
 async function handleQuickEventAnswer(message){
-  if(!message.guild||message.author.bot||message.channel.id!==CHANNEL_ID)return false;initTables();
+  if(message.author.bot)return false;initTables();
+  if(!message.guild){
+    const mafia=db.prepare("SELECT * FROM quick_event_rounds WHERE type='mafia_light' AND status='active' ORDER BY id DESC LIMIT 1").get();
+    if(!mafia)return false;const p=JSON.parse(mafia.payload_json||'{}');
+    if(p.phase==='night'&&p.mafiaId===message.author.id){const target=message.mentions.users.first()?.id||String(message.content||'').match(/\d{15,22}/)?.[0];if(target&&p.alive?.includes(target)&&target!==p.mafiaId){p.nightVictimId=target;db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(p),mafia.id);await message.reply('🔪 Жертва выбрана.');}return true;}return false;
+  }
+  if(message.channel.id!==CHANNEL_ID)return false;
   const round=db.prepare("SELECT * FROM quick_event_rounds WHERE channel_id=? AND status='active' ORDER BY id DESC LIMIT 1").get(CHANNEL_ID);if(!round)return false;
   if(Date.now()-(round.activated_at||round.created_at)>ACTIVE_TTL_MS)return false;
   
-  const answer=normalize(message.content);if(!answer)return false;markParticipation(round.id,message.author.id);const attempts=db.prepare('SELECT COUNT(*) count FROM quick_event_attempts WHERE round_id=? AND user_id=?').get(round.id,message.author.id)?.count??0;if(attempts>=MAX_ATTEMPTS)return true;
+  const answer=normalize(message.content);if(!answer)return false;markParticipation(round.id,message.author.id);
+  const payload=JSON.parse(round.payload_json||'{}');
+  if(round.type==='word_hunt'){
+    const found=(payload.hiddenWords||[]).filter(w=>answer.includes(normalize(w)));
+    if(found.length < Number(payload.required||5)) return true;
+    const won=db.prepare("UPDATE quick_event_rounds SET status='solved',winner_id=?,solved_at=? WHERE id=? AND status='active'").run(message.author.id,Date.now(),round.id);if(!won.changes)return true;
+    const reward=grantReward(message.author,pickReward(round.difficulty,payload.tier||'normal'),round.id);recordQuickEventWin(message.author.id,round.type,round.id);
+    await message.reply({content:`## 🔎 Победа!\n${message.author} первым нашёл минимум **${payload.required||5} слов**: ${found.join(', ')}\nНаграда: **${reward.label}**`,allowedMentions:{repliedUser:false}});return true;
+  }
+  if(round.type==='bomb'){
+    const allowed=(payload.theme?.words||[]).map(normalize);if(!allowed.includes(answer))return true;
+    payload.used=payload.used||[];if(payload.used.includes(answer))return true;
+    payload.used.push(answer);payload.players=[...new Set([...(payload.players||[]),message.author.id])];payload.lastUserId=message.author.id;
+    db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(payload),round.id);
+    await message.react('✅').catch(()=>{});return true;
+  }
+  if(round.type==='mafia_light'){
+    if(payload.phase==='day'){
+      const target=message.mentions.users.first()?.id || answer.match(/\d{15,22}/)?.[0];
+      if(!payload.alive?.includes(message.author.id)||!target||!payload.alive.includes(target))return true;
+      payload.votes=payload.votes||{};payload.votes[message.author.id]=target;db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(payload),round.id);await message.react('🗳️').catch(()=>{});return true;
+    }
+    return true;
+  }
+  const attempts=db.prepare('SELECT COUNT(*) count FROM quick_event_attempts WHERE round_id=? AND user_id=?').get(round.id,message.author.id)?.count??0;if(attempts>=MAX_ATTEMPTS)return true;
   const inserted=db.prepare('INSERT OR IGNORE INTO quick_event_attempts(round_id,user_id,normalized_answer,created_at) VALUES(?,?,?,?)').run(round.id,message.author.id,answer,Date.now());if(!inserted.changes)return true;
   const accepted=JSON.parse(round.answers_json).map(normalize);if(!accepted.includes(answer))return true;
   const won=db.prepare("UPDATE quick_event_rounds SET status='solved',winner_id=?,solved_at=? WHERE id=? AND status='active'").run(message.author.id,Date.now(),round.id);if(!won.changes)return true;
-  const payload=JSON.parse(round.payload_json||'{}');const tier=payload.tier||'normal';const reward=grantReward(message.author,pickReward(round.difficulty,tier),round.id);db.prepare('UPDATE quick_event_rounds SET reward_type=?,reward_amount=?,reward_details=? WHERE id=?').run(reward.type,reward.amount,reward.details,round.id);
+  const normalPayload=JSON.parse(round.payload_json||'{}');const tier=normalPayload.tier||'normal';const reward=grantReward(message.author,pickReward(round.difficulty,tier),round.id);db.prepare('UPDATE quick_event_rounds SET reward_type=?,reward_amount=?,reward_details=? WHERE id=?').run(reward.type,reward.amount,reward.details,round.id);
   const quickStats=recordQuickEventWin(message.author.id,round.type,round.id);
   db.prepare(`UPDATE quick_event_player_stats SET weekly_wins=COALESCE(weekly_wins,0)+1,golden_wins=COALESCE(golden_wins,0)+? WHERE user_id=?`).run(tier==='golden'?1:0,message.author.id);
   const milestoneRewards=milestoneReward(message.author.id,quickStats.totalWins,quickStats.currentStreak);

@@ -347,6 +347,55 @@ async function sendLeaveLog(api, update) {
     return true;
 }
 
+
+async function sendJoinLog(api, update) {
+    const targetChatId = getSetting('telegram_leave_log_chat_id');
+    const targetThreadId = getSetting('telegram_leave_log_thread_id');
+    if (!targetChatId) return false;
+
+    const chatMember = update.chat_member;
+    const member = chatMember?.new_chat_member?.user;
+    if (!member) return false;
+
+    const oldStatus = chatMember.old_chat_member?.status;
+    const newStatus = chatMember.new_chat_member?.status;
+    const wasOutside = ['left', 'kicked'].includes(oldStatus);
+    const isInside = ['creator', 'administrator', 'member', 'restricted'].includes(newStatus);
+    if (!wasOutside || !isInside) return false;
+
+    const actor = chatMember.from;
+    const selfJoin = String(actor?.id) === String(member.id);
+    const lines = [
+        `${member.is_bot ? '🤖' : '✅'} <b>${member.is_bot ? 'Бот добавлен в группу' : 'Новый участник принят в беседу'}</b>`,
+        '',
+        `${member.is_bot ? '🤖 <b>Бот:</b>' : '👤 <b>Участник:</b>'} ${telegramUserLink(member)}`,
+        member.username ? `🔗 <b>Username:</b> @${escapeHtml(member.username)}` : '🔗 <b>Username:</b> отсутствует',
+        `🆔 <b>Telegram ID:</b> <code>${member.id}</code>`,
+        selfJoin ? '🚪 <b>Вход:</b> вступил самостоятельно' : (actor ? `🛡 <b>Добавил:</b> ${telegramUserLink(actor)}` : '🛡 <b>Добавил:</b> неизвестно'),
+        `💬 <b>Группа:</b> ${escapeHtml(chatMember.chat?.title || 'Без названия')}`,
+        `🕒 <b>Время:</b> ${escapeHtml(formatMoscowTime(chatMember.date))} МСК`,
+    ];
+
+    const welcomeImagePath = path.join(__dirname, 'assets', 'join', 'gs-telegram-welcome.png');
+    const common = {
+        chat_id: targetChatId,
+        parse_mode: 'HTML',
+        ...(targetThreadId ? { message_thread_id: Number(targetThreadId) } : {}),
+    };
+    if (fs.existsSync(welcomeImagePath)) {
+        await api('sendPhoto', {
+            ...common,
+            caption: lines.join('\n'),
+            __fileFields: { photo: { path: welcomeImagePath, filename: 'gs-telegram-welcome.png', contentType: 'image/png' } },
+        });
+    } else {
+        await api('sendMessage', { ...common, text: lines.join('\n') });
+        console.warn('[Telegram Join Log] Картинка не найдена:', welcomeImagePath);
+    }
+    console.log(`[Telegram Join Log] ${member.id} (${member.username || telegramFullName(member)})`);
+    return true;
+}
+
 async function handleCommand(api, message, command) {
     const crocHandled = await crocodile.handleCommand(
         api,
@@ -765,7 +814,8 @@ async function processUpdate(api, update) {
     try {
         if (update.chat_member) {
             gsCall.rememberChatMemberUpdate(update);
-            await sendLeaveLog(api, update);
+            const joined = await sendJoinLog(api, update);
+            if (!joined) await sendLeaveLog(api, update);
             return;
         }
 

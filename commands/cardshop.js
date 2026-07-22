@@ -20,7 +20,7 @@ function buildShopButtons(user) {
     return new ActionRowBuilder().addComponents(
         ...Object.values(PACK_TYPES).map(pack => new ButtonBuilder()
             .setCustomId(`${BUTTON_PREFIX}${pack.id}`)
-            .setLabel(pack.id === 'boss' ? 'Boss Pack - 1000 Dust (скоро)' : `${pack.name} • ${pack.cost} Dust`)
+            .setLabel(`${pack.name} • ${pack.cost} Dust`)
             .setStyle(pack.id === 'base' ? ButtonStyle.Success : pack.id === 'premium' ? ButtonStyle.Primary : ButtonStyle.Danger)
             .setDisabled(Boolean(pack.disabled) || balance < pack.cost))
     );
@@ -53,10 +53,6 @@ async function editPanel(interaction, content, panel, fileName) {
 
 async function playBuyAnimation(interaction, user, packId) {
     const pack = PACK_TYPES[packId] ?? PACK_TYPES.base;
-    if (pack.disabled) {
-        const reply = await buildShopReply(user);
-        return interaction.editReply({ ...reply, content: '# Card Shop\nBoss Pack пока недоступен для покупки. Скоро.' });
-    }
     const charge = await createRevealPanel(user, { phase: 'charge', source: pack.name.toUpperCase() });
     await editPanel(interaction, `Открываем ${pack.name}...`, charge, 'shop-charge.png');
     await sleep(650);

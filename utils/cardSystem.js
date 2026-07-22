@@ -63,7 +63,7 @@ const PACK_TYPES = {
         ],
     },
     boss: {
-        id: 'boss', name: 'Boss Pack', cost: 1000, disabled: true, collection: 'boss_pack',
+        id: 'boss', name: 'Boss Pack', cost: 1000, disabled: false, collection: 'boss_pack',
         chances: [
             { value: 'minion', weight: 40 },
             { value: 'class', weight: 35 },

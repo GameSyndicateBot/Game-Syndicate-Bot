@@ -138,7 +138,7 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
     if (current && ly <= 830) { text(ctx, `• ${current}`, 1225, ly, 16, '#d0cad5'); ly += 27; }
     if (ly > 830) break;
   }
-  text(ctx, 'Кнопки под изображением управляют боем', 800, 890, 15, '#8f8799', 'normal', 'center');
+  text(ctx, '❤️ HP   🔷 Мана   ⚡ Энергия   🔥 Ярость   💥 Ульта', 800, 883, 16, '#c8bfd1', 'bold', 'center');
   return canvas.toBuffer('image/png');
 }
 

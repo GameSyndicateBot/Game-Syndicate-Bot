@@ -1,0 +1,9 @@
+{
+  "tracks": [
+    {
+      "file": "example-clip.mp3",
+      "title": "Название песни",
+      "artist": "Исполнитель"
+    }
+  ]
+}

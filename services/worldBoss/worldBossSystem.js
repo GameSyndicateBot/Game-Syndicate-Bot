@@ -92,14 +92,20 @@ function rolePlan(n) {
   return { tank, healer, dps, support: Math.max(0, n - tank - healer - dps) };
 }
 function buildClassPool(n) {
-  const plan = rolePlan(n), out = [];
-  for (const [role, count] of Object.entries(plan)) {
-    const keys = shuffle(Object.keys(CLASSES).filter(k => CLASSES[k].role === role));
-    for (let i = 0; i < count; i++) out.push(keys[i % keys.length]);
+  // В меню всегда присутствуют все 12 классов хотя бы по одному разу.
+  // При группе больше 12 человек добавляются повторные слоты, но базовый набор не теряется.
+  const all = shuffle(Object.keys(CLASSES));
+  const target = Math.max(12, Number(n || 0) + 1);
+  const out = [...all];
+  while (out.length < target) {
+    const leastUsed = Object.keys(CLASSES).sort((a,b) =>
+      out.filter(x => x === a).length - out.filter(x => x === b).length
+    );
+    out.push(pick(leastUsed.slice(0, Math.min(4, leastUsed.length))));
   }
-  while (out.length < n + 1) { const candidates = Object.keys(CLASSES).filter(k => ['dps','support'].includes(CLASSES[k].role) && !out.includes(k)); out.push(pick(candidates.length ? candidates : Object.keys(CLASSES).filter(k => !out.includes(k)))); }
   return shuffle(out);
 }
+
 function scaledHp(base, n) {
   const players = Math.max(4, Number(n || 4));
   const multiplier = Math.min(3.5, 1 + 0.22 * Math.pow(players - 4, 0.85));
@@ -166,7 +172,7 @@ function buildEmbed(b, players) {
   const sum = summonsText(state); if (sum) e.addFields({ name: '⚙️ Призывы игроков', value: sum });
   if (['class_select','initiative_roll','active'].includes(b.status)) e.addFields({ name: 'Команда', value: players.slice(0, 18).map(p => {
     const c = CLASSES[p.class_key], ef = effects(p), sh = Number(ef.shield || 0);
-    return `${c ? roleIcon(c.role) : '❔'} <@${p.user_id}> • ${c?.name || 'класс не выбран'}${b.status === 'active' ? ` • ❤️ ${p.hp}/${p.max_hp}${sh ? ` • 🛡️ ${sh}` : ''} • ${resourceMeta(p.class_key).icon} ${skillResourceValue(p)}${resourceType(p.class_key) === 'mana' ? ` • 💥 ${p.ult_charge || 0}` : ''}` : ''}`;
+    return `${c ? roleIcon(c.role) : '❔'} <@${p.user_id}> • ${c?.name || 'класс не выбран'}${b.status === 'active' ? ` • ❤️${p.hp}/${p.max_hp}${sh ? ` | 🛡️${sh}` : ''} | ${resourceMeta(p.class_key).icon}${skillResourceValue(p)}${resourceType(p.class_key) === 'mana' ? ` | 💥${p.ult_charge || 0}` : ''}` : ''}`;
   }).join('\n').slice(0, 1024) });
   if (state.finalStats) {
     const fs = state.finalStats;
@@ -176,6 +182,7 @@ function buildEmbed(b, players) {
       { name: '⚔️ Урон', value: fs.damageTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.damage_done}**`).join('\n').slice(0,1024), inline: true },
       { name: '💚 Лечение', value: fs.healTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.healing_done}**`).join('\n').slice(0,1024), inline: true },
       { name: '🛡️ Принято урона', value: fs.tankTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.damage_taken}**`).join('\n').slice(0,1024), inline: true },
+      { name: '🤖 Вклад призывов', value: Object.entries(fs.summonStats || {}).map(([uid, st]) => `<@${uid}> — ⚔️ **${st.damage || 0}** • 🛡️ **${st.absorbed || 0}**${st.healing ? ` • 💚 **${st.healing}**` : ''}`).join('\n').slice(0,1024) || 'Призывы не участвовали.' },
     );
   }
   if (state.log?.length) e.addFields({ name: 'Последние действия', value: state.log.slice(-7).join('\n').slice(0, 1024) });
@@ -472,11 +479,11 @@ function targetById(id, targetId, status = 'alive') { return battlePlayers(id).f
 function useSkill(b, p, c, e, state, targetId) {
   const id = b.id, u = p.user_id;
   switch (p.class_key) {
-    case 'warrior': e.interceptRounds = 2; return `🛡️ <@${u}> перехватывает 70% одиночного урона на 2 раунда.`;
-    case 'paladin': { const t = targetById(id, targetId) || p, te = effects(t); te.shield = Math.max(Number(te.shield || 0), 180); updateEffects(id, t.user_id, te); return `✨ <@${u}> накладывает на <@${t.user_id}> щит **180 HP**.`; }
-    case 'guardian': e.guardRounds = 2; return `🛡️ <@${u}> снижает входящий урон на 50% на 2 раунда.`;
+    case 'warrior': e.interceptRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `🛡️ <@${u}> перехватывает 70% одиночного урона и провоцирует босса с миньонами на 2 раунда.`;
+    case 'paladin': { const t = targetById(id, targetId) || p, te = effects(t); te.shield = Math.max(Number(te.shield || 0), 40); updateEffects(id, t.user_id, te); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `✨ <@${u}> накладывает на <@${t.user_id}> щит **40 HP** и провоцирует босса с миньонами на 2 раунда.`; }
+    case 'guardian': e.guardRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `🛡️ <@${u}> снижает входящий урон на 50% и провоцирует босса с миньонами на 2 раунда.`;
     case 'cleric': { const t = targetById(id, targetId) || p, sacrifice = Math.min(rand(30, 45), Math.max(0, p.hp - 1)); if (sacrifice <= 0) return `💔 <@${u}> не хватает HP для жертвы.`; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(p.hp - sacrifice, id, u); const healed = healPlayer(id, u, t, sacrifice); return `💚 <@${u}> жертвует **${sacrifice} HP** и лечит <@${t.user_id}> на **${healed} HP**.`; }
-    case 'priest': { let total = 0; for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, rand(18, 28)); return `💚 <@${u}> исцеляет всю группу суммарно на **${total} HP**.`; }
+    case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 75, maxHp: 75, heal: [12, 20], rounds: 4, support: true }); saveState(b, state); return `👼 <@${u}> призывает Ангела-хранителя на 4 хода. В конце каждого раунда ангел лечит всю живую группу.`; }
     case 'bard': { const t = targetById(id, targetId) || p, te = effects(t); te.damageBuffTurns = 3; te.damageBuff = 0.15; updateEffects(id, t.user_id, te); return `🎵 <@${u}> усиливает <@${t.user_id}> на 15% на 3 хода.`; }
     case 'assassin': { const r = hurtEnemy(b, state, rand(60, 80), 'physical', 'assassin', 0.5); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `🗡️ <@${u}> наносит **${r.dealt}** теневого урона.`; }
     case 'archer': { let total = 0; for (let i = 0; i < 3; i++) if (Math.random() * 100 >= c.miss) total += hurtEnemy(b, state, rand(25, 40), 'physical', 'archer').dealt; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total, total, id, u); return `🏹 <@${u}> выпускает 3 стрелы: **${total}** урона.`; }
@@ -491,7 +498,7 @@ function useUlt(b, p, c, e, state, targetId) {
   const id = b.id, u = p.user_id;
   switch (p.class_key) {
     case 'warrior': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); updateEffects(id, t.user_id, te); } e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `🛡️ <@${u}> поднимает Последний рубеж: вся группа получает -40% урона на 2 хода, одиночные атаки направлены в Воина.`;
-    case 'paladin': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.shield = Math.max(Number(te.shield || 0), t.user_id === u ? 80 : 60); updateEffects(id, t.user_id, te); } return `✨ <@${u}> накладывает щиты на всю группу.`;
+    case 'paladin': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.shield = Math.max(Number(te.shield || 0), 30); updateEffects(id, t.user_id, te); } e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `✨ <@${u}> накладывает всей группе щиты по **30 HP** и провоцирует босса с миньонами на 2 раунда.`;
     case 'guardian': e.tauntRounds = 2; e.guardRounds = Math.max(Number(e.guardRounds || 0), 2); return `🛡️ <@${u}> провоцирует босса и миньонов на 2 раунда и получает -50% входящего урона.`;
     case 'cleric': { const t = targetById(id, targetId) || p, healed = healPlayer(id, u, t, t.max_hp); return `🌟 <@${u}> полностью исцеляет <@${t.user_id}> на **${healed} HP**.`; }
     case 'priest': { const dead = targetById(id, targetId, 'dead'); if (!dead) return `✨ Нет выбранной погибшей цели.`; db.prepare("UPDATE world_boss_players SET status='alive',hp=ROUND(max_hp*0.5),energy=0,mana=50,ult_charge=0 WHERE battle_id=? AND user_id=?").run(id, dead.user_id); return `✨ <@${u}> воскрешает <@${dead.user_id}>! Игрок возвращается в бой с **${Math.round(dead.max_hp * 0.5)} HP**.`; }
@@ -507,18 +514,32 @@ function useUlt(b, p, c, e, state, targetId) {
 }
 
 async function summonsAct(b) {
-  const state = stateOf(b), totalByOwner = {};
+  const state = stateOf(b), totalByOwner = {}, healByOwner = {};
+  state.summonStats = state.summonStats || {};
   for (const summon of state.summons || []) {
     if (summon.rounds <= 0 || summon.hp <= 0) continue;
+    if (summon.support && summon.type === 'angel') {
+      let healed = 0;
+      for (const target of battlePlayers(b.id).filter(p => p.status === 'alive')) healed += healPlayer(b.id, summon.owner, target, rand(...(summon.heal || [12,20])));
+      healByOwner[summon.owner] = (healByOwner[summon.owner] || 0) + healed;
+      continue;
+    }
     if (Math.random() * 100 >= Number(summon.miss || 0)) {
       const owner = battlePlayers(b.id).find(p => p.user_id === summon.owner);
       const r = hurtEnemy(b, state, rand(...summon.damage), summon.damageType || 'physical', owner?.class_key || null);
       totalByOwner[summon.owner] = (totalByOwner[summon.owner] || 0) + r.dealt;
+      state.summonStats[summon.owner] = state.summonStats[summon.owner] || { damage: 0, absorbed: 0, healing: 0 };
+      state.summonStats[summon.owner].damage += r.dealt;
     }
+  }
+  for (const [owner, healing] of Object.entries(healByOwner)) {
+    state.summonStats[owner] = state.summonStats[owner] || { damage: 0, absorbed: 0, healing: 0 };
+    state.summonStats[owner].healing += healing;
   }
   state.summons = (state.summons || []).filter(summon => summon.rounds > 0 && summon.hp > 0); saveState(b, state);
   for (const [u, d] of Object.entries(totalByOwner)) db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(d, d, b.id, u);
   if (Object.keys(totalByOwner).length) addLog(b, `⚙️ Призывы наносят **${Object.values(totalByOwner).reduce((a, z) => a + z, 0)}** суммарного урона.`);
+  if (Object.keys(healByOwner).length) addLog(b, `👼 Ангелы восстанавливают группе **${Object.values(healByOwner).reduce((a, z) => a + z, 0)} HP**.`);
 }
 function tickOwnerSummons(battleId, ownerId) {
   const b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(battleId); if (!b) return;
@@ -542,10 +563,13 @@ async function nextTurn(id, previousAlive = null) {
 function damagePlayerSummons(state, ratio = 0.55) {
   let total = 0;
   state.deathStats = state.deathStats || { players: 0, bossMinions: 0, playerSummons: 0 };
+  state.summonStats = state.summonStats || {};
   for (const summon of state.summons || []) {
-    const hit = Math.max(1, Math.round(rand(14, 24) * ratio));
+    const hit = Math.min(summon.hp, Math.max(1, Math.round(rand(24, 40) * ratio)));
     const died = summon.hp > 0 && summon.hp - hit <= 0;
     summon.hp = Math.max(0, summon.hp - hit); total += hit;
+    state.summonStats[summon.owner] = state.summonStats[summon.owner] || { damage: 0, absorbed: 0, healing: 0 };
+    state.summonStats[summon.owner].absorbed += hit;
     if (died) { state.log.push(`💥 Призыв **${summon.name}** игрока <@${summon.owner}> уничтожен!`); state.deathStats.playerSummons = Number(state.deathStats.playerSummons || 0) + 1; }
   }
   state.summons = (state.summons || []).filter(s => s.hp > 0 && s.rounds > 0);
@@ -576,13 +600,15 @@ async function bossTurn(id) {
   const state = stateOf(b);
   state.minions = state.minions || [];
   state.bossActionStats = state.bossActionStats || {};
-  state.rage = clamp(Number(state.rage || 0) + 25, 0, 100);
+  state.rage = clamp(Number(state.rage || 0) + 32, 0, 100);
 
   const hpRatio = b.boss_max_hp ? b.boss_hp / b.boss_max_hp : 1;
   const phase = hpRatio <= 0.25 ? 3 : hpRatio <= 0.5 ? 2 : 1;
-  const target = players.find(x => effects(x).tauntRounds > 0)
-    || players.find(x => effects(x).interceptRounds > 0)
-    || pick(players);
+  const tauntingTank = players.find(x => CLASSES[x.class_key]?.role === 'tank' && effects(x).tauntRounds > 0);
+  const interceptingTank = players.find(x => CLASSES[x.class_key]?.role === 'tank' && effects(x).interceptRounds > 0);
+  const tanks = players.filter(x => CLASSES[x.class_key]?.role === 'tank');
+  const chooseSingleTarget = () => tauntingTank || interceptingTank || (tanks.length && Math.random() < 0.68 ? pick(tanks) : pick(players));
+  const target = chooseSingleTarget();
   const attackDamageType = pickDamageType(boss.attackTypes, 'physical');
 
   const recordAction = action => {
@@ -690,7 +716,15 @@ async function bossTurn(id) {
       text = destroyRandomSummon(state) || `👹 ${boss.name} не смог разрушить призыв.`;
       state.lastDestroyRound = b.round_no;
     } else if (action === 'SUMMON') {
-      text = summon() || `👹 ${boss.name} не смог призвать миньона.`;
+      const summonText = summon() || `👹 ${boss.name} не смог призвать миньона.`;
+      const handTarget = chooseSingleTarget();
+      let handText = '';
+      if (handTarget && Math.random() * 100 >= boss.miss) {
+        const handType = pickDamageType(boss.attackTypes, attackDamageType);
+        const r = damageTarget(id, handTarget, rand(Math.round(boss.damage[0] * 0.85), Math.round(boss.damage[1] * 0.95)), handType);
+        handText = ` Затем босс бьёт <@${handTarget.user_id}> с руки на **${r.hpDamage} HP** (${damageTypeLabel(handType)}).`;
+      } else handText = ' Затем босс атакует с руки, но промахивается.';
+      text = summonText + handText;
     }
   }
 
@@ -700,12 +734,19 @@ async function bossTurn(id) {
   for (const m of state.minions) {
     const aliveNow = battlePlayers(id).filter(x => x.status === 'alive');
     if (!aliveNow.length) break;
-    const t = pick(aliveNow);
+    const liveTanks = aliveNow.filter(x => CLASSES[x.class_key]?.role === 'tank');
+    const forcedTank = aliveNow.find(x => CLASSES[x.class_key]?.role === 'tank' && effects(x).tauntRounds > 0);
+    const t = forcedTank || (liveTanks.length && Math.random() < 0.72 ? pick(liveTanks) : pick(aliveNow));
     if (Math.random() * 100 >= m.miss) {
       const minionType = m.damageType || 'physical';
       const r = damageTarget(id, t, rand(...m.damage), minionType);
       state.log.push(`👾 ${m.name} → <@${t.user_id}>: **${r.hpDamage} HP** (${damageTypeLabel(minionType)}).`);
     } else state.log.push(`💨 ${m.name} промахивается.`);
+  }
+
+  if ((state.summons || []).length && Math.random() < 0.65) {
+    const summonDamage = damagePlayerSummons(state, 0.9);
+    if (summonDamage) state.log.push(`🎯 Босс и его миньоны дополнительно атакуют призывы игроков: **${summonDamage} урона**.`);
   }
 
   state.log = state.log.slice(-12);
@@ -736,7 +777,8 @@ async function finish(id, win) {
     const damageTop = [...ps].sort((a,b) => b.damage_done - a.damage_done);
     const healTop = [...ps].sort((a,b) => b.healing_done - a.healing_done);
     const tankTop = [...ps].sort((a,b) => b.damage_taken - a.damage_taken);
-    finalStats = { pool, each, remainder, mvpId: mvp.user_id, mvpScore: Math.round(mvp.mvpScore), pack, damageTop: damageTop.slice(0,10), healTop: healTop.slice(0,10), tankTop: tankTop.slice(0,10) };
+    const summonStats = stateOf(b).summonStats || {};
+    finalStats = { pool, each, remainder, mvpId: mvp.user_id, mvpScore: Math.round(mvp.mvpScore), pack, damageTop: damageTop.slice(0,10), healTop: healTop.slice(0,10), tankTop: tankTop.slice(0,10), summonStats };
     lines = [`🏆 Победа! Общая награда: **${pool} GS Dust** — поделена между всей группой.`, `⭐ MVP: <@${mvp.user_id}> • общий рейтинг **${Math.round(mvp.mvpScore)}**.`, `🎁 MVP получает **${pack.toUpperCase()} Pack**.`];
   } else lines = ['💀 Группа потерпела поражение.'];
   b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const st = stateOf(b); st.finalStats = finalStats;

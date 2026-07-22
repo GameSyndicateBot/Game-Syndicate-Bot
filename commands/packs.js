@@ -46,7 +46,7 @@ const PACK_META = Object.freeze({
     boss: {
         emoji: '👹',
         style: ButtonStyle.Secondary,
-        description: 'Boss Pack — будущий набор мирового босса. Пока недоступен.',
+        description: 'Boss Pack — карточки классов, миньонов и мировых боссов.',
     },
 });
 

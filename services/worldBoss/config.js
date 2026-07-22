@@ -10,7 +10,7 @@ const CLASSES = {
   assassin:{name:'Ассасин',role:'dps',resourceType:'energy',damageType:'physical',physicalResist:3,magicResist:-5,cardId:2066,maxHp:100,damage:[36,46],miss:15,skill:{name:'Удар из тени',cost:40},ultimate:{name:'Смертельный удар',cost:100}},
   archer:{name:'Лучник',role:'dps',resourceType:'energy',damageType:'physical',physicalResist:5,magicResist:-6,cardId:2067,maxHp:110,damage:[35,48],miss:10,skill:{name:'3 удара',cost:40},ultimate:{name:'Дождь стрел',cost:100}},
   mage:{name:'Маг',role:'dps',resourceType:'mana',damageType:'magic',physicalResist:-18,magicResist:20,cardId:2068,maxHp:95,damage:[25,38],miss:8,skill:{name:'Огненный шар',cost:40},ultimate:{name:'Метеор',cost:100}},
-  berserker:{name:'Берсерк',role:'dps',resourceType:'energy',damageType:'physical',physicalResist:8,magicResist:-10,cardId:2069,maxHp:150,damage:[38,48],miss:10,skill:{name:'Тройной удар',cost:40},ultimate:{name:'Кровавая ярость',cost:100}},
+  berserker:{name:'Берсерк',role:'support',resourceType:'energy',damageType:'physical',physicalResist:8,magicResist:-10,cardId:2069,maxHp:150,damage:[38,48],miss:10,skill:{name:'Тройной удар',cost:40},ultimate:{name:'Кровавая ярость',cost:100}},
   engineer:{name:'Инженер',role:'support',resourceType:'energy',damageType:'physical',physicalResist:10,magicResist:-5,cardId:2070,maxHp:125,damage:[30,40],miss:9,skill:{name:'Турель',cost:40},ultimate:{name:'Голем',cost:100}},
   necromancer:{name:'Некромант',role:'support',resourceType:'mana',damageType:'magic',physicalResist:-10,magicResist:18,cardId:2071,maxHp:115,damage:[32,43],miss:10,skill:{name:'Скелет',cost:40},ultimate:{name:'Армия',cost:100}},
 };
