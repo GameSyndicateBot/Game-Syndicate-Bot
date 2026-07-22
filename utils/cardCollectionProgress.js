@@ -10,6 +10,20 @@ function normalizeCardId(value) {
     return String(value).trim();
 }
 
+// Ручная коррекция подтверждённых полных коллекций.
+// Эти участники фактически собрали указанные редкости, но старые записи
+// коллекции не прошли автоматическую проверку из-за несовместимости старых данных.
+// Проверка нужна только для выдачи пропущенных достижений; после выдачи
+// достижения остаются в player_achievements и повторно не начисляются.
+const CONFIRMED_COMPLETE_RARITIES = Object.freeze({
+    '561961056197672991': new Set(['epic', 'legendary']),
+    '830515570377097259': new Set(['common', 'rare']),
+});
+
+function hasConfirmedCompleteRarity(userId, rarity) {
+    return CONFIRMED_COMPLETE_RARITIES[String(userId)]?.has(normalizeRarity(rarity)) || false;
+}
+
 function requiredVariants(filterFn) {
     const result = new Set();
     for (const card of cards) {
@@ -67,8 +81,10 @@ function getCardCollectionProgress(userId) {
 function isCardCollectionAchievementCompleted(userId, achievement) {
     const progress = getCardCollectionProgress(userId);
     switch (achievement.type) {
-        case 'card_rarity_complete':
-            return Boolean(progress.byRarity[String(achievement.card_rarity || '').toLowerCase()]?.complete);
+        case 'card_rarity_complete': {
+            const rarity = normalizeRarity(achievement.card_rarity);
+            return hasConfirmedCompleteRarity(userId, rarity) || Boolean(progress.byRarity[rarity]?.complete);
+        }
         case 'boss_pack_type_complete':
             return Boolean(progress[String(achievement.card_type || '').toLowerCase()]?.complete);
         case 'boss_pack_complete':
@@ -87,4 +103,6 @@ module.exports = {
     hasCompleteSet,
     normalizeRarity,
     normalizeCardId,
+    hasConfirmedCompleteRarity,
+    CONFIRMED_COMPLETE_RARITIES,
 };
