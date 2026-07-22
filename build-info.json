@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE V15.1 — RPG CORE",
-  "version": "15.1.0",
-  "buildId": "v15.1-rpg-core-20260722",
+  "name": "GS CORE STABLE V15.2 — EXPEDITIONS",
+  "version": "15.2.0",
+  "buildId": "v15.2-expeditions-20260722",
   "startup": "bothost-cmd-v1"
 }
