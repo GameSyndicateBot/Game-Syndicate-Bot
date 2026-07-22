@@ -39,6 +39,11 @@ module.exports = {
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('boss-reset')
+                .setDescription('Принудительно сбросить зависшего мирового босса')
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('status')
                 .setDescription('Показать состояние и время следующего Quick Event')
         ),
@@ -58,7 +63,23 @@ module.exports = {
                     ? `✅ Регистрация мирового босса запущена в канале <#1529226831797158130>.`
                     : result.reason === 'active'
                         ? '❌ Мировой босс уже активен или идёт регистрация.'
-                        : '❌ Не удалось запустить мирового босса: канал не найден.',
+                        : result.reason === 'permissions'
+                            ? '❌ У бота недостаточно прав в канале мирового босса. Проверь «Отправлять сообщения», «Встраивать ссылки» и «Прикреплять файлы». Состояние автоматически сброшено.'
+                            : result.reason === 'channel'
+                                ? '❌ Не удалось запустить мирового босса: канал не найден.'
+                                : '❌ Не удалось отправить сообщение мирового босса. Состояние автоматически сброшено.',
+            });
+        }
+
+
+        if (subcommand === 'boss-reset') {
+            const { resetWorldBoss } = require('../services/worldBoss/worldBossSystem');
+            const result = await resetWorldBoss(interaction.client);
+
+            return interaction.editReply({
+                content: result.reset
+                    ? `✅ Мировой босс сброшен. Предыдущий этап: **${result.previousStatus}**. Теперь можно снова использовать \`/quickevent boss\`.`
+                    : 'ℹ️ Активного мирового босса не было. Состояние и таймеры проверены — можно использовать `/quickevent boss`.',
             });
         }
 

@@ -174,18 +174,54 @@ async function refresh(id) {
 
 async function startRegistration(client, { manual = false } = {}) {
   init(); clientRef = client || clientRef; if (busy || activeBattle()) return { ok: false, reason: 'active' }; busy = true;
+  let createdBattleId = null;
   try {
     db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE status IN ('active','pending')").run();
     const ch = await clientRef.channels.fetch(CHANNEL_ID).catch(() => null); if (!ch?.isTextBased()) return { ok: false, reason: 'channel' };
     const boss = pick(BOSSES), now = Date.now();
     const st = { bossCardId: boss.cardId, allowedMinions: [...boss.minions], minions: [], summons: [], rage: 0, lastDestroyRound: -99, lastGroupCurseRound: -99, log: [manual ? '🛠️ Босс вызван вручную.' : '⏰ Босс появился по расписанию.'] };
     const info = db.prepare(`INSERT INTO world_boss_battles(channel_id,boss_card_id,boss_name,boss_hp,boss_max_hp,status,registration_ends_at,state_json,created_at) VALUES(?,?,?,?,?,'registration',?,?,?)`).run(CHANNEL_ID, boss.cardId, boss.name, boss.baseHp, boss.baseHp, now + REGISTRATION_MS, JSON.stringify(st), now);
-    const id = Number(info.lastInsertRowid), b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+    const id = Number(info.lastInsertRowid); createdBattleId = id;
+    const b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
     const msg = await ch.send({ content: '## 🌍 GS WORLD BOSS', embeds: [buildEmbed(b, [])], components: buttons(b) });
     db.prepare('UPDATE world_boss_battles SET message_id=? WHERE id=?').run(msg.id, id);
     await refresh(id);
     setTimer(id, () => beginBattle(id).catch(console.error), REGISTRATION_MS); return { ok: true, id };
+  } catch (error) {
+    if (createdBattleId) {
+      clearTimer(createdBattleId);
+      db.prepare("UPDATE world_boss_battles SET status='cancelled',ended_at=? WHERE id=?").run(Date.now(), createdBattleId);
+    }
+    console.error('[WorldBoss] Не удалось запустить регистрацию:', error);
+    return { ok: false, reason: error?.code === 50013 ? 'permissions' : 'send', error };
   } finally { busy = false; }
+}
+
+async function resetWorldBoss(client = null) {
+  init();
+  clientRef = client || clientRef;
+  const active = activeBattle();
+  busy = false;
+
+  if (!active) {
+    for (const [battleId] of timers) clearTimer(battleId);
+    return { ok: true, reset: false };
+  }
+
+  clearTimer(active.id);
+  db.prepare("UPDATE world_boss_battles SET status='cancelled',turn_deadline=NULL,registration_ends_at=NULL,ended_at=? WHERE id=?").run(Date.now(), active.id);
+
+  if (clientRef && active.channel_id && active.message_id) {
+    try {
+      const channel = await clientRef.channels.fetch(active.channel_id);
+      const message = await channel?.messages?.fetch(active.message_id);
+      await message?.delete();
+    } catch (error) {
+      if (error?.code !== 10008) console.warn('[WorldBoss] Не удалось удалить старое сообщение при сбросе:', error?.message || error);
+    }
+  }
+
+  return { ok: true, reset: true, battleId: active.id, previousStatus: active.status };
 }
 
 async function beginBattle(id) {
@@ -512,4 +548,4 @@ function nextSlotDelay() { const now = Date.now(); for (let d = 0; d < 2; d++) f
 function schedulerTick() { const p = moscowParts(), h = Number(p.hour), min = Number(p.minute), key = dateKey(); if (SLOTS.includes(h) && min < 2) { const done = db.prepare('SELECT 1 FROM world_boss_schedule WHERE date_key=? AND slot_hour=?').get(key, h); if (!done) { db.prepare('INSERT INTO world_boss_schedule(date_key,slot_hour,created_at) VALUES(?,?,?)').run(key, h, Date.now()); startRegistration(clientRef).then(r => { if (r.ok) db.prepare('UPDATE world_boss_schedule SET battle_id=? WHERE date_key=? AND slot_hour=?').run(r.id, key, h); }).catch(console.error); } } scheduler = setTimeout(schedulerTick, Math.min(nextSlotDelay(), 60000)); scheduler.unref?.(); }
 function startScheduler(client) { init(); clientRef = client; if (scheduler) clearTimeout(scheduler); const a = activeBattle(); if (a) { if (a.status === 'registration') setTimer(a.id, () => beginBattle(a.id).catch(console.error), a.registration_ends_at - Date.now()); else if (a.status === 'class_select') armStageTimer(a.id); else if (a.status === 'active') armTurn(a.id); refresh(a.id).catch(() => {}); } if (AUTO_SCHEDULE_ENABLED) { schedulerTick(); console.log('[WorldBoss] Автозапуск включён: 09:00, 15:00, 21:00 МСК'); } else console.log('[WorldBoss] Тестовый режим: автозапуск отключён, доступен только ручной запуск'); }
 
-module.exports = { startScheduler, startRegistration, handle, isActive: () => Boolean(activeBattle()), beginBattle };
+module.exports = { startScheduler, startRegistration, resetWorldBoss, handle, isActive: () => Boolean(activeBattle()), beginBattle };
