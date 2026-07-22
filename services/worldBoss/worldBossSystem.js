@@ -136,7 +136,7 @@ function buildEmbed(b, players) {
     .setTitle(`👹 Мировой босс — ${b.boss_name}`)
     .setDescription(`❤️ **${b.boss_hp}/${b.boss_max_hp} HP**\n${hpBar(b.boss_hp, b.boss_max_hp, 20)}${b.status === 'active' ? `\n🔥 **Ярость: ${Number(state.rage || 0)}/100**` : ''}`);
   if (b.status === 'registration') e.addFields({ name: 'Регистрация', value: `До <t:${Math.floor(b.registration_ends_at / 1000)}:R>\nМинимум: **4** • Участников: **${players.length}**` });
-  if (b.status === 'class_roll') e.addFields({ name: '🎲 Бросок за выбор класса', value: `Бросили: **${Object.keys(state.classRolls || {}).length}/${players.length}**\nДо автоброска: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` });
+  if (b.status === 'class_roll') { const rolled = Object.keys(state.classRolls || {}).length; e.addFields({ name: '🎲 Бросок за выбор класса', value: `Бросили: **${rolled}/${players.length}**\nДо завершения: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}\nНе бросившие выберут классы **последними**.` }); }
   if (b.status === 'class_select') {
     const order = state.classOrder || [], idx = state.classChoiceIndex || 0, who = order[idx];
     e.addFields({ name: '🧙 Выбор классов', value: `Сейчас выбирает: ${who ? `<@${who}>` : '—'}\nДо автовыбора: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}\nОсталось классов: **${(state.availableClasses || []).length}**` });
@@ -153,23 +153,41 @@ function buildEmbed(b, players) {
   return e.setFooter({ text: 'Game Syndicate • World Boss' });
 }
 async function refresh(id) {
-  const b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (!b || !clientRef) return;
-  const ch = await clientRef.channels.fetch(b.channel_id).catch(() => null);
-  const msg = ch && b.message_id ? await ch.messages.fetch(b.message_id).catch(() => null) : null; if (!msg) return;
-  const players = battlePlayers(id), state = stateOf(b), alive = players.filter(p => p.status === 'alive');
-  const current = b.status === 'active' && alive.length ? alive[b.turn_index % alive.length] : null;
-  for (const player of players) {
-    const member = await ch.guild?.members.fetch(player.user_id).catch(() => null);
-    player.displayName = member?.displayName || member?.user?.globalName || member?.user?.username || `Игрок ${player.user_id.slice(-4)}`;
-  }
   try {
-    const buffer = await createWorldBossBattleCard({ battle: b, players, state, effectsByUser: Object.fromEntries(players.map(player => [player.user_id, effects(player)])), currentUserId: current?.user_id || null });
-    const attachment = new AttachmentBuilder(buffer, { name: `world-boss-${id}.png` });
-    const embed = buildEmbed(b, players).setImage(`attachment://world-boss-${id}.png`);
-    await msg.edit({ content: '## 🌍 GS WORLD BOSS', embeds: [embed], components: buttons(b), files: [attachment], attachments: [] });
+    const b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (!b || !clientRef) return false;
+    const ch = await clientRef.channels.fetch(b.channel_id).catch(() => null);
+    const msg = ch && b.message_id ? await ch.messages.fetch(b.message_id).catch(() => null) : null; if (!msg) return false;
+    const players = battlePlayers(id), state = stateOf(b), alive = players.filter(p => p.status === 'alive');
+    const current = b.status === 'active' && alive.length ? alive[b.turn_index % alive.length] : null;
+    for (const player of players) {
+      const member = await ch.guild?.members.fetch(player.user_id).catch(() => null);
+      player.displayName = member?.displayName || member?.user?.globalName || member?.user?.username || `Игрок ${player.user_id.slice(-4)}`;
+    }
+
+    // Сначала всегда обновляем функциональные компоненты. Ошибка картинки не должна останавливать этап.
+    const basePayload = { content: '## 🌍 GS WORLD BOSS', embeds: [buildEmbed(b, players)], components: buttons(b) };
+    await msg.edit(basePayload).catch(error => {
+      console.error(`[WorldBoss] Не удалось обновить сообщение battle=${id}:`, error);
+      return null;
+    });
+
+    try {
+      const buffer = await createWorldBossBattleCard({ battle: b, players, state, effectsByUser: Object.fromEntries(players.map(player => [player.user_id, effects(player)])), currentUserId: current?.user_id || null });
+      const attachment = new AttachmentBuilder(buffer, { name: `world-boss-${id}.png` });
+      const embed = buildEmbed(b, players).setImage(`attachment://world-boss-${id}.png`);
+      await msg.edit({ content: '## 🌍 GS WORLD BOSS', embeds: [embed], components: buttons(b), files: [attachment], attachments: [] });
+      return true;
+    } catch (error) {
+      if (error?.code === 50013) {
+        console.error('[WorldBoss] Нет права «Прикреплять файлы» или «Встраивать ссылки» в канале босса. Текстовое меню продолжает работать.');
+      } else {
+        console.error('[WorldBoss] Battle card render failed:', error);
+      }
+      return false;
+    }
   } catch (error) {
-    console.error('[WorldBoss] Battle card render failed:', error);
-    await msg.edit({ embeds: [buildEmbed(b, players)], components: buttons(b) }).catch(() => {});
+    console.error(`[WorldBoss] refresh battle=${id} failed without stopping the game:`, error);
+    return false;
   }
 }
 
@@ -197,7 +215,7 @@ async function startRegistration(client, { manual = false } = {}) {
   let createdBattleId = null;
   try {
     db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE status IN ('active','pending')").run();
-    const ch = await clientRef.channels.fetch(CHANNEL_ID).catch(() => null); if (!ch?.isTextBased()) return { ok: false, reason: 'channel' };
+    const ch = await clientRef.channels.fetch(CHANNEL_ID).catch(() => null); if (!ch?.isTextBased()) return { ok: false, reason: 'channel' }; const me = ch.guild?.members?.me; const perms = me ? ch.permissionsFor(me) : null; if (perms && !perms.has([PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.EmbedLinks])) return { ok: false, reason: 'permissions' }; if (perms && !perms.has(PermissionsBitField.Flags.AttachFiles)) console.warn('[WorldBoss] В канале нет права «Прикреплять файлы»: визуальная карточка будет недоступна, но бой продолжит работать.');
     const boss = pick(BOSSES), now = Date.now();
     const st = { bossCardId: boss.cardId, allowedMinions: [...boss.minions], minions: [], summons: [], rage: 0, lastDestroyRound: -99, lastGroupCurseRound: -99, lastSummonRound: -99, lastCurseRound: -99, bossActionStats: {}, log: [manual ? '🛠️ Босс вызван вручную.' : '⏰ Босс появился по расписанию.'] };
     const info = db.prepare(`INSERT INTO world_boss_battles(channel_id,boss_card_id,boss_name,boss_hp,boss_max_hp,status,registration_ends_at,state_json,created_at) VALUES(?,?,?,?,?,'registration',?,?,?)`).run(CHANNEL_ID, boss.cardId, boss.name, boss.baseHp, boss.baseHp, now + REGISTRATION_MS, JSON.stringify(st), now);
@@ -248,7 +266,7 @@ async function beginBattle(id) {
   const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='registration'").get(id); if (!b) return;
   const players = battlePlayers(id);
   if (players.length < 4) { db.prepare("UPDATE world_boss_battles SET status='cancelled',ended_at=? WHERE id=?").run(Date.now(), id); addLog(b, '❌ Недостаточно участников. Нужно минимум 4.'); await refresh(id); return scheduleRegular(); }
-  const state = stateOf(b); state.classRolls = {}; state.classPool = buildClassPool(players.length); state.availableClasses = [...state.classPool]; state.log.push('🎲 Бросьте d20 за право первым выбрать класс.'); saveState(b, state);
+  const state = stateOf(b); state.classRolls = {}; state.classPool = buildClassPool(players.length); state.availableClasses = [...state.classPool]; state.log.push('🎲 Бросьте d20 за право выбора класса. Через 15 секунд не бросившие попадут в конец очереди.'); saveState(b, state);
   db.prepare("UPDATE world_boss_battles SET status='class_roll',turn_deadline=? WHERE id=?").run(Date.now() + ROLL_MS, id); await refresh(id);
   setTimer(id, () => autoFinishClassRoll(id).catch(console.error), ROLL_MS);
 }
@@ -260,10 +278,8 @@ async function autoFinishClassRoll(id) {
   const state = stateOf(b);
   state.classRolls ||= {};
   const missing = battlePlayers(id).filter(p => state.classRolls[p.user_id] == null);
-  for (const p of missing) {
-    state.classRolls[p.user_id] = rand(1, 20);
-    state.log.push(`⏱️ Автобросок класса: <@${p.user_id}> — **${state.classRolls[p.user_id]}**.`);
-  }
+  state.classRollMissing = missing.map(p => p.user_id);
+  if (missing.length) state.log.push(`⏱️ Не бросили d20: **${missing.length}**. Они выберут классы последними.`);
   saveState(b, state);
   await refresh(id);
   await finishClassRoll(id);
@@ -287,7 +303,7 @@ async function autoFinishInitiative(id) {
 async function finishClassRoll(id) {
   clearTimer(id);
   let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id), state = stateOf(b), ps = battlePlayers(id);
-  state.classOrder = [...ps].sort((a, z) => (state.classRolls[z.user_id] - state.classRolls[a.user_id]) || (a.joined_at - z.joined_at)).map(p => p.user_id);
+  state.classOrder = [...ps].sort((a, z) => { const ar = state.classRolls?.[a.user_id], zr = state.classRolls?.[z.user_id]; const aRolled = Number.isFinite(ar), zRolled = Number.isFinite(zr); if (aRolled !== zRolled) return aRolled ? -1 : 1; if (aRolled && zRolled && zr !== ar) return zr - ar; return a.joined_at - z.joined_at; }).map(p => p.user_id);
   state.classChoiceIndex = 0; state.log.push(`🏆 Первым выбирает <@${state.classOrder[0]}>.`); saveState(b, state);
   db.prepare("UPDATE world_boss_battles SET status='class_select',turn_deadline=? WHERE id=?").run(Date.now() + CHOICE_MS, id); await refresh(id); armStageTimer(id);
 }
@@ -298,16 +314,21 @@ function armStageTimer(id) {
 }
 async function autoChooseClass(id) {
   const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='class_select'").get(id); if (!b) return;
-  const s = stateOf(b), user = s.classOrder?.[s.classChoiceIndex], key = pick(s.availableClasses || []); if (!user || !key) return;
-  await assignChosenClass(id, user, key, true);
+  const s = stateOf(b), user = s.classOrder?.[s.classChoiceIndex], available = s.availableClasses || []; if (!user || !available.length) return; const slotIndex = rand(0, available.length - 1);
+  await assignChosenClass(id, user, `${slotIndex}:${available[slotIndex]}`, true);
 }
 async function assignChosenClass(id, user, key, auto = false) {
   let b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='class_select'").get(id); if (!b) return { ok: false };
   const s = stateOf(b), expected = s.classOrder?.[s.classChoiceIndex];
   if (String(user) !== String(expected)) return { ok: false, reason: 'turn' };
-  const pos = (s.availableClasses || []).indexOf(key); if (pos < 0) return { ok: false, reason: 'taken' };
-  const c = CLASSES[key]; s.availableClasses.splice(pos, 1); s.classChoiceIndex += 1; s.log.push(`${auto ? '⏱️ Автовыбор:' : '✅'} <@${user}> — ${roleIcon(c.role)} **${c.name}**.`); saveState(b, s);
-  db.prepare("UPDATE world_boss_players SET class_key=?,hp=?,max_hp=?,energy=0,status='alive',effects_json='{}' WHERE battle_id=? AND user_id=?").run(key, c.maxHp, c.maxHp, id, user);
+  const token = String(key || ''); const splitAt = token.indexOf(':');
+  let pos = splitAt > 0 ? Number(token.slice(0, splitAt)) : -1;
+  let classKey = splitAt > 0 ? token.slice(splitAt + 1) : token;
+  if (!Number.isInteger(pos) || pos < 0 || s.availableClasses?.[pos] !== classKey) pos = (s.availableClasses || []).indexOf(classKey);
+  if (pos < 0) return { ok: false, reason: 'taken' };
+  classKey = s.availableClasses[pos]; const c = CLASSES[classKey]; if (!c) return { ok: false, reason: 'class' };
+  s.availableClasses.splice(pos, 1); s.classChoiceIndex += 1; s.log.push(`${auto ? '⏱️ Автовыбор:' : '✅'} <@${user}> — ${roleIcon(c.role)} **${c.name}**.`); saveState(b, s);
+  db.prepare("UPDATE world_boss_players SET class_key=?,hp=?,max_hp=?,energy=0,status='alive',effects_json='{}' WHERE battle_id=? AND user_id=?").run(classKey, c.maxHp, c.maxHp, id, user);
   if (s.classChoiceIndex >= s.classOrder.length) {
     b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const ns = stateOf(b); ns.initiativeRolls = {}; ns.log.push('🎲 Классы выбраны. Теперь бросьте d20 на инициативу боя.'); saveState(b, ns);
     db.prepare("UPDATE world_boss_battles SET status='initiative_roll',turn_deadline=? WHERE id=?").run(Date.now() + ROLL_MS, id); clearTimer(id); await refresh(id); setTimer(id, () => autoFinishInitiative(id).catch(console.error), ROLL_MS); return { ok: true, done: true };
@@ -627,9 +648,22 @@ async function handle(interaction) {
   }
   if (interaction.customId === `wb_choose_${id}`) {
     const s = stateOf(b); if (b.status !== 'class_select' || s.classOrder?.[s.classChoiceIndex] !== uid) return interaction.reply({ content: 'Сейчас класс выбирает другой игрок.', flags: MessageFlags.Ephemeral });
-    const menu = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`wb_classpick_${id}`).setPlaceholder('Выберите класс').addOptions((s.availableClasses || []).slice(0,25).map(k => ({ label: CLASSES[k].name, value: k, description: `${roleIcon(CLASSES[k].role)} HP ${CLASSES[k].maxHp} • Урон ${CLASSES[k].damage[0]}–${CLASSES[k].damage[1]}` })))); return interaction.reply({ content: 'Выбери один из оставшихся классов:', components: [menu], flags: MessageFlags.Ephemeral });
+    const available = (s.availableClasses || []).slice(0, 25); const totals = available.reduce((m, k) => (m[k] = (m[k] || 0) + 1, m), {}); const seen = {};
+    const options = available.map((k, index) => {
+      seen[k] = (seen[k] || 0) + 1;
+      const suffix = totals[k] > 1 ? ` #${seen[k]}` : '';
+      return {
+        label: `${CLASSES[k].name}${suffix}`,
+        value: `${index}:${k}`,
+        description: `${roleIcon(CLASSES[k].role)} HP ${CLASSES[k].maxHp} • Урон ${CLASSES[k].damage[0]}–${CLASSES[k].damage[1]}`,
+      };
+    });
+    const menu = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder().setCustomId(`wb_classpick_${id}`).setPlaceholder('Выберите класс').addOptions(options),
+    );
+    return interaction.reply({ content: 'Выбери один из оставшихся классов:', components: [menu], flags: MessageFlags.Ephemeral });
   }
-  if (interaction.isStringSelectMenu() && interaction.customId === `wb_classpick_${id}`) { const r = await assignChosenClass(id, uid, interaction.values[0]); return interaction.reply({ content: r.ok ? `✅ Выбран класс **${CLASSES[interaction.values[0]].name}**.` : 'Этот класс уже недоступен или сейчас не твоя очередь.', flags: MessageFlags.Ephemeral }); }
+  if (interaction.isStringSelectMenu() && interaction.customId === `wb_classpick_${id}`) { const token = interaction.values[0]; const classKey = token.includes(':') ? token.slice(token.indexOf(':') + 1) : token; const r = await assignChosenClass(id, uid, token); return interaction.reply({ content: r.ok ? `✅ Выбран класс **${CLASSES[classKey]?.name || classKey}**.` : 'Этот класс уже недоступен или сейчас не твоя очередь.', flags: MessageFlags.Ephemeral }); }
   if (interaction.customId === `wb_initroll_${id}`) {
     if (b.status !== 'initiative_roll') return interaction.reply({ content: 'Сейчас не этап инициативы.', flags: MessageFlags.Ephemeral }); const s = stateOf(b); if (s.initiativeRolls?.[uid] != null) return interaction.reply({ content: `Ты уже выбросил **${s.initiativeRolls[uid]}**.`, flags: MessageFlags.Ephemeral }); let roll = rand(1,20); s.initiativeRolls[uid] = roll; s.log.push(`⚔️ <@${uid}> выбрасывает инициативу **${roll}**.`); saveState(b,s); await interaction.reply({ content:`🎲 Инициатива: **${roll}**`, flags:MessageFlags.Ephemeral }); await refresh(id); if(allHave(s.initiativeRolls,battlePlayers(id))) await startCombat(id); return true;
   }
