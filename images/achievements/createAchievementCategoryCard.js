@@ -35,24 +35,26 @@ const categoryTitles = {
     streaks: 'Серии активности',
     special: 'Особые',
     xp: 'XP',
+    quick_events: 'Quick Events',
 };
 
 async function createAchievementCategoryCard(category, achievements, unlockedIds, page = 1) {
-    const pageSize = 7;
+    const pageSize = 8;
     const start = (page - 1) * pageSize;
     const list = achievements.slice(start, start + pageSize);
     const totalPages = Math.max(1, Math.ceil(achievements.length / pageSize));
 
-    const canvas = createCanvas(1200, 930);
+    const canvasHeight = 1030;
+    const canvas = createCanvas(1200, canvasHeight);
     const ctx = canvas.getContext('2d');
     installIconRenderer(ctx);
 
-    const bg = ctx.createLinearGradient(0, 0, 1200, 930);
+    const bg = ctx.createLinearGradient(0, 0, 1200, canvasHeight);
     bg.addColorStop(0, '#030008');
     bg.addColorStop(0.45, '#160827');
     bg.addColorStop(1, '#05000A');
     ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, 1200, 930);
+    ctx.fillRect(0, 0, 1200, canvasHeight);
 
     ctx.globalAlpha = 0.07;
     ctx.fillStyle = '#C084FC';
@@ -62,14 +64,14 @@ async function createAchievementCategoryCard(category, achievements, unlockedIds
 
     ctx.strokeStyle = '#8B5CF6';
     ctx.lineWidth = 5;
-    roundRect(ctx, 35, 35, 1130, 860, 34);
+    roundRect(ctx, 35, 35, 1130, canvasHeight - 70, 34);
     ctx.stroke();
 
     ctx.shadowColor = '#A855F7';
     ctx.shadowBlur = 30;
     ctx.strokeStyle = '#C084FC';
     ctx.lineWidth = 2;
-    roundRect(ctx, 52, 52, 1096, 826, 26);
+    roundRect(ctx, 52, 52, 1096, canvasHeight - 104, 26);
     ctx.stroke();
     ctx.shadowBlur = 0;
 

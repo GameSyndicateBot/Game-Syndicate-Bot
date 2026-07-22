@@ -61,6 +61,9 @@ client.once('clientReady', () => {
     // по уже накопленной статистике и коллекциям карточек.
     setTimeout(async () => {
         try {
+            const { repairAchievementData } = require('./services/achievementDataRepair');
+            repairAchievementData();
+
             const { backfillAchievements } = require('./services/achievementBackfill');
             await backfillAchievements(client);
         } catch (error) {

@@ -1,6 +1,15 @@
 const cards = require('../data/cards.json');
 const { db } = require('../database/db');
 
+function normalizeRarity(value) {
+    const rarity = String(value || '').trim().toLowerCase();
+    return rarity === 'mithic' ? 'mythic' : rarity;
+}
+
+function normalizeCardId(value) {
+    return String(value).trim();
+}
+
 function requiredVariants(filterFn) {
     const result = new Set();
     for (const card of cards) {
@@ -9,7 +18,7 @@ function requiredVariants(filterFn) {
             ? card.drop_rarities
             : [card.base_rarity];
         for (const rarity of rarities) {
-            if (rarity) result.add(`${card.id}:${String(rarity).toLowerCase()}`);
+            if (rarity) result.add(`${normalizeCardId(card.id)}:${normalizeRarity(rarity)}`);
         }
     }
     return result;
@@ -17,11 +26,11 @@ function requiredVariants(filterFn) {
 
 function ownedVariants(userId) {
     const rows = db.prepare(`
-        SELECT DISTINCT card_id, LOWER(rarity) AS rarity
+        SELECT DISTINCT card_id, rarity
         FROM player_cards
         WHERE user_id = ?
     `).all(userId);
-    return new Set(rows.map(row => `${row.card_id}:${row.rarity}`));
+    return new Set(rows.map(row => `${normalizeCardId(row.card_id)}:${normalizeRarity(row.rarity)}`));
 }
 
 function hasCompleteSet(userId, required) {
@@ -42,7 +51,7 @@ function getCardCollectionProgress(userId) {
     const byRarity = {};
     for (const rarity of ['common', 'rare', 'epic', 'legendary', 'mythic', 'exclusive', 'holographic']) {
         byRarity[rarity] = calculate(requiredVariants(card =>
-            (card.drop_rarities || [card.base_rarity]).map(String).map(v => v.toLowerCase()).includes(rarity)
+            (card.drop_rarities || [card.base_rarity]).map(String).map(normalizeRarity).includes(rarity)
         ));
     }
 
@@ -76,4 +85,6 @@ module.exports = {
     isCardCollectionAchievementCompleted,
     requiredVariants,
     hasCompleteSet,
+    normalizeRarity,
+    normalizeCardId,
 };
