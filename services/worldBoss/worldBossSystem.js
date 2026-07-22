@@ -12,6 +12,7 @@ const { createWorldBossBattleCard, cardFile } = require('../../images/worldBoss/
 const CHANNEL_ID = process.env.WORLD_BOSS_CHANNEL_ID || '1529226831797158130';
 const AUTO_SCHEDULE_ENABLED = String(process.env.WORLD_BOSS_AUTO_SCHEDULE || 'false').toLowerCase() === 'true';
 const REGISTRATION_MS = 10 * 60 * 1000;
+const ROLL_MS = 15 * 1000;
 const CHOICE_MS = 60 * 1000;
 const TURN_MS = 60 * 1000;
 const SLOTS = [9, 15, 21];
@@ -135,12 +136,12 @@ function buildEmbed(b, players) {
     .setTitle(`👹 Мировой босс — ${b.boss_name}`)
     .setDescription(`❤️ **${b.boss_hp}/${b.boss_max_hp} HP**\n${hpBar(b.boss_hp, b.boss_max_hp, 20)}${b.status === 'active' ? `\n🔥 **Ярость: ${Number(state.rage || 0)}/100**` : ''}`);
   if (b.status === 'registration') e.addFields({ name: 'Регистрация', value: `До <t:${Math.floor(b.registration_ends_at / 1000)}:R>\nМинимум: **4** • Участников: **${players.length}**` });
-  if (b.status === 'class_roll') e.addFields({ name: '🎲 Бросок за выбор класса', value: `Бросили: **${Object.keys(state.classRolls || {}).length}/${players.length}**\nКаждый участник нажимает кнопку ниже.` });
+  if (b.status === 'class_roll') e.addFields({ name: '🎲 Бросок за выбор класса', value: `Бросили: **${Object.keys(state.classRolls || {}).length}/${players.length}**\nДо автоброска: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` });
   if (b.status === 'class_select') {
     const order = state.classOrder || [], idx = state.classChoiceIndex || 0, who = order[idx];
     e.addFields({ name: '🧙 Выбор классов', value: `Сейчас выбирает: ${who ? `<@${who}>` : '—'}\nДо автовыбора: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}\nОсталось классов: **${(state.availableClasses || []).length}**` });
   }
-  if (b.status === 'initiative_roll') e.addFields({ name: '🎲 Инициатива боя', value: `Бросили: **${Object.keys(state.initiativeRolls || {}).length}/${players.length}**\nЭто отдельный d20 для порядка ходов.` });
+  if (b.status === 'initiative_roll') e.addFields({ name: '🎲 Инициатива боя', value: `Бросили: **${Object.keys(state.initiativeRolls || {}).length}/${players.length}**\nДо автоброска: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` });
   if (b.status === 'active') e.addFields({ name: 'Состояние боя', value: `Раунд **${b.round_no}** • Живы **${alive.length}/${players.length}**\nХод: ${current ? `<@${current.user_id}> — **${CLASSES[current.class_key]?.name}**` : '—'}\nДо автоатаки: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` });
   if (state.minions?.length) e.addFields({ name: '👾 Миньоны босса', value: state.minions.map(m => `${m.name}: ❤️ **${m.hp}/${m.maxHp}**`).join('\n').slice(0, 1024) });
   const sum = summonsText(state); if (sum) e.addFields({ name: '⚙️ Призывы игроков', value: sum });
@@ -173,7 +174,26 @@ async function refresh(id) {
 }
 
 async function startRegistration(client, { manual = false } = {}) {
-  init(); clientRef = client || clientRef; if (busy || activeBattle()) return { ok: false, reason: 'active' }; busy = true;
+  init();
+  clientRef = client || clientRef;
+  if (busy) return { ok: false, reason: 'busy' };
+
+  const stale = activeBattle();
+  if (stale) {
+    const deadline = Number(stale.turn_deadline || stale.registration_ends_at || 0);
+    const tooOld = Date.now() - Number(stale.created_at || 0) > 3 * 60 * 60 * 1000;
+    let messageExists = false;
+    if (stale.channel_id && stale.message_id && clientRef) {
+      const channel = await clientRef.channels.fetch(stale.channel_id).catch(() => null);
+      messageExists = Boolean(channel && await channel.messages.fetch(stale.message_id).catch(() => null));
+    }
+    if (!messageExists || tooOld || (deadline > 0 && deadline < Date.now() - 5 * 60 * 1000)) {
+      clearTimer(stale.id);
+      db.prepare("UPDATE world_boss_battles SET status='cancelled',turn_deadline=NULL,registration_ends_at=NULL,ended_at=? WHERE id=?").run(Date.now(), stale.id);
+      console.warn(`[WorldBoss] Автоматически очищено зависшее состояние battle=${stale.id}, status=${stale.status}.`);
+    } else return { ok: false, reason: 'active' };
+  }
+  busy = true;
   let createdBattleId = null;
   try {
     db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE status IN ('active','pending')").run();
@@ -200,28 +220,28 @@ async function startRegistration(client, { manual = false } = {}) {
 async function resetWorldBoss(client = null) {
   init();
   clientRef = client || clientRef;
-  const active = activeBattle();
   busy = false;
 
-  if (!active) {
-    for (const [battleId] of timers) clearTimer(battleId);
-    return { ok: true, reset: false };
-  }
+  for (const [battleId] of [...timers]) clearTimer(battleId);
 
-  clearTimer(active.id);
-  db.prepare("UPDATE world_boss_battles SET status='cancelled',turn_deadline=NULL,registration_ends_at=NULL,ended_at=? WHERE id=?").run(Date.now(), active.id);
+  const activeRows = db.prepare("SELECT * FROM world_boss_battles WHERE status IN ('registration','class_roll','class_select','initiative_roll','active') ORDER BY id DESC").all();
+  if (!activeRows.length) return { ok: true, reset: false, resetCount: 0 };
 
-  if (clientRef && active.channel_id && active.message_id) {
+  const now = Date.now();
+  db.prepare("UPDATE world_boss_battles SET status='cancelled',turn_deadline=NULL,registration_ends_at=NULL,ended_at=? WHERE status IN ('registration','class_roll','class_select','initiative_roll','active')").run(now);
+
+  for (const row of activeRows) {
+    if (!clientRef || !row.channel_id || !row.message_id) continue;
     try {
-      const channel = await clientRef.channels.fetch(active.channel_id);
-      const message = await channel?.messages?.fetch(active.message_id);
+      const channel = await clientRef.channels.fetch(row.channel_id);
+      const message = await channel?.messages?.fetch(row.message_id);
       await message?.delete();
     } catch (error) {
-      if (error?.code !== 10008) console.warn('[WorldBoss] Не удалось удалить старое сообщение при сбросе:', error?.message || error);
+      if (![10008, 10003].includes(error?.code)) console.warn('[WorldBoss] Не удалось удалить старое сообщение при сбросе:', error?.message || error);
     }
   }
 
-  return { ok: true, reset: true, battleId: active.id, previousStatus: active.status };
+  return { ok: true, reset: true, resetCount: activeRows.length, battleId: activeRows[0].id, previousStatus: activeRows[0].status };
 }
 
 async function beginBattle(id) {
@@ -229,10 +249,43 @@ async function beginBattle(id) {
   const players = battlePlayers(id);
   if (players.length < 4) { db.prepare("UPDATE world_boss_battles SET status='cancelled',ended_at=? WHERE id=?").run(Date.now(), id); addLog(b, '❌ Недостаточно участников. Нужно минимум 4.'); await refresh(id); return scheduleRegular(); }
   const state = stateOf(b); state.classRolls = {}; state.classPool = buildClassPool(players.length); state.availableClasses = [...state.classPool]; state.log.push('🎲 Бросьте d20 за право первым выбрать класс.'); saveState(b, state);
-  db.prepare("UPDATE world_boss_battles SET status='class_roll',turn_deadline=NULL WHERE id=?").run(id); await refresh(id);
+  db.prepare("UPDATE world_boss_battles SET status='class_roll',turn_deadline=? WHERE id=?").run(Date.now() + ROLL_MS, id); await refresh(id);
+  setTimer(id, () => autoFinishClassRoll(id).catch(console.error), ROLL_MS);
 }
 function allHave(map, players) { return players.every(p => Object.prototype.hasOwnProperty.call(map || {}, p.user_id)); }
+
+async function autoFinishClassRoll(id) {
+  const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='class_roll'").get(id);
+  if (!b) return;
+  const state = stateOf(b);
+  state.classRolls ||= {};
+  const missing = battlePlayers(id).filter(p => state.classRolls[p.user_id] == null);
+  for (const p of missing) {
+    state.classRolls[p.user_id] = rand(1, 20);
+    state.log.push(`⏱️ Автобросок класса: <@${p.user_id}> — **${state.classRolls[p.user_id]}**.`);
+  }
+  saveState(b, state);
+  await refresh(id);
+  await finishClassRoll(id);
+}
+
+async function autoFinishInitiative(id) {
+  const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='initiative_roll'").get(id);
+  if (!b) return;
+  const state = stateOf(b);
+  state.initiativeRolls ||= {};
+  const missing = battlePlayers(id).filter(p => state.initiativeRolls[p.user_id] == null);
+  for (const p of missing) {
+    state.initiativeRolls[p.user_id] = rand(1, 20);
+    state.log.push(`⏱️ Автобросок инициативы: <@${p.user_id}> — **${state.initiativeRolls[p.user_id]}**.`);
+  }
+  saveState(b, state);
+  await refresh(id);
+  await startCombat(id);
+}
+
 async function finishClassRoll(id) {
+  clearTimer(id);
   let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id), state = stateOf(b), ps = battlePlayers(id);
   state.classOrder = [...ps].sort((a, z) => (state.classRolls[z.user_id] - state.classRolls[a.user_id]) || (a.joined_at - z.joined_at)).map(p => p.user_id);
   state.classChoiceIndex = 0; state.log.push(`🏆 Первым выбирает <@${state.classOrder[0]}>.`); saveState(b, state);
@@ -257,11 +310,12 @@ async function assignChosenClass(id, user, key, auto = false) {
   db.prepare("UPDATE world_boss_players SET class_key=?,hp=?,max_hp=?,energy=0,status='alive',effects_json='{}' WHERE battle_id=? AND user_id=?").run(key, c.maxHp, c.maxHp, id, user);
   if (s.classChoiceIndex >= s.classOrder.length) {
     b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const ns = stateOf(b); ns.initiativeRolls = {}; ns.log.push('🎲 Классы выбраны. Теперь бросьте d20 на инициативу боя.'); saveState(b, ns);
-    db.prepare("UPDATE world_boss_battles SET status='initiative_roll',turn_deadline=NULL WHERE id=?").run(id); clearTimer(id); await refresh(id); return { ok: true, done: true };
+    db.prepare("UPDATE world_boss_battles SET status='initiative_roll',turn_deadline=? WHERE id=?").run(Date.now() + ROLL_MS, id); clearTimer(id); await refresh(id); setTimer(id, () => autoFinishInitiative(id).catch(console.error), ROLL_MS); return { ok: true, done: true };
   }
   db.prepare('UPDATE world_boss_battles SET turn_deadline=? WHERE id=?').run(Date.now() + CHOICE_MS, id); await refresh(id); armStageTimer(id); return { ok: true };
 }
 async function startCombat(id) {
+  clearTimer(id);
   let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id), s = stateOf(b), ps = battlePlayers(id);
   for (const p of ps) db.prepare('UPDATE world_boss_players SET initiative=? WHERE battle_id=? AND user_id=?').run(s.initiativeRolls[p.user_id], id, p.user_id);
   const boss = BOSSES.find(x => x.cardId === b.boss_card_id), hp = boss.baseHp; s.log.push('⚔️ Инициатива определена. Бой начался!'); saveState(b, s);
