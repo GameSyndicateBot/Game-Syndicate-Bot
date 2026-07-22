@@ -1,6 +1,6 @@
 {
   "name": "gs-core",
-  "version": "15.1.0",
+  "version": "15.2.0",
   "private": true,
   "description": "Game Syndicate Discord bot and card tools",
   "main": "index.js",
