@@ -352,12 +352,25 @@ async function startCombat(id) {
 function currentPlayer(b) { const alive = battlePlayers(b.id).filter(p => p.status === 'alive'); return { alive, p: alive.length ? alive[b.turn_index % alive.length] : null }; }
 function armTurn(id) { const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='active'").get(id); if (!b) return; setTimer(id, () => autoTurn(id).catch(console.error), Number(b.turn_deadline) - Date.now()); }
 async function autoTurn(id) { const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='active'").get(id); if (!b) return; const { p } = currentPlayer(b); if (p) await perform(id, p.user_id, 'attack', true); }
-function damageTarget(id, target, amount) {
-  const e = effects(target); let d = amount;
+function playerResistanceMultiplier(target, damageType) {
+  const cls = CLASSES[target.class_key] || {};
+  const key = damageType === 'magic' ? 'magicResist' : 'physicalResist';
+  const resist = clamp(Number(cls[key] || 0), -35, 60);
+  return 1 - resist / 100;
+}
+function damageTypeLabel(type) { return type === 'magic' ? 'магический' : 'физический'; }
+function pickDamageType(profile, fallback = 'physical') {
+  if (!Array.isArray(profile) || !profile.length) return fallback;
+  let roll = Math.random() * profile.reduce((sum, x) => sum + Number(x[1] || 0), 0);
+  for (const [type, weight] of profile) { roll -= Number(weight || 0); if (roll < 0) return type; }
+  return profile[profile.length - 1][0] || fallback;
+}
+function damageTarget(id, target, amount, damageType = 'physical') {
+  const e = effects(target); let d = Math.max(0, Math.round(amount * playerResistanceMultiplier(target, damageType)));
   if (e.guardRounds > 0) d = Math.round(d * 0.5); if (e.tauntRounds > 0) d = Math.round(d * 0.7); if (e.rageTurns > 0 || e.bloodRageTurns > 0) d = Math.round(d * 1.25); if (e.partyGuardRounds > 0) d = Math.round(d * 0.6);
   let shield = Number(e.shield || 0), absorbed = 0; if (shield) { absorbed = Math.min(shield, d); shield -= absorbed; d -= absorbed; e.shield = shield; updateEffects(id, target.user_id, e); }
   const hp = Math.max(0, target.hp - d); db.prepare("UPDATE world_boss_players SET hp=?,damage_taken=damage_taken+?,status=CASE WHEN ?<=0 THEN 'dead' ELSE status END WHERE battle_id=? AND user_id=?").run(hp, d, hp, id, target.user_id);
-  return { hpDamage: d, absorbed };
+  return { hpDamage: d, absorbed, damageType };
 }
 function resistanceMultiplier(bossOrMinion, damageType, pierce = 0) {
   const key = damageType === 'magic' || damageType === 'holy' ? 'magicResist' : 'physicalResist';
@@ -536,6 +549,7 @@ async function bossTurn(id) {
   const target = players.find(x => effects(x).tauntRounds > 0)
     || players.find(x => effects(x).interceptRounds > 0)
     || pick(players);
+  const attackDamageType = pickDamageType(boss.attackTypes, 'physical');
 
   const recordAction = action => {
     state.bossActionStats[action] = Number(state.bossActionStats[action] || 0) + 1;
@@ -550,7 +564,7 @@ async function bossTurn(id) {
     const candidates = allowed.filter(mid => !existingIds.has(Number(mid)));
     const minionId = pick(candidates.length ? candidates : allowed);
     const cfg = MINIONS[minionId];
-    state.minions.push({ cardId: minionId, ownerBossCardId: boss.cardId, name: cfg.name, hp: cfg.maxHp, maxHp: cfg.maxHp, damage: cfg.damage, miss: cfg.miss, physicalResist: cfg.physicalResist || 0, magicResist: cfg.magicResist || 0, undead: Boolean(cfg.undead), dark: Boolean(cfg.dark) });
+    state.minions.push({ cardId: minionId, ownerBossCardId: boss.cardId, name: cfg.name, hp: cfg.maxHp, maxHp: cfg.maxHp, damage: cfg.damage, miss: cfg.miss, damageType: cfg.damageType || 'physical', physicalResist: cfg.physicalResist || 0, magicResist: cfg.magicResist || 0, undead: Boolean(cfg.undead), dark: Boolean(cfg.dark) });
     state.lastSummonRound = b.round_no;
     state.lastSummonRound = b.round_no;
     return `👾 **${boss.name}** призывает своего миньона: **${cfg.name}** — ❤️ ${cfg.maxHp}.`;
@@ -562,13 +576,14 @@ async function bossTurn(id) {
   if (state.rage >= 100) {
     action = 'RAGE_ULT';
     let total = 0;
+    const rageType = pickDamageType(boss.attackTypes, attackDamageType);
     for (const p of players) {
-      const r = damageTarget(id, p, rand(Math.round(boss.damage[0] * 0.99), Math.round(boss.damage[1] * 1.16)));
+      const r = damageTarget(id, p, rand(Math.round(boss.damage[0] * 0.99), Math.round(boss.damage[1] * 1.16)), rageType);
       total += r.hpDamage;
     }
     const summonDamage = damagePlayerSummons(state, 1);
     state.rage = 0;
-    text = `🔥 **${boss.name} впадает в ярость!** Ультимативная массовая атака наносит группе **${total} HP**${summonDamage ? ` и ${summonDamage} урона призывам` : ''}.`;
+    text = `🔥 **${boss.name} впадает в ярость!** Ультимативная массовая атака (${damageTypeLabel(rageType)} урон) наносит группе **${total} HP**${summonDamage ? ` и ${summonDamage} урона призывам` : ''}.`;
   } else {
     // Гарантии: в нормальном бою ключевые механики не могут не появиться из-за неудачного RNG.
     const neverSummoned = Number(state.bossActionStats.SUMMON || 0) === 0;
@@ -602,23 +617,25 @@ async function bossTurn(id) {
         let damage = rand(Math.round(boss.damage[0] * 1.1), Math.round(boss.damage[1] * 1.1));
         const crit = Math.random() * 100 < BOSS_CRIT_CHANCE;
         if (crit) damage = Math.round(damage * BOSS_CRIT_MULTIPLIER);
-        const r = damageTarget(id, target, damage);
-        text = `👹 ${boss.name} атакует <@${target.user_id}>: **${r.hpDamage} HP**${r.absorbed ? `, щит поглотил ${r.absorbed}` : ''}${crit ? ' • 💥 КРИТ!' : ''}.`;
+        const r = damageTarget(id, target, damage, attackDamageType);
+        text = `👹 ${boss.name} атакует <@${target.user_id}>: **${r.hpDamage} HP** (${damageTypeLabel(attackDamageType)})${r.absorbed ? `, щит поглотил ${r.absorbed}` : ''}${crit ? ' • 💥 КРИТ!' : ''}.`;
       }
     } else if (action === 'AOE') {
       let total = 0;
+      const aoeType = pickDamageType(boss.attackTypes, attackDamageType);
       for (const p of players) {
-        const r = damageTarget(id, p, rand(Math.round(boss.damage[0] * 0.66), Math.round(boss.damage[1] * 0.77)));
+        const r = damageTarget(id, p, rand(Math.round(boss.damage[0] * 0.66), Math.round(boss.damage[1] * 0.77)), aoeType);
         total += r.hpDamage;
       }
       const summonDamage = damagePlayerSummons(state, 0.65);
-      text = `💥 ${boss.name} применяет массовую атаку: группе нанесено **${total} HP**${summonDamage ? `, призывам — ${summonDamage}` : ''}.`;
+      text = `💥 ${boss.name} применяет массовую атаку (${damageTypeLabel(aoeType)} урон): группе нанесено **${total} HP**${summonDamage ? `, призывам — ${summonDamage}` : ''}.`;
     } else if (action === 'SPECIAL') {
       let damage = rand(Math.round(boss.damage[1] * 1.25), Math.round(boss.damage[1] * 1.55));
       const crit = Math.random() * 100 < BOSS_CRIT_CHANCE;
       if (crit) damage = Math.round(damage * BOSS_CRIT_MULTIPLIER);
-      const r = damageTarget(id, target, damage);
-      text = `⚡ ${boss.name} применяет особую атаку против <@${target.user_id}>: **${r.hpDamage} HP**${crit ? ' • 💥 КРИТ!' : ''}.`;
+      const specialType = pickDamageType(boss.attackTypes, attackDamageType);
+      const r = damageTarget(id, target, damage, specialType);
+      text = `⚡ ${boss.name} применяет особую атаку против <@${target.user_id}>: **${r.hpDamage} HP** (${damageTypeLabel(specialType)})${crit ? ' • 💥 КРИТ!' : ''}.`;
     } else if (action === 'SKILL_CURSE') {
       text = applyBossCurse(id, state, players, 'skill', 2) || `👹 ${boss.name} готовит новую атаку.`;
       state.lastCurseRound = b.round_no;
@@ -651,8 +668,9 @@ async function bossTurn(id) {
     if (!aliveNow.length) break;
     const t = pick(aliveNow);
     if (Math.random() * 100 >= m.miss) {
-      const r = damageTarget(id, t, rand(...m.damage));
-      state.log.push(`👾 ${m.name} → <@${t.user_id}>: **${r.hpDamage} HP**.`);
+      const minionType = m.damageType || 'physical';
+      const r = damageTarget(id, t, rand(...m.damage), minionType);
+      state.log.push(`👾 ${m.name} → <@${t.user_id}>: **${r.hpDamage} HP** (${damageTypeLabel(minionType)}).`);
     } else state.log.push(`💨 ${m.name} промахивается.`);
   }
 
@@ -741,6 +759,7 @@ async function handle(interaction) {
 ❤️ ${p.hp}/${p.max_hp}${e.shield ? ` • 🛡️ ${e.shield}` : ''}
 ⚡ ${p.energy}/100
 🗡️ Урон ${c.damage[0]}–${c.damage[1]} • тип: ${c.damageType === 'magic' ? 'магический' : c.damageType === 'holy' ? 'святой' : 'физический'} • промах ${c.miss}% • крит ${CRIT_CHANCE}% ×${CRIT_MULTIPLIER}
+🛡️ Защита: физ. ${Number(c.physicalResist || 0) >= 0 ? '+' : ''}${c.physicalResist || 0}% • маг. ${Number(c.magicResist || 0) >= 0 ? '+' : ''}${c.magicResist || 0}%
 
 ✨ **${c.skill.name}** — ${c.skill.cost} энергии • КД ${e.skillCd || 0}
 ${p.class_key === 'cleric' ? `💚 **${c.selfSkill.name}** — ${c.selfSkill.cost} энергии, +${c.selfSkill.heal} HP • КД ${e.selfHealCd || 0}
