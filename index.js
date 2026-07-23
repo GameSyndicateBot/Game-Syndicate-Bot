@@ -57,6 +57,28 @@ for (const file of commandFiles) {
 client.once('clientReady', () => {
     console.log(`✅ Бот ${client.user.tag} запущен!`);
 
+    // ONE-TIME SAFE RECOVERY: publish the current local slash-command set to PROD.
+    // Important: this does NOT clear global or guild commands first, so an interrupted
+    // request cannot leave the production server with an empty command list.
+    setTimeout(async () => {
+        const guildId = (process.env.PROD_GUILD_ID || process.env.GUILD_ID || '').trim();
+        if (!guildId) {
+            console.error('❌ Slash recovery: PROD_GUILD_ID/GUILD_ID не задан.');
+            return;
+        }
+
+        try {
+            const guild = await client.guilds.fetch(guildId);
+            const payload = [...client.commands.values()].map(command => command.data.toJSON());
+            console.log(`🚑 Slash recovery: публикую ${payload.length} команд на сервер ${guildId} без предварительной очистки...`);
+            const registered = await guild.commands.set(payload);
+            console.log(`✅ Slash recovery завершён: Discord вернул ${registered.size} команд на сервере ${guildId}.`);
+            console.log(`🧾 Команды: ${[...registered.values()].map(command => '/' + command.name).sort().join(', ')}`);
+        } catch (error) {
+            console.error('❌ Slash recovery не выполнен:', error?.rawError?.message || error?.message || error);
+        }
+    }, 5000);
+
     // Пересчитываем пропущенные серии реакций и выдаём достижения
     // по уже накопленной статистике и коллекциям карточек.
     setTimeout(async () => {

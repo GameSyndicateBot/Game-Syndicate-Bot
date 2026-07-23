@@ -1,6 +1,4 @@
 {
-  "name": "GS CORE STABLE V15.6.3 — ITEM UPGRADES",
-  "version": "15.6.3",
-  "buildId": "v15.6.3-item-upgrades-20260723",
-  "startup": "node index.js"
+  "name": "GS CORE STABLE V15.6.3 — ITEM UPGRADES / PROD COMMAND RECOVERY",
+  "buildId": "v15.6.3-prod-command-recovery-20260723"
 }
