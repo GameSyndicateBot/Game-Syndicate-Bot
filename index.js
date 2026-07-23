@@ -57,64 +57,10 @@ for (const file of commandFiles) {
 client.once('clientReady', () => {
     console.log(`✅ Бот ${client.user.tag} запущен!`);
 
-    // ONE-TIME SAFE RECOVERY: publish the current local slash-command set to PROD.
-    // Important: this does NOT clear global or guild commands first, so an interrupted
-    // request cannot leave the production server with an empty command list.
-    setTimeout(async () => {
-        const guildId = (process.env.PROD_GUILD_ID || process.env.GUILD_ID || '').trim();
-        if (!guildId) {
-            console.error('❌ Slash recovery: PROD_GUILD_ID/GUILD_ID не задан.');
-            return;
-        }
-
-        try {
-            const token = (process.env.TOKEN || '').trim();
-            if (!token) throw new Error('Переменная TOKEN не задана.');
-
-            const payload = [...client.commands.values()].map(command => command.data.toJSON());
-            const applicationId = client.application?.id || client.user?.id;
-            if (!applicationId) throw new Error('Не удалось определить Application ID запущенного бота.');
-
-            const endpoint = `https://discord.com/api/v10/applications/${applicationId}/guilds/${guildId}/commands`;
-            console.log(`🚑 Slash recovery RAW: публикую ${payload.length} команд на сервер ${guildId}...`);
-
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 45000);
-            let response;
-            try {
-                response = await fetch(endpoint, {
-                    method: 'PUT',
-                    headers: {
-                        Authorization: `Bot ${token}`,
-                        'Content-Type': 'application/json',
-                        'User-Agent': 'DiscordBot (Game-Syndicate, 15.6.3-command-recovery)',
-                    },
-                    body: JSON.stringify(payload),
-                    signal: controller.signal,
-                });
-            } finally {
-                clearTimeout(timeout);
-            }
-
-            const responseText = await response.text();
-            let responseBody;
-            try { responseBody = JSON.parse(responseText); } catch { responseBody = responseText; }
-
-            if (!response.ok) {
-                throw new Error(`Discord API ${response.status}: ${typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody)}`);
-            }
-
-            const registered = Array.isArray(responseBody) ? responseBody : [];
-            console.log(`✅ Slash recovery RAW завершён: Discord вернул ${registered.length} команд на сервере ${guildId}.`);
-            console.log(`🧾 Команды: ${registered.map(command => '/' + command.name).sort().join(', ')}`);
-        } catch (error) {
-            if (error?.name === 'AbortError') {
-                console.error('❌ Slash recovery RAW: Discord API не ответил за 45 секунд.');
-            } else {
-                console.error('❌ Slash recovery RAW не выполнен:', error?.message || error);
-            }
-        }
-    }, 5000);
+    // Slash-команды НЕ регистрируются при обычном запуске бота.
+    // Для обновления команд используй отдельную команду: npm run deploy:prod
+    // Это защищает сервер от случайного удаления команд и дневного лимита Discord.
+    console.log('ℹ️ Автоматическая регистрация slash-команд при запуске отключена.');
 
     // Пересчитываем пропущенные серии реакций и выдаём достижения
     // по уже накопленной статистике и коллекциям карточек.
