@@ -34,4 +34,9 @@ ls -la /app/shared
 
 node /app/scripts/storageDiagnostics.js
 node /app/scripts/restoreDatabaseFromDiscord.js
+
+# Безопасная попытка восстановить slash-команды: не чаще одного раза в сутки
+# и только до первого успешного deploy. Затем всегда запускается основной бот.
+node /app/scripts/startupSlashDeploy.js || true
+
 exec node /app/index.js
