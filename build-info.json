@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE V15.6.4 FIX 4 — GUILD COMMAND SYNC",
-  "version": "15.6.4-fix.4",
-  "buildId": "v15.6.4-fix4-guild-command-sync-20260723",
+  "name": "GS CORE STABLE V15.6.4 FIX 5 — VERIFIED COMMAND RESTORE",
+  "version": "15.6.4-fix.5",
+  "buildId": "v15.6.4-fix5-verified-command-restore-20260723",
   "startup": "node index.js"
 }

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { REST, Routes } = require('discord.js');
 
 function loadCommands() {
     const commandsPath = path.join(__dirname, '..', 'commands');
@@ -9,12 +10,10 @@ function loadCommands() {
 
     for (const file of files) {
         const command = require(path.join(commandsPath, file));
-        if (!command?.data || typeof command.data.toJSON !== 'function') continue;
+        if (!command?.data || typeof command.data.toJSON !== 'function' || typeof command.execute !== 'function') continue;
 
         const json = command.data.toJSON();
-        if (names.has(json.name)) {
-            throw new Error(`Дубликат slash-команды /${json.name} (${file})`);
-        }
+        if (names.has(json.name)) throw new Error(`Дубликат slash-команды /${json.name} (${file})`);
         names.add(json.name);
         commands.push(json);
     }
@@ -26,83 +25,68 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function withTimeout(promise, timeoutMs, label) {
-    let timer;
-    const timeout = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label}: превышен таймаут ${Math.round(timeoutMs / 1000)} сек.`)), timeoutMs);
-    });
-
-    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
 function resolveGuildId(client) {
     const guildId = process.env.GUILD_ID?.trim();
     const prodGuildId = process.env.PROD_GUILD_ID?.trim();
-
     console.log(`🧭 Command sync env: GUILD_ID=${guildId || 'не задан'}, PROD_GUILD_ID=${prodGuildId || 'не задан'}`);
 
-    // GUILD_ID — основной источник на Bothost. Это исключает ситуацию,
-    // когда старая дублирующая PROD_GUILD_ID перекрывает актуальный сервер.
     const configured = guildId || prodGuildId;
     if (configured && client.guilds.cache.has(configured)) return configured;
 
-    if (configured) {
-        console.warn(`⚠️ Настроенный сервер ${configured} отсутствует в кэше бота.`);
-    }
-
     const guilds = [...client.guilds.cache.values()];
-    if (guilds.length === 1) {
-        console.warn(`⚠️ Использую единственный доступный сервер бота: ${guilds[0].id} (${guilds[0].name}).`);
-        return guilds[0].id;
-    }
-
+    if (guilds.length === 1) return guilds[0].id;
     return configured || '';
 }
 
+async function fetchRegistered(rest, applicationId, guildId) {
+    const rows = await rest.get(Routes.applicationGuildCommands(applicationId, guildId));
+    return Array.isArray(rows) ? rows : [];
+}
+
 async function syncDiscordCommands(client) {
-    if (!client?.isReady?.()) {
-        console.warn('⚠️ Автосинхронизация команд пропущена: Discord-клиент ещё не готов.');
-        return false;
-    }
+    if (!client?.isReady?.()) return false;
 
     const guildId = resolveGuildId(client);
-    if (!guildId) {
-        console.warn('⚠️ Автосинхронизация команд пропущена: не найден GUILD_ID/PROD_GUILD_ID.');
-        return false;
-    }
-
     const guild = client.guilds.cache.get(guildId);
     if (!guild) {
-        console.error(`❌ Slash-команды не зарегистрированы: бот не состоит на сервере ${guildId}.`);
-        console.log(`ℹ️ Доступные серверы: ${[...client.guilds.cache.values()].map(g => `${g.id} (${g.name})`).join(', ') || 'нет'}`);
+        console.error(`❌ Бот не состоит на сервере ${guildId}.`);
         return false;
     }
 
     const commands = loadCommands();
-    const attempts = 3;
+    const expectedNames = commands.map(c => c.name).sort();
+    const applicationId = client.application?.id || client.user?.id;
+    const token = process.env.TOKEN?.trim();
+    if (!applicationId || !token) throw new Error('Не найден TOKEN или application ID бота.');
 
+    const rest = new REST({ version: '10', timeout: 180_000 }).setToken(token);
     console.log(`🔄 Подготовлено ${commands.length} slash-команд для сервера ${guild.id} (${guild.name}).`);
+    console.log(`🧾 Локальные команды: ${expectedNames.map(n => `/${n}`).join(', ')}`);
 
-    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
-            console.log(`📡 Синхронизация slash-команд: попытка ${attempt}/${attempts}...`);
+            console.log(`📡 Прямая публикация Discord REST: попытка ${attempt}/3...`);
+            await rest.put(Routes.applicationGuildCommands(applicationId, guild.id), { body: commands });
 
-            // Регистрируем через уже авторизованный Discord-клиент. Так не нужны
-            // отдельные CLIENT_ID/TOKEN для deploy и исключается неправильный route.
-            const result = await withTimeout(
-                guild.commands.set(commands),
-                120_000,
-                'Регистрация slash-команд'
-            );
+            const registered = await fetchRegistered(rest, applicationId, guild.id);
+            const actualNames = registered.map(c => c.name).sort();
+            const missing = expectedNames.filter(name => !actualNames.includes(name));
+            const extra = actualNames.filter(name => !expectedNames.includes(name));
 
-            console.log(`✅ Slash-команды синхронизированы: ${result.size} команд на сервере ${guild.id}.`);
+            console.log(`🔎 Discord API вернул ${registered.length} серверных команд.`);
+            console.log(`🧾 Зарегистрированы: ${actualNames.map(n => `/${n}`).join(', ')}`);
+
+            if (missing.length || extra.length || registered.length !== commands.length) {
+                throw new Error(`Проверка не пройдена. Не хватает: ${missing.join(', ') || 'нет'}; лишние: ${extra.join(', ') || 'нет'}`);
+            }
+
+            console.log(`✅ Slash-команды опубликованы и проверены через Discord API: ${registered.length} команд на сервере ${guild.id}.`);
             return true;
         } catch (error) {
             const status = error?.status || error?.rawError?.code || error?.code || 'unknown';
             const message = error?.rawError?.message || error?.message || String(error);
-            console.error(`⚠️ Попытка ${attempt}/${attempts} не удалась [${status}]: ${message}`);
-
-            if (attempt < attempts) {
+            console.error(`⚠️ Попытка ${attempt}/3 не удалась [${status}]: ${message}`);
+            if (attempt < 3) {
                 const delay = attempt * 15_000;
                 console.log(`⏳ Повтор через ${delay / 1000} сек...`);
                 await sleep(delay);
@@ -110,7 +94,7 @@ async function syncDiscordCommands(client) {
         }
     }
 
-    console.error('❌ Slash-команды не синхронизированы после 3 попыток. Сам бот продолжает работать.');
+    console.error('❌ Slash-команды не опубликованы после 3 попыток. Бот продолжает работать.');
     return false;
 }
 

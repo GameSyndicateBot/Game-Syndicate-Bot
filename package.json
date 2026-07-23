@@ -1,8 +1,8 @@
 {
   "name": "gs-core",
-  "version": "15.6.4-fix.4",
+  "version": "15.6.4-fix.5",
   "private": true,
-  "description": "Game Syndicate V15.6.4 alchemy with client-based guild command synchronization",
+  "description": "Game Syndicate V15.6.4 with verified Discord REST command publication and V15.6.3-compatible runtime",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
