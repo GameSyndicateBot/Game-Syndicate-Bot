@@ -23,14 +23,8 @@ function loadCommands() {
     return commands;
 }
 
-function withTimeout(promise, ms, label) {
-    let timer;
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error(`${label}: превышен таймаут ${ms / 1000} сек.`)), ms);
-        }),
-    ]).finally(() => clearTimeout(timer));
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function syncDiscordCommands() {
@@ -44,20 +38,37 @@ async function syncDiscordCommands() {
     }
 
     const commands = loadCommands();
-    const rest = new REST({ version: '10', timeout: 20_000 }).setToken(token);
+    const route = Routes.applicationGuildCommands(clientId, guildId);
+    const attempts = 3;
 
-    console.log(`🔄 Фоновая синхронизация ${commands.length} slash-команд...`);
+    console.log(`🔄 Подготовлено ${commands.length} slash-команд для сервера ${guildId}.`);
 
-    // Один PUT атомарно заменяет серверный набор команд. Предварительное удаление
-    // не требуется и раньше могло оставить сервер вообще без команд при зависании.
-    await withTimeout(
-        rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands }),
-        30_000,
-        'Регистрация slash-команд',
-    );
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+            // На Bothost Discord API иногда отвечает заметно дольше 30 секунд.
+            // Используем один атомарный PUT, большой сетевой таймаут и повторы.
+            const rest = new REST({ version: '10', timeout: 120_000 }).setToken(token);
+            console.log(`📡 Синхронизация slash-команд: попытка ${attempt}/${attempts}...`);
 
-    console.log(`✅ Slash-команды синхронизированы на сервере ${guildId}.`);
-    return true;
+            const result = await rest.put(route, { body: commands });
+            const count = Array.isArray(result) ? result.length : commands.length;
+            console.log(`✅ Slash-команды синхронизированы: ${count} команд на сервере ${guildId}.`);
+            return true;
+        } catch (error) {
+            const status = error?.status || error?.rawError?.code || 'unknown';
+            const message = error?.rawError?.message || error?.message || String(error);
+            console.error(`⚠️ Попытка ${attempt}/${attempts} не удалась [${status}]: ${message}`);
+
+            if (attempt < attempts) {
+                const delay = attempt * 15_000;
+                console.log(`⏳ Повтор через ${delay / 1000} сек...`);
+                await sleep(delay);
+            }
+        }
+    }
+
+    console.error('❌ Slash-команды не синхронизированы после 3 попыток. Сам бот продолжает работать.');
+    return false;
 }
 
 module.exports = { syncDiscordCommands };

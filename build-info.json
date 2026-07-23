@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE V15.6.4 FIX 2 — NON-BLOCKING COMMAND SYNC",
-  "version": "15.6.4-fix.2",
-  "buildId": "v15.6.4-fix2-nonblocking-command-sync-20260723",
+  "name": "GS CORE STABLE V15.6.4 FIX 3 — RESILIENT COMMAND SYNC",
+  "version": "15.6.4-fix.3",
+  "buildId": "v15.6.4-fix3-resilient-command-sync-20260723",
   "startup": "node index.js"
 }

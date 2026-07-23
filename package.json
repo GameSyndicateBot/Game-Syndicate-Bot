@@ -1,6 +1,6 @@
 {
   "name": "gs-core",
-  "version": "15.6.4-fix.2",
+  "version": "15.6.4-fix.3",
   "private": true,
   "description": "Game Syndicate V15.6.4 alchemy with non-blocking Discord command synchronization",
   "main": "index.js",
