@@ -7,9 +7,10 @@ const { spawnSync } = require('child_process');
 const DEFAULT_GUILD_ID = '1493225843269439488';
 const guildId = (process.env.SLASH_RECOVERY_GUILD_ID || DEFAULT_GUILD_ID).trim();
 const dataDir = process.env.DATA_DIR || '/app/data';
-const successMarker = path.join(dataDir, `.slash-deploy-${guildId}.success`);
+const recoveryRevision = 'v2-force-once';
+const successMarker = path.join(dataDir, `.slash-deploy-${guildId}-${recoveryRevision}.success`);
 const today = new Date().toISOString().slice(0, 10);
-const dailyAttemptMarker = path.join(dataDir, `.slash-deploy-${guildId}-${today}.attempted`);
+const dailyAttemptMarker = path.join(dataDir, `.slash-deploy-${guildId}-${recoveryRevision}-${today}.attempted`);
 
 function ensureDataDir() {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -41,7 +42,7 @@ function main() {
     // регистрацию много раз подряд и не расходовал лимит Discord.
     writeMarker(dailyAttemptMarker, 'attempt-started');
 
-    console.log(`🚑 Однократное восстановление slash-команд на сервере ${guildId}...`);
+    console.log(`🚑 Принудительная однократная попытка восстановления slash-команд v2 на сервере ${guildId}...`);
     const result = spawnSync(process.execPath, [path.join(__dirname, '..', 'deploy-commands.js'), guildId], {
         cwd: path.join(__dirname, '..'),
         env: process.env,
