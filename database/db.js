@@ -197,9 +197,36 @@ db.exec(`
         PRIMARY KEY(user_id, shop_date, slot)
     );
 
+
+    CREATE TABLE IF NOT EXISTS hero_materials (
+        user_id TEXT NOT NULL,
+        material_key TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, material_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS hero_chests (
+        user_id TEXT NOT NULL,
+        chest_key TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, chest_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS hero_chest_openings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        chest_key TEXT NOT NULL,
+        rewards_json TEXT NOT NULL,
+        opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_hero_history_user ON hero_history(user_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_hero_inventory_user ON hero_inventory(user_id);
     CREATE INDEX IF NOT EXISTS idx_hero_expeditions_user_status ON hero_expeditions(user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_hero_materials_user ON hero_materials(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hero_chests_user ON hero_chests(user_id);
 `);
 
 db.prepare(`

@@ -65,7 +65,8 @@ module.exports = {
         return interaction.reply({ content:'❌ У тебя нет завершённой активной экспедиции.', flags:MessageFlags.Ephemeral });
       }
       const r = result.result;
-      const rewards = [`✨ **+${r.xp} XP**`, r.dust ? `💠 **+${r.dust} Dust**` : null, r.dustLost ? `💠 **−${r.dustLost} Dust**` : null, `🏅 **+${r.reputation} репутации**`, r.item ? `🎁 **${r.item.name}** [${r.item.rarity}]` : null, r.levelsGained ? `⬆️ Новый уровень героя!` : null, r.injuryHours ? `🩹 Ранение: восстановление ${r.injuryHours} ч.` : null].filter(Boolean).join('\n');
+      const materialText = Array.isArray(r.materials) && r.materials.length ? r.materials.map(m => `${m.icon || '📦'} **${m.name} ×${m.quantity}**`).join('\n') : null;
+      const rewards = [`✨ **+${r.xp} XP**`, r.dust ? `💠 **+${r.dust} Dust**` : null, r.dustLost ? `💠 **−${r.dustLost} Dust**` : null, `🏅 **+${r.reputation} репутации**`, r.item ? `🎁 **${r.item.name}** [${r.item.rarity}]` : null, materialText, r.chest ? `${r.chest.icon || '📦'} **${r.chest.name}**` : null, r.levelsGained ? `⬆️ Новый уровень героя!` : null, r.injuryHours ? `🩹 Ранение: восстановление ${r.injuryHours} ч.` : null].filter(Boolean).join('\n');
       return interaction.reply({ embeds:[new EmbedBuilder().setColor(r.outcome==='fail'?0xEF4444:r.outcome==='partial'?0xF59E0B:r.outcome==='great'?0xEAB308:0x22C55E).setTitle(`${result.location.icon} ${outcomeLabel(r.outcome)}`).setDescription(`${r.event}\n\n${rewards}`).addFields({name:'Расчёт',value:`Шанс: ${r.chance}% · Бросок: ${r.roll}`,inline:true},{name:'Локация',value:result.location.name,inline:true}).setFooter({text:'Исход зависит от уровня, характеристик, происхождения, сложности и небольшого случайного фактора.'})] });
     }
 

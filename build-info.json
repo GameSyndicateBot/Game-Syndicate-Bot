@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE V15.5 — HERO WORLD BOSS INTEGRATION",
-  "version": "15.5.0",
-  "buildId": "v15.5-hero-world-boss-20260723",
+  "name": "GS CORE STABLE V15.6.1 — MATERIALS & CHESTS",
+  "version": "15.6.1",
+  "buildId": "v15.6.1-materials-chests-20260723",
   "startup": "node index.js"
 }

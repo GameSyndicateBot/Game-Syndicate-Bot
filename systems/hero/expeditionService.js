@@ -5,6 +5,7 @@ const { HERO_CLASSES, ORIGINS } = require('./heroData');
 const { LOCATIONS, EVENTS } = require('./expeditionData');
 const { EXPEDITION_LOOT, RARITY_ORDER } = require('./itemData');
 const { grantItem, getEffectiveHero, getEquipmentBonuses } = require('./itemService');
+const { expeditionMaterialRewards } = require('./materialService');
 
 function todayKey(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
@@ -129,9 +130,10 @@ function resolveExpedition(userId, { force = false } = {}) {
   const recoveryUntil = injuryHours ? new Date(Date.now() + injuryHours * 3600000).toISOString() : null;
   db.prepare("UPDATE heroes SET status=?, recovery_until=?, hp=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
     .run(injuryHours ? 'wounded' : 'ready', recoveryUntil, injuryHours ? Math.max(1, Math.round(baseHero.max_hp * 0.35)) : baseHero.max_hp, userId);
-  const result = { outcome, chance: Math.round(chance), roll: Math.round(roll), dust, dustLost, xp, reputation, item: item ? { name: item.name, rarity: item.rarity } : null, injuryHours, event: pick(rng, EVENTS[outcome]), levelsGained: leveledHero?.levelsGained || 0 };
+  const resourceRewards = expeditionMaterialRewards(userId, expedition.location_key, location.difficulty, outcome, expedition.id);
+  const result = { outcome, chance: Math.round(chance), roll: Math.round(roll), dust, dustLost, xp, reputation, item: item ? { name: item.name, rarity: item.rarity } : null, materials: resourceRewards.materials.map(m => ({ key: m.key, name: m.name, icon: m.icon, quantity: m.quantity })), chest: resourceRewards.chest ? { key: resourceRewards.chest.key, name: resourceRewards.chest.name, icon: resourceRewards.chest.icon } : null, injuryHours, event: pick(rng, EVENTS[outcome]), levelsGained: leveledHero?.levelsGained || 0 };
   db.prepare("UPDATE hero_expeditions SET status='resolved', resolved_at=CURRENT_TIMESTAMP, result_json=? WHERE id=?").run(JSON.stringify(result), expedition.id);
-  const rewardText = [dust ? `+${dust} Dust` : null, dustLost ? `−${dustLost} Dust` : null, `+${xp} XP`, item ? `предмет «${item.name}»` : null].filter(Boolean).join(', ');
+  const rewardText = [dust ? `+${dust} Dust` : null, dustLost ? `−${dustLost} Dust` : null, `+${xp} XP`, item ? `предмет «${item.name}»` : null, result.materials.length ? `материалы ×${result.materials.reduce((sum,m)=>sum+m.quantity,0)}` : null, result.chest ? `сундук «${result.chest.name}»` : null].filter(Boolean).join(', ');
   addHistory(userId, 'expedition_resolved', `${location.icon} ${location.name}: ${result.event} Награда: ${rewardText}.`, { expeditionId: expedition.id, ...result });
   return { ok: true, expedition: { ...expedition, status: 'resolved' }, location: { key: expedition.location_key, ...location }, result };
 }
