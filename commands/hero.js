@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { HERO_CLASSES, ORIGINS, STAT_LABELS, xpForNextLevel } = require('../systems/hero/heroData');
 const { getHero, createHero, getHistory } = require('../systems/hero/heroService');
-const { getInventory, getEquipment, getEffectiveHero, getInventoryItem, equipItem, unequipItem, getCollection, formatBonuses } = require('../systems/hero/itemService');
+const { getInventory, getEquipment, getEffectiveHero, getInventoryItem, equipItem, unequipItem, getCollection, formatBonuses, parseBonuses, applyUpgradeToBonuses } = require('../systems/hero/itemService');
 const { SLOT_LABELS, TYPE_LABELS, RARITY_LABELS } = require('../systems/hero/itemData');
 const { createHeroCard } = require('../images/hero/createHeroCard');
 
@@ -16,7 +16,8 @@ const typeChoices = [
 function missing(){return {content:'❌ У тебя ещё нет героя. Создай его командой `/hero create`.',flags:MessageFlags.Ephemeral};}
 function date(v){try{return new Date(`${v}Z`).toLocaleString('ru-RU',{dateStyle:'medium',timeStyle:'short'});}catch(_){return v;}}
 function rarity(r){return RARITY_LABELS[r]||r;}
-function itemLine(i){return `**#${i.id} · ${i.name}** [${rarity(i.rarity)}] ×${i.quantity}`;}
+function upgradedName(i){const level=Number(i.upgrade_level)||0;return `${i.name}${level>0?` +${level}`:''}`;}
+function itemLine(i){return `**#${i.id} · ${upgradedName(i)}** [${rarity(i.rarity)}] ×${i.quantity}`;}
 
 module.exports={
  data:new SlashCommandBuilder().setName('hero').setDescription('Герой, экипировка и RPG-система GS Expeditions')
@@ -65,7 +66,7 @@ module.exports={
   }
   if(sub==='equipment'){
    const by=new Map(getEquipment(target.id).map(e=>[e.slot,e]));
-   const text=Object.entries(SLOT_LABELS).map(([k,l])=>{const i=by.get(k);return `${l}: ${i?`**${i.name}** [${rarity(i.rarity)}]`:'—'}`;}).join('\n');
+   const text=Object.entries(SLOT_LABELS).map(([k,l])=>{const i=by.get(k);return `${l}: ${i?`**${upgradedName(i)}** [${rarity(i.rarity)}]`:'—'}`;}).join('\n');
    return interaction.reply({embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(`Экипировка: ${hero.name}`).setDescription(text).setFooter({text:'Используй /hero equip id:<номер> и /hero unequip.'})]});
   }
   if(sub==='inventory'){
@@ -75,11 +76,11 @@ module.exports={
   }
   if(sub==='item'){
    const item=getInventoryItem(interaction.user.id,interaction.options.getInteger('id')); if(!item)return interaction.reply({content:'❌ Предмет с таким #ID не найден в твоём инвентаре.',flags:MessageFlags.Ephemeral});
-   const bonuses=formatBonuses(item.bonuses_json); return interaction.reply({embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle(`${item.name} · ${rarity(item.rarity)}`).setDescription(`${item.description}\n\n*${item.lore||'История предмета пока неизвестна.'}*`).addFields({name:'Тип',value:`${TYPE_LABELS[item.item_type]||item.item_type}${item.slot?` · ${SLOT_LABELS[item.slot]}`:''}`,inline:true},{name:'Количество',value:String(item.quantity),inline:true},{name:'Бонусы',value:bonuses.join('\n')||'Нет постоянных бонусов.'}).setFooter({text:`Инвентарный ID: #${item.id}`})],flags:MessageFlags.Ephemeral});
+   const bonuses=formatBonuses(applyUpgradeToBonuses(parseBonuses(item.bonuses_json),item.upgrade_level)); return interaction.reply({embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle(`${upgradedName(item)} · ${rarity(item.rarity)}`).setDescription(`${item.description}\n\n*${item.lore||'История предмета пока неизвестна.'}*`).addFields({name:'Тип',value:`${TYPE_LABELS[item.item_type]||item.item_type}${item.slot?` · ${SLOT_LABELS[item.slot]}`:''}`,inline:true},{name:'Количество',value:String(item.quantity),inline:true},{name:'Бонусы',value:bonuses.join('\n')||'Нет постоянных бонусов.'}).setFooter({text:`Инвентарный ID: #${item.id}`})],flags:MessageFlags.Ephemeral});
   }
   if(sub==='equip'){
    const result=equipItem(interaction.user.id,interaction.options.getInteger('id')); if(!result.ok)return interaction.reply({content:result.reason==='not_equippable'?'❌ Этот предмет нельзя экипировать.':'❌ Предмет не найден.',flags:MessageFlags.Ephemeral});
-   return interaction.reply({content:`✅ **${result.item.name}** экипирован в слот «${SLOT_LABELS[result.slot]}».`,flags:MessageFlags.Ephemeral});
+   return interaction.reply({content:`✅ **${upgradedName(result.item)}** экипирован в слот «${SLOT_LABELS[result.slot]}».`,flags:MessageFlags.Ephemeral});
   }
   if(sub==='unequip'){
    const slot=interaction.options.getString('slot');const result=unequipItem(interaction.user.id,slot);return interaction.reply({content:result.ok?`✅ Слот «${SLOT_LABELS[slot]}» освобождён.`:'ℹ️ В этом слоте ничего не было.',flags:MessageFlags.Ephemeral});

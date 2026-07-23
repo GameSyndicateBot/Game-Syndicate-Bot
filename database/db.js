@@ -233,13 +233,33 @@ db.exec(`
         crafted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS hero_upgrade_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        inventory_id INTEGER NOT NULL,
+        item_key TEXT NOT NULL,
+        from_level INTEGER NOT NULL,
+        to_level INTEGER NOT NULL,
+        success INTEGER NOT NULL DEFAULT 0,
+        chance INTEGER NOT NULL,
+        dust_spent INTEGER NOT NULL DEFAULT 0,
+        materials_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_hero_history_user ON hero_history(user_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_hero_inventory_user ON hero_inventory(user_id);
     CREATE INDEX IF NOT EXISTS idx_hero_expeditions_user_status ON hero_expeditions(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_hero_materials_user ON hero_materials(user_id);
     CREATE INDEX IF NOT EXISTS idx_hero_chests_user ON hero_chests(user_id);
     CREATE INDEX IF NOT EXISTS idx_hero_crafting_user ON hero_crafting_history(user_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_hero_upgrades_user ON hero_upgrade_history(user_id, id DESC);
 `);
+
+// V15.6.3: safe additive migration for existing databases.
+try { db.prepare('ALTER TABLE hero_inventory ADD COLUMN upgrade_level INTEGER NOT NULL DEFAULT 0').run(); } catch (error) {
+    if (!String(error?.message || error).includes('duplicate column name')) throw error;
+}
 
 db.prepare(`
     CREATE TABLE IF NOT EXISTS players (
