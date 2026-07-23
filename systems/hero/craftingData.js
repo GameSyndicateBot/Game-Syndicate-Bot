@@ -20,6 +20,8 @@ const RECIPES = Object.freeze({
   rune_gauntlets: { itemKey:'rune_gauntlets', npc:'Кузнец Бран', dust:780, level:7, materials:{ iron_ore:15, crystal:6, essence:5, ancient_fragment:2 } },
   healing_potion_small: { itemKey:'healing_potion_small', npc:'Алхимик Лира', dust:35, level:1, materials:{ herb:4, essence:1 } },
   healing_potion_large: { itemKey:'healing_potion_large', npc:'Алхимик Лира', dust:110, level:4, materials:{ herb:10, essence:4, crystal:1 } },
+  swift_tonic: { itemKey:'swift_tonic', npc:'Алхимик Лира', dust:70, level:2, materials:{ herb:6, essence:2 } },
+  fortune_elixir: { itemKey:'fortune_elixir', npc:'Алхимик Лира', dust:180, level:5, materials:{ herb:8, essence:5, crystal:2 } },
   rage_scroll: { itemKey:'rage_scroll', npc:'Алхимик Лира', dust:230, level:6, materials:{ essence:5, bone:4, crystal:3 } },
   defense_scroll: { itemKey:'defense_scroll', npc:'Алхимик Лира', dust:230, level:6, materials:{ essence:5, stone:5, crystal:3 } },
   alchemist_bomb: { itemKey:'alchemist_bomb', npc:'Алхимик Лира', dust:420, level:8, materials:{ essence:8, crystal:6, iron_ore:5, void_crystal:1 } },

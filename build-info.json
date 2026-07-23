@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE V15.6.3 — ITEM UPGRADES",
-  "version": "15.6.3",
-  "buildId": "v15.6.3-item-upgrades-20260723",
+  "name": "GS CORE STABLE V15.6.4 — ALCHEMY & CONSUMABLES",
+  "version": "15.6.4",
+  "buildId": "v15.6.4-alchemy-consumables-20260723",
   "startup": "node index.js"
 }
