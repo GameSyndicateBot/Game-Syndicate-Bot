@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE V15.6.4 — ALCHEMY & CONSUMABLES",
-  "version": "15.6.4",
-  "buildId": "v15.6.4-alchemy-consumables-20260723",
+  "name": "GS CORE STABLE V15.6.4 FIX 1 — AUTO COMMAND DEPLOY",
+  "version": "15.6.4-fix.1",
+  "buildId": "v15.6.4-fix1-auto-command-deploy-20260723",
   "startup": "node index.js"
 }
