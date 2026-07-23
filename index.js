@@ -60,7 +60,7 @@ client.once('clientReady', () => {
     // Команды синхронизируются уже после запуска бота и никогда не блокируют старт.
     // Один PUT заменяет весь серверный набор без предварительного удаления.
     const { syncDiscordCommands } = require('./scripts/syncDiscordCommands');
-    syncDiscordCommands().catch(error => {
+    syncDiscordCommands(client).catch(error => {
         console.error('⚠️ Не удалось синхронизировать slash-команды, бот продолжает работать:');
         console.error(error?.rawError?.message || error?.message || error);
     });
