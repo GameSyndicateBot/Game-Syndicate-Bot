@@ -187,6 +187,16 @@ db.exec(`
         result_json TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS hero_shop_purchases (
+        user_id TEXT NOT NULL,
+        shop_date TEXT NOT NULL,
+        slot INTEGER NOT NULL,
+        offer_key TEXT NOT NULL,
+        price INTEGER NOT NULL,
+        purchased_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, shop_date, slot)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_hero_history_user ON hero_history(user_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_hero_inventory_user ON hero_inventory(user_id);
     CREATE INDEX IF NOT EXISTS idx_hero_expeditions_user_status ON hero_expeditions(user_id, status);
@@ -837,6 +847,7 @@ function resetPlayer(userId) {
     db.prepare(`DELETE FROM hero_equipment WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM hero_inventory WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM hero_companions WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM hero_shop_purchases WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM hero_artifacts WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM heroes WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM player_achievements WHERE user_id = ?`).run(userId);

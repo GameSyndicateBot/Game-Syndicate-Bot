@@ -1,0 +1,9 @@
+const {SlashCommandBuilder,EmbedBuilder,MessageFlags}=require('discord.js');
+const {getHero}=require('../systems/hero/heroService');
+const {listCompanions,activateCompanion}=require('../systems/hero/companionService');
+const {COMPANIONS,RARITY_LABELS}=require('../systems/hero/companionData');
+module.exports={data:new SlashCommandBuilder().setName('companion').setDescription('Компаньоны героя')
+ .addSubcommand(s=>s.setName('list').setDescription('Показать компаньонов'))
+ .addSubcommand(s=>s.setName('activate').setDescription('Выбрать активного компаньона').addIntegerOption(o=>o.setName('id').setDescription('ID компаньона').setMinValue(1).setRequired(true))),
+ async execute(interaction){if(!getHero(interaction.user.id))return interaction.reply({content:'❌ Сначала создай героя.',flags:MessageFlags.Ephemeral});const sub=interaction.options.getSubcommand();if(sub==='activate'){const r=activateCompanion(interaction.user.id,interaction.options.getInteger('id'));return interaction.reply({content:r.ok?`✅ Активный компаньон: **${r.companion.name}**.`:'❌ Компаньон не найден.',flags:MessageFlags.Ephemeral});}
+ const rows=listCompanions(interaction.user.id);const text=rows.length?rows.map(r=>{const d=COMPANIONS[r.companion_key];const bonuses=Object.entries(d?.bonuses||{}).map(([k,v])=>`${k==='expedition_success'?'успех экспедиций':k==='rare_find'?'редкая добыча':k==='world_boss_damage'?'урон по боссу':'защита от босса'} +${v}%`).join(' · ');return `${r.active?'🟢':'⚪'} **#${r.id} ${d?.icon||'🐾'} ${r.name}** · ${RARITY_LABELS[r.rarity]||r.rarity}\n${bonuses}`;}).join('\n\n'):'Компаньонов пока нет. Заглядывай в `/shop view`.';return interaction.reply({embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle('🐾 Компаньоны героя').setDescription(text).setFooter({text:'Активным может быть только один компаньон.'})],flags:MessageFlags.Ephemeral});}}

@@ -1,8 +1,8 @@
 {
   "name": "gs-core",
-  "version": "15.3.0",
+  "version": "15.4.0",
   "private": true,
-  "description": "Game Syndicate V15.3 items, inventory and equipment",
+  "description": "Game Syndicate V15.4 daily shop and companions",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

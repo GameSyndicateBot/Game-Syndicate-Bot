@@ -1,0 +1,13 @@
+const {SlashCommandBuilder,EmbedBuilder,MessageFlags}=require('discord.js');
+const {getOrCreatePlayer}=require('../database/db');
+const {getHero}=require('../systems/hero/heroService');
+const {dailyStock,buy,sell,getCardDust}=require('../systems/hero/shopService');
+const {RARITY_LABELS}=require('../systems/hero/itemData');
+module.exports={data:new SlashCommandBuilder().setName('shop').setDescription('Ежедневный RPG-магазин')
+ .addSubcommand(s=>s.setName('view').setDescription('Посмотреть ассортимент торговца'))
+ .addSubcommand(s=>s.setName('buy').setDescription('Купить предложение').addIntegerOption(o=>o.setName('slot').setDescription('Номер предложения 1–7').setMinValue(1).setMaxValue(7).setRequired(true)))
+ .addSubcommand(s=>s.setName('sell').setDescription('Продать предмет из инвентаря').addIntegerOption(o=>o.setName('id').setDescription('ID предмета').setMinValue(1).setRequired(true)).addIntegerOption(o=>o.setName('quantity').setDescription('Количество').setMinValue(1))),
+ async execute(interaction){if(!getHero(interaction.user.id))return interaction.reply({content:'❌ Сначала создай героя: `/hero create`.',flags:MessageFlags.Ephemeral});getOrCreatePlayer(interaction.user);const sub=interaction.options.getSubcommand();
+ if(sub==='view'){const s=dailyStock();const lines=s.items.map(x=>`**${x.slot}. ${x.item.name}** · ${RARITY_LABELS[x.item.rarity]||x.item.rarity}\n💠 ${x.price} Dust`).join('\n\n');const c=s.companion;return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('🏪 Торговец Маркус').setDescription(`${lines}\n\n**7. ${c.item.icon} ${c.item.name}** · компаньон\n💠 ${c.price} Dust`).addFields({name:'Твой баланс',value:`${getCardDust(interaction.user.id)} Dust`}).setFooter({text:`Ассортимент обновляется ежедневно по МСК • ${s.date}`})],flags:MessageFlags.Ephemeral});}
+ if(sub==='buy'){const r=buy(interaction.user.id,interaction.options.getInteger('slot'));const msg={slot:'❌ Такого предложения нет.',bought:'ℹ️ Это предложение уже куплено тобой сегодня.',dust:`❌ Недостаточно Dust. Баланс: ${r.balance||0}.`};return interaction.reply({content:r.ok?`✅ Куплено: **${r.offer.item.name}**. Осталось **${r.balance} Dust**.`:msg[r.reason],flags:MessageFlags.Ephemeral});}
+ const r=sell(interaction.user.id,interaction.options.getInteger('id'),interaction.options.getInteger('quantity')||1);const msg={not_found:'❌ Предмет не найден.',equipped:'❌ Сначала сними этот предмет с экипировки.'};return interaction.reply({content:r.ok?`✅ Продано: **${r.item.name} ×${r.quantity}** за **${r.earned} Dust**. Баланс: **${r.balance}**.`:msg[r.reason],flags:MessageFlags.Ephemeral});}}

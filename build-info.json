@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE V15.3 — ITEMS & EQUIPMENT",
-  "version": "15.3.0",
-  "buildId": "v15.3-items-equipment-20260723",
+  "name": "GS CORE STABLE V15.4 — SHOP & COMPANIONS",
+  "version": "15.4.0",
+  "buildId": "v15.4-shop-companions-20260723",
   "startup": "node index.js"
 }
