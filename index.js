@@ -68,14 +68,51 @@ client.once('clientReady', () => {
         }
 
         try {
-            const guild = await client.guilds.fetch(guildId);
+            const token = (process.env.TOKEN || '').trim();
+            if (!token) throw new Error('Переменная TOKEN не задана.');
+
             const payload = [...client.commands.values()].map(command => command.data.toJSON());
-            console.log(`🚑 Slash recovery: публикую ${payload.length} команд на сервер ${guildId} без предварительной очистки...`);
-            const registered = await guild.commands.set(payload);
-            console.log(`✅ Slash recovery завершён: Discord вернул ${registered.size} команд на сервере ${guildId}.`);
-            console.log(`🧾 Команды: ${[...registered.values()].map(command => '/' + command.name).sort().join(', ')}`);
+            const applicationId = client.application?.id || client.user?.id;
+            if (!applicationId) throw new Error('Не удалось определить Application ID запущенного бота.');
+
+            const endpoint = `https://discord.com/api/v10/applications/${applicationId}/guilds/${guildId}/commands`;
+            console.log(`🚑 Slash recovery RAW: публикую ${payload.length} команд на сервер ${guildId}...`);
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 45000);
+            let response;
+            try {
+                response = await fetch(endpoint, {
+                    method: 'PUT',
+                    headers: {
+                        Authorization: `Bot ${token}`,
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'DiscordBot (Game-Syndicate, 15.6.3-command-recovery)',
+                    },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal,
+                });
+            } finally {
+                clearTimeout(timeout);
+            }
+
+            const responseText = await response.text();
+            let responseBody;
+            try { responseBody = JSON.parse(responseText); } catch { responseBody = responseText; }
+
+            if (!response.ok) {
+                throw new Error(`Discord API ${response.status}: ${typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody)}`);
+            }
+
+            const registered = Array.isArray(responseBody) ? responseBody : [];
+            console.log(`✅ Slash recovery RAW завершён: Discord вернул ${registered.length} команд на сервере ${guildId}.`);
+            console.log(`🧾 Команды: ${registered.map(command => '/' + command.name).sort().join(', ')}`);
         } catch (error) {
-            console.error('❌ Slash recovery не выполнен:', error?.rawError?.message || error?.message || error);
+            if (error?.name === 'AbortError') {
+                console.error('❌ Slash recovery RAW: Discord API не ответил за 45 секунд.');
+            } else {
+                console.error('❌ Slash recovery RAW не выполнен:', error?.message || error);
+            }
         }
     }, 5000);
 
