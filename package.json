@@ -1,8 +1,8 @@
 {
   "name": "gs-core",
-  "version": "15.6.4-fix.1",
+  "version": "15.6.4-fix.2",
   "private": true,
-  "description": "Game Syndicate V15.6.4 Alchemy with automatic Discord command deployment for Bothost",
+  "description": "Game Syndicate V15.6.4 alchemy with non-blocking Discord command synchronization",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

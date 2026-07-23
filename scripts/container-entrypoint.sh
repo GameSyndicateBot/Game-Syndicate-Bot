@@ -34,19 +34,4 @@ ls -la /app/shared
 
 node /app/scripts/storageDiagnostics.js
 node /app/scripts/restoreDatabaseFromDiscord.js
-
-# Bothost Web Terminal разрешает только ограниченный набор команд, поэтому
-# slash-команды Discord регистрируются автоматически при каждом развёртывании.
-# Ошибка регистрации не должна останавливать самого бота: причина останется в логах.
-if [ "${AUTO_DEPLOY_COMMANDS:-1}" = "1" ]; then
-  echo '🚀 Автоматическая регистрация Discord slash-команд...'
-  if node /app/deploy-commands.js prod; then
-    echo '✅ Discord slash-команды зарегистрированы автоматически'
-  else
-    echo '⚠️ Автоматическая регистрация команд завершилась ошибкой. Проверь TOKEN, CLIENT_ID и PROD_GUILD_ID/GUILD_ID.'
-  fi
-else
-  echo '⏭️ Автоматическая регистрация команд отключена: AUTO_DEPLOY_COMMANDS=0'
-fi
-
 exec node /app/index.js
