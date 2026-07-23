@@ -1,6 +1,6 @@
 {
   "name": "gs-core",
-  "version": "15.4.0",
+  "version": "15.5.0",
   "private": true,
   "description": "Game Syndicate V15.4 daily shop and companions",
   "main": "index.js",

@@ -8,6 +8,7 @@ const { db, getOrCreatePlayer, addCardDust } = require('../../database/db');
 const { addPack } = require('../../utils/packInventory');
 const { CLASSES, MINIONS, BOSSES } = require('./config');
 const { createWorldBossBattleCard, cardFile } = require('../../images/worldBoss/createWorldBossBattleCard');
+const { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, hpMultiplier, resistancePercent, heroSummary } = require('./heroIntegration');
 
 const CHANNEL_ID = process.env.WORLD_BOSS_CHANNEL_ID || '1529226831797158130';
 const AUTO_SCHEDULE_ENABLED = String(process.env.WORLD_BOSS_AUTO_SCHEDULE || 'false').toLowerCase() === 'true';
@@ -43,7 +44,7 @@ function init() {
    turn_deadline INTEGER, registration_ends_at INTEGER, state_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL, ended_at INTEGER
   );
   CREATE TABLE IF NOT EXISTS world_boss_players(
-   battle_id INTEGER NOT NULL,user_id TEXT NOT NULL,class_key TEXT,initiative INTEGER DEFAULT 0,hp INTEGER DEFAULT 0,max_hp INTEGER DEFAULT 0,
+   battle_id INTEGER NOT NULL,user_id TEXT NOT NULL,hero_name TEXT,hero_level INTEGER DEFAULT 1,hero_snapshot_json TEXT DEFAULT '{}',class_key TEXT,initiative INTEGER DEFAULT 0,hp INTEGER DEFAULT 0,max_hp INTEGER DEFAULT 0,
    energy INTEGER DEFAULT 0,mana INTEGER DEFAULT 0,ult_charge INTEGER DEFAULT 0,damage_done INTEGER DEFAULT 0,healing_done INTEGER DEFAULT 0,damage_taken INTEGER DEFAULT 0,
    contribution INTEGER DEFAULT 0,status TEXT DEFAULT 'alive',effects_json TEXT DEFAULT '{}',summons_json TEXT DEFAULT '[]',joined_at INTEGER NOT NULL,
    PRIMARY KEY(battle_id,user_id)
@@ -53,6 +54,9 @@ function init() {
   const cols = new Set(db.prepare('PRAGMA table_info(world_boss_players)').all().map(x => x.name));
   if (!cols.has('mana')) db.exec('ALTER TABLE world_boss_players ADD COLUMN mana INTEGER DEFAULT 0');
   if (!cols.has('ult_charge')) db.exec('ALTER TABLE world_boss_players ADD COLUMN ult_charge INTEGER DEFAULT 0');
+  if (!cols.has('hero_name')) db.exec('ALTER TABLE world_boss_players ADD COLUMN hero_name TEXT');
+  if (!cols.has('hero_level')) db.exec('ALTER TABLE world_boss_players ADD COLUMN hero_level INTEGER DEFAULT 1');
+  if (!cols.has('hero_snapshot_json')) db.exec("ALTER TABLE world_boss_players ADD COLUMN hero_snapshot_json TEXT DEFAULT '{}'");
 }
 
 function activeBattle() { init(); return db.prepare("SELECT * FROM world_boss_battles WHERE status IN ('registration','class_roll','class_select','initiative_roll','active') ORDER BY id DESC LIMIT 1").get(); }
@@ -75,6 +79,7 @@ function effects(p) { return parse(p.effects_json, {}); }
 function updateEffects(id, user, e) { db.prepare('UPDATE world_boss_players SET effects_json=? WHERE battle_id=? AND user_id=?').run(JSON.stringify(e), id, user); }
 function moscowParts(ts = Date.now()) { const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(ts)); return Object.fromEntries(p.map(x => [x.type, x.value])); }
 function dateKey(ts = Date.now()) { const p = moscowParts(ts); return `${p.year}-${p.month}-${p.day}`; }
+function playerLabel(p) { return `**${heroName(p)}** · <@${p.user_id}>`; }
 function roleIcon(role) { return role === 'tank' ? '🛡️' : role === 'healer' ? '💚' : role === 'dps' ? '🔥' : '⚙️'; }
 function resourceType(classKey) { return CLASSES[classKey]?.resourceType || 'energy'; }
 function resourceMeta(classKey) { const t = resourceType(classKey); return t === 'rage' ? { key:'energy', label:'Ярость', icon:'🔥' } : t === 'mana' ? { key:'mana', label:'Мана', icon:'🔷' } : { key:'energy', label:'Энергия', icon:'⚡' }; }
@@ -164,7 +169,7 @@ function buildEmbed(b, players) {
   if (b.status === 'class_roll') { const rolled = Object.keys(state.classRolls || {}).length; e.addFields({ name: '🎲 Бросок за выбор класса', value: `Бросили: **${rolled}/${players.length}**\nДо завершения: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}\nНе бросившие выберут классы **последними**.` }); }
   if (b.status === 'class_select') {
     const order = state.classOrder || [], idx = state.classChoiceIndex || 0, who = order[idx];
-    e.addFields({ name: '🧙 Выбор классов', value: `Сейчас выбирает: ${who ? `<@${who}>` : '—'}\nДо автовыбора: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}\nОсталось классов: **${(state.availableClasses || []).length}**` });
+    e.addFields({ name: '🧙 Выбор классов', value: `Сейчас выбирает: ${who ? playerLabel(players.find(p => p.user_id === who) || { user_id: who }) : '—'}\nДо автовыбора: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}\nОсталось классов: **${(state.availableClasses || []).length}**` });
   }
   if (b.status === 'initiative_roll') e.addFields({ name: '🎲 Инициатива боя', value: `Бросили: **${Object.keys(state.initiativeRolls || {}).length}/${players.length}**\nДо автоброска: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` });
   if (b.status === 'active') e.addFields({ name: 'Состояние боя', value: `Раунд **${b.round_no}** • Живы **${alive.length}/${players.length}**\nХод: ${current ? `<@${current.user_id}> — **${CLASSES[current.class_key]?.name}**` : '—'}\nДо автоатаки: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` });
@@ -172,7 +177,7 @@ function buildEmbed(b, players) {
   const sum = summonsText(state); if (sum) e.addFields({ name: '⚙️ Призывы игроков', value: sum });
   if (['class_select','initiative_roll','active'].includes(b.status)) e.addFields({ name: 'Команда', value: players.slice(0, 18).map(p => {
     const c = CLASSES[p.class_key], ef = effects(p), sh = Number(ef.shield || 0);
-    return `${c ? roleIcon(c.role) : '❔'} <@${p.user_id}> • ${c?.name || 'класс не выбран'}${b.status === 'active' ? ` • ❤️${p.hp}/${p.max_hp}${sh ? ` | 🛡️${sh}` : ''} | ${resourceMeta(p.class_key).icon}${skillResourceValue(p)}${resourceType(p.class_key) === 'mana' ? ` | 💥${p.ult_charge || 0}` : ''}` : ''}`;
+    return `${c ? roleIcon(c.role) : '❔'} ${playerLabel(p)} • ${c?.name || 'класс не выбран'}${b.status === 'active' ? ` • ❤️${p.hp}/${p.max_hp}${sh ? ` | 🛡️${sh}` : ''} | ${resourceMeta(p.class_key).icon}${skillResourceValue(p)}${resourceType(p.class_key) === 'mana' ? ` | 💥${p.ult_charge || 0}` : ''}` : ''}`;
   }).join('\n').slice(0, 1024) });
   if (state.finalStats) {
     const fs = state.finalStats;
@@ -197,7 +202,8 @@ async function refresh(id) {
     const current = b.status === 'active' && alive.length ? alive[b.turn_index % alive.length] : null;
     for (const player of players) {
       const member = await ch.guild?.members.fetch(player.user_id).catch(() => null);
-      player.displayName = member?.displayName || member?.user?.globalName || member?.user?.username || `Игрок ${player.user_id.slice(-4)}`;
+      player.discordDisplayName = member?.displayName || member?.user?.globalName || member?.user?.username || `Игрок ${player.user_id.slice(-4)}`;
+      player.displayName = heroName(player);
     }
 
     // Одно редактирование на обновление: изображение не исчезает и не «прыгает» вверх/вниз.
@@ -356,7 +362,9 @@ async function assignChosenClass(id, user, key, auto = false) {
   if (pos < 0) return { ok: false, reason: 'taken' };
   classKey = s.availableClasses[pos]; const c = CLASSES[classKey]; if (!c) return { ok: false, reason: 'class' };
   s.availableClasses.splice(pos, 1); s.classChoiceIndex += 1; s.log.push(`${auto ? '⏱️ Автовыбор:' : '✅'} <@${user}> — ${roleIcon(c.role)} **${c.name}**.`); saveState(b, s);
-  db.prepare("UPDATE world_boss_players SET class_key=?,hp=?,max_hp=?,energy=0,mana=?,ult_charge=0,status='alive',effects_json='{}' WHERE battle_id=? AND user_id=?").run(classKey, c.maxHp, c.maxHp, c.resourceType === 'mana' ? 100 : 0, id, user);
+  const joinedPlayer = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, user);
+  const heroMaxHp = Math.round(c.maxHp * hpMultiplier(joinedPlayer));
+  db.prepare("UPDATE world_boss_players SET class_key=?,hp=?,max_hp=?,energy=0,mana=?,ult_charge=0,status='alive',effects_json='{}' WHERE battle_id=? AND user_id=?").run(classKey, heroMaxHp, heroMaxHp, c.resourceType === 'mana' ? 100 : 0, id, user);
   if (s.classChoiceIndex >= s.classOrder.length) {
     b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const ns = stateOf(b); ns.initiativeRolls = {}; ns.log.push('🎲 Классы выбраны. Теперь бросьте d20 на инициативу боя.'); saveState(b, ns);
     db.prepare("UPDATE world_boss_battles SET status='initiative_roll',turn_deadline=? WHERE id=?").run(Date.now() + ROLL_MS, id); clearTimer(id); await refresh(id); setTimer(id, () => autoFinishInitiative(id).catch(console.error), ROLL_MS); return { ok: true, done: true };
@@ -377,7 +385,7 @@ async function autoTurn(id) { const b = db.prepare("SELECT * FROM world_boss_bat
 function playerResistanceMultiplier(target, damageType) {
   const cls = CLASSES[target.class_key] || {};
   const key = damageType === 'magic' ? 'magicResist' : 'physicalResist';
-  const resist = clamp(Number(cls[key] || 0), -35, 60);
+  const resist = clamp(Number(cls[key] || 0) + resistancePercent(target), -35, 60);
   return 1 - resist / 100;
 }
 function damageTypeLabel(type) { return type === 'magic' ? 'магический' : 'физический'; }
@@ -430,7 +438,7 @@ function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null
   state.rage = clamp(Number(state.rage || 0) + Math.min(14, Math.max(2, Math.ceil(dealt / 30))), 0, 100); saveState(b, state);
   return { dealt, target: b.boss_name, minion: false };
 }
-function applyDamageBuff(p, base) { const e = effects(p); let d = base; if (p.class_key === 'berserker') { const missing = 1 - (p.hp / Math.max(1, p.max_hp)); d *= 1 + Math.min(0.5, missing * 0.6); } if (e.bloodRageTurns > 0) d *= 2; if (e.rageTurns > 0) d *= 1.4; if (e.damageBuffTurns > 0) d *= 1 + Number(e.damageBuff || 0); if (e.groupDamageRounds > 0) d *= 1 + Number(e.groupDamage || 0); if (e.doubleNext) { d *= 2; e.doubleNext = false; updateEffects(p.battle_id, p.user_id, e); } return Math.round(d); }
+function applyDamageBuff(p, base) { const e = effects(p); let d = base * damageMultiplier(p); if (p.class_key === 'berserker') { const missing = 1 - (p.hp / Math.max(1, p.max_hp)); d *= 1 + Math.min(0.5, missing * 0.6); } if (e.bloodRageTurns > 0) d *= 2; if (e.rageTurns > 0) d *= 1.4; if (e.damageBuffTurns > 0) d *= 1 + Number(e.damageBuff || 0); if (e.groupDamageRounds > 0) d *= 1 + Number(e.groupDamage || 0); if (e.doubleNext) { d *= 2; e.doubleNext = false; updateEffects(p.battle_id, p.user_id, e); } return Math.round(d); }
 function healPlayer(id, healerId, target, amount) { const nh = Math.min(target.max_hp, target.hp + amount), actual = nh - target.hp; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(nh, id, target.user_id); if (actual > 0) db.prepare('UPDATE world_boss_players SET healing_done=healing_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(actual, actual, id, healerId); return actual; }
 function validTargets(id, kind) { const ps = battlePlayers(id); return kind === 'dead' ? ps.filter(x => x.status === 'dead') : ps.filter(x => x.status === 'alive'); }
 function actionTargets(id, player, action, kind) { let list = validTargets(id, kind); if (player.class_key === 'cleric' && action === 'skill') list = list.filter(x => x.user_id !== player.user_id); return list; }
@@ -804,13 +812,24 @@ async function handle(interaction) {
   }
   if (interaction.customId === `wb_join_${id}` || interaction.customId === `wb_leave_${id}`) {
     if (b.status !== 'registration') { await interaction.reply({ content: 'Регистрация уже завершена.', flags: MessageFlags.Ephemeral }); return true; }
-    if (interaction.customId.includes('join')) { getOrCreatePlayer(interaction.user); db.prepare('INSERT OR IGNORE INTO world_boss_players(battle_id,user_id,joined_at) VALUES(?,?,?)').run(id, uid, Date.now()); await interaction.reply({ content: '✅ Ты вступил в бой.', flags: MessageFlags.Ephemeral }); }
+    if (interaction.customId.includes('join')) {
+      const snapshot = buildHeroSnapshot(uid);
+      if (!snapshot) {
+        await interaction.reply({ content: '❌ Сначала создай героя в системе экспедиций через `/hero create`. В World Boss участвует именно твой постоянный персонаж.', flags: MessageFlags.Ephemeral });
+        return true;
+      }
+      getOrCreatePlayer(interaction.user);
+      db.prepare(`INSERT INTO world_boss_players(battle_id,user_id,hero_name,hero_level,hero_snapshot_json,joined_at) VALUES(?,?,?,?,?,?)
+        ON CONFLICT(battle_id,user_id) DO UPDATE SET hero_name=excluded.hero_name,hero_level=excluded.hero_level,hero_snapshot_json=excluded.hero_snapshot_json`).run(id, uid, snapshot.name, snapshot.level, JSON.stringify(snapshot), Date.now());
+      const companionText = snapshot.companion ? `\n🐾 Компаньон: **${snapshot.companion.name}**` : '';
+      await interaction.reply({ content: `✅ **${snapshot.name}** вступает в бой!\nУровень: **${snapshot.level}**${companionText}\n\nКласс для этого рейда по-прежнему определяется броском d20 и выбором по очереди.`, flags: MessageFlags.Ephemeral });
+    }
     else { db.prepare('DELETE FROM world_boss_players WHERE battle_id=? AND user_id=?').run(id, uid); await interaction.reply({ content: '🚪 Ты покинул регистрацию.', flags: MessageFlags.Ephemeral }); }
     await refresh(id); return true;
   }
   const p = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, uid); if (!p) { await interaction.reply({ content: 'Ты не участвуешь в этом бою.', flags: MessageFlags.Ephemeral }); return true; }
   if (interaction.customId === `wb_classroll_${id}`) {
-    if (b.status !== 'class_roll') return interaction.reply({ content: 'Сейчас не этап этого броска.', flags: MessageFlags.Ephemeral }); const s = stateOf(b); if (s.classRolls?.[uid] != null) return interaction.reply({ content: `Ты уже выбросил **${s.classRolls[uid]}**.`, flags: MessageFlags.Ephemeral }); s.classRolls[uid] = rand(1, 20); s.log.push(`🎲 <@${uid}> выбрасывает **${s.classRolls[uid]}** за выбор класса.`); saveState(b, s); await interaction.reply({ content: `🎲 Твой результат: **${s.classRolls[uid]}**`, flags: MessageFlags.Ephemeral }); await refresh(id); if (allHave(s.classRolls, battlePlayers(id))) await finishClassRoll(id); return true;
+    if (b.status !== 'class_roll') return interaction.reply({ content: 'Сейчас не этап этого броска.', flags: MessageFlags.Ephemeral }); const s = stateOf(b); if (s.classRolls?.[uid] != null) return interaction.reply({ content: `Ты уже выбросил **${s.classRolls[uid]}**.`, flags: MessageFlags.Ephemeral }); s.classRolls[uid] = rand(1, 20); s.log.push(`🎲 **${heroName(p)}** · <@${uid}> выбрасывает **${s.classRolls[uid]}** за выбор класса.`); saveState(b, s); await interaction.reply({ content: `🎲 Твой результат: **${s.classRolls[uid]}**`, flags: MessageFlags.Ephemeral }); await refresh(id); if (allHave(s.classRolls, battlePlayers(id))) await finishClassRoll(id); return true;
   }
   if (interaction.customId === `wb_choose_${id}`) {
     const s = stateOf(b); if (b.status !== 'class_select' || s.classOrder?.[s.classChoiceIndex] !== uid) return interaction.reply({ content: 'Сейчас класс выбирает другой игрок.', flags: MessageFlags.Ephemeral });
@@ -831,11 +850,11 @@ async function handle(interaction) {
   }
   if (interaction.isStringSelectMenu() && interaction.customId === `wb_classpick_${id}`) { const token = interaction.values[0]; const classKey = token.includes(':') ? token.slice(token.indexOf(':') + 1) : token; const r = await assignChosenClass(id, uid, token); return interaction.reply({ content: r.ok ? `✅ Выбран класс **${CLASSES[classKey]?.name || classKey}**.` : 'Этот класс уже недоступен или сейчас не твоя очередь.', flags: MessageFlags.Ephemeral }); }
   if (interaction.customId === `wb_initroll_${id}`) {
-    if (b.status !== 'initiative_roll') return interaction.reply({ content: 'Сейчас не этап инициативы.', flags: MessageFlags.Ephemeral }); const s = stateOf(b); if (s.initiativeRolls?.[uid] != null) return interaction.reply({ content: `Ты уже выбросил **${s.initiativeRolls[uid]}**.`, flags: MessageFlags.Ephemeral }); let roll = rand(1,20); s.initiativeRolls[uid] = roll; s.log.push(`⚔️ <@${uid}> выбрасывает инициативу **${roll}**.`); saveState(b,s); await interaction.reply({ content:`🎲 Инициатива: **${roll}**`, flags:MessageFlags.Ephemeral }); await refresh(id); if(allHave(s.initiativeRolls,battlePlayers(id))) await startCombat(id); return true;
+    if (b.status !== 'initiative_roll') return interaction.reply({ content: 'Сейчас не этап инициативы.', flags: MessageFlags.Ephemeral }); const s = stateOf(b); if (s.initiativeRolls?.[uid] != null) return interaction.reply({ content: `Ты уже выбросил **${s.initiativeRolls[uid]}**.`, flags: MessageFlags.Ephemeral }); let roll = rand(1,20); s.initiativeRolls[uid] = roll; s.log.push(`⚔️ **${heroName(p)}** · <@${uid}> выбрасывает инициативу **${roll}**.`); saveState(b,s); await interaction.reply({ content:`🎲 Инициатива: **${roll}**`, flags:MessageFlags.Ephemeral }); await refresh(id); if(allHave(s.initiativeRolls,battlePlayers(id))) await startCombat(id); return true;
   }
   if (interaction.customId === `wb_status_${id}`) {
     const c = CLASSES[p.class_key], e = effects(p), file = cardFile(c.cardId, 'class');
-    const content = `${roleIcon(c.role)} **${c.name}**
+    const content = `⚔️ ${heroSummary(p)}\n${roleIcon(c.role)} **${c.name}**
 ❤️ ${p.hp}/${p.max_hp}${e.shield ? ` • 🛡️ ${e.shield}` : ''}
 ${resourceMeta(p.class_key).icon} ${resourceMeta(p.class_key).label}: ${skillResourceValue(p)}/100${resourceType(p.class_key) === 'mana' ? `
 💥 Заряд ульты: ${p.ult_charge || 0}/100` : ''}

@@ -100,8 +100,8 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
     const col = i % cols, row = Math.floor(i / cols), x = 505 + col * 337, y = 132 + row * 142;
     ctx.save(); rounded(ctx, x, y, itemW, itemH, 16); ctx.fillStyle = p.user_id === currentUserId ? 'rgba(123,67,190,.56)' : p.status === 'dead' ? 'rgba(48,45,54,.72)' : 'rgba(23,17,35,.82)'; ctx.fill(); ctx.strokeStyle = p.user_id === currentUserId ? '#d4a8ff' : 'rgba(255,255,255,.12)'; ctx.lineWidth = p.user_id === currentUserId ? 3 : 1; ctx.stroke(); ctx.restore();
     text(ctx, p.user_id === currentUserId ? '▶' : (p.status === 'dead' ? '☠' : '●'), x + 14, y + 27, 18, p.user_id === currentUserId ? '#e7c8ff' : p.status === 'dead' ? '#aaa' : '#6ee7a7', 'bold');
-    text(ctx, ellipsize(ctx, p.displayName || p.username || `Игрок ${i + 1}`, 165), x + 42, y + 28, 20, '#fff', 'bold');
-    text(ctx, c.name, x + itemW - 14, y + 28, 17, '#cdb7de', 'normal', 'right');
+    text(ctx, ellipsize(ctx, p.hero_name || p.displayName || p.username || `Игрок ${i + 1}`, 165), x + 42, y + 28, 20, '#fff', 'bold');
+    text(ctx, `${c.name} • ур.${p.hero_level || 1}`, x + itemW - 14, y + 28, 17, '#cdb7de', 'normal', 'right');
     bar(ctx, x + 14, y + 44, itemW - 28, 23, p.hp, p.max_hp, '#3fbf72', `${p.hp}/${p.max_hp} HP`);
     const rt = c.resourceType || 'energy';
     const mainValue = rt === 'mana' ? Number(p.mana || 0) : Number(p.energy || 0);
@@ -120,7 +120,7 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
     const c = CLASSES[p.class_key] || { name: '—' };
     const mark = p.user_id === currentUserId ? '▶' : `${i + 1}.`;
     text(ctx, mark, 1225, 149 + i * 38, 18, p.user_id === currentUserId ? '#e4bdff' : '#aaa', 'bold');
-    text(ctx, ellipsize(ctx, `${p.displayName || p.username || 'Игрок'} — ${c.name}`, 280), 1260, 149 + i * 38, 17, '#fff');
+    text(ctx, ellipsize(ctx, `${p.hero_name || p.displayName || p.username || 'Игрок'} — ${c.name}`, 280), 1260, 149 + i * 38, 17, '#fff');
   });
   text(ctx, 'ЖУРНАЛ БОЯ', 1225, 448, 23, '#d8bdff', 'bold');
   const logs = (state.log || []).slice(-8).reverse();

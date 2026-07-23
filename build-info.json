@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE V15.4 — SHOP & COMPANIONS",
-  "version": "15.4.0",
-  "buildId": "v15.4-shop-companions-20260723",
+  "name": "GS CORE STABLE V15.5 — HERO WORLD BOSS INTEGRATION",
+  "version": "15.5.0",
+  "buildId": "v15.5-hero-world-boss-20260723",
   "startup": "node index.js"
 }
