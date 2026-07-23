@@ -128,6 +128,15 @@ db.exec(`
         PRIMARY KEY(user_id, slot)
     );
 
+
+    CREATE TABLE IF NOT EXISTS hero_item_collection (
+        user_id TEXT NOT NULL,
+        item_key TEXT NOT NULL,
+        first_acquired_from TEXT,
+        first_acquired_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, item_key)
+    );
+
     CREATE TABLE IF NOT EXISTS hero_companions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT NOT NULL,

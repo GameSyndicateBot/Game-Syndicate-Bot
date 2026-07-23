@@ -1,5 +1,6 @@
 const { db } = require('../../database/db');
 const { HERO_CLASSES, ORIGINS, xpForNextLevel } = require('./heroData');
+const { STARTER_BY_CLASS } = require('./itemData');
 
 function getHero(userId) {
   return db.prepare('SELECT * FROM heroes WHERE user_id = ?').get(userId) || null;
@@ -26,7 +27,13 @@ function createHero({ userId, name, gender, classKey, originKey }) {
   const result = insert.run({ userId, name: cleanName, gender, classKey, originKey, ...stats });
   const hero = getHero(userId);
   addHistory(userId, 'hero_created', `Герой ${cleanName} начал свой путь.`, null);
-  return { ok: true, hero, insertId: result.lastInsertRowid };
+  try {
+    const { grantItem } = require('./itemService');
+    const starterKey = STARTER_BY_CLASS[classKey] || 'rusty_blade';
+    const starter = grantItem(userId, starterKey, 1, 'starter');
+    if (starter) addHistory(userId, 'starter_item', `Получен стартовый предмет «${starter.name}».`, { itemKey: starterKey });
+  } catch (error) { console.error('[Hero] starter item error:', error); }
+  return { ok: true, hero: getHero(userId), insertId: result.lastInsertRowid };
 }
 function addHistory(userId, eventType, description, metadata = null) {
   db.prepare(`INSERT INTO hero_history (user_id,event_type,description,metadata_json) VALUES (?,?,?,?)`)

@@ -16,7 +16,7 @@ async function createHeroCard(hero,user){
  panel(ctx,390,300,1010,140);ctx.fillStyle='#fff';ctx.font='bold 38px Arial';ctx.fillText(`УРОВЕНЬ ${hero.level}`,425,350);
  const req=xpForNextLevel(hero.level),p=Math.min(1,hero.xp/req);rr(ctx,425,375,930,32,16);ctx.fillStyle='#180827';ctx.fill();if(p>0){rr(ctx,425,375,Math.max(32,930*p),32,16);const g=ctx.createLinearGradient(425,0,1355,0);g.addColorStop(0,'#6D28D9');g.addColorStop(1,'#E879F9');ctx.fillStyle=g;ctx.fill();}ctx.fillStyle='#fff';ctx.font='bold 18px Arial';ctx.textAlign='center';ctx.fillText(`${hero.xp} / ${req} XP`,890,398);ctx.textAlign='left';
  const sx=85,sy=505,w=410,gap=35;stat(ctx,sx,sy,w,'❤️ HP',`${hero.hp}/${hero.max_hp}`);stat(ctx,sx+w+gap,sy,w,'⚔️ СИЛА',hero.strength);stat(ctx,sx+(w+gap)*2,sy,w,'🛡️ ЗАЩИТА',hero.defense);stat(ctx,sx,sy+115,w,'🏃 ЛОВКОСТЬ',hero.dexterity);stat(ctx,sx+w+gap,sy+115,w,'🧠 ИНТЕЛЛЕКТ',hero.intelligence);stat(ctx,sx+(w+gap)*2,sy+115,w,'🍀 УДАЧА',hero.luck);
- panel(ctx,85,760,1330,72);ctx.fillStyle='#C084FC';ctx.font='bold 21px Arial';ctx.fillText(`ПРОИСХОЖДЕНИЕ: ${org.passive}`,115,805);ctx.fillStyle='#8B5CF6';ctx.textAlign='right';ctx.fillText('GS EXPEDITIONS • RPG CORE V15.1',1385,805);ctx.textAlign='left';
+ panel(ctx,85,760,1330,72);ctx.fillStyle='#C084FC';ctx.font='bold 21px Arial';ctx.fillText(`ПРОИСХОЖДЕНИЕ: ${org.passive}`,115,805);ctx.fillStyle='#8B5CF6';ctx.textAlign='right';ctx.fillText('GS EXPEDITIONS • ITEMS & EQUIPMENT V15.3',1385,805);ctx.textAlign='left';
  return c.toBuffer('image/png');
 }
 module.exports={createHeroCard};
