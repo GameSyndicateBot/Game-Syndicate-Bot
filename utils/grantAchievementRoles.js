@@ -17,13 +17,7 @@ async function grantAchievementRoles(member, player) {
         if (achievementCount < reward.count) continue;
         if (member.roles.cache.has(reward.roleId)) continue;
 
-        const role = member.guild?.roles?.cache?.get(reward.roleId);
-        if (!role) {
-            console.warn(`[Achievements Roles] Роль ${reward.roleId} для порога ${reward.count} не найдена на сервере ${member.guild?.id || 'unknown'}; выдача пропущена.`);
-            continue;
-        }
-
-        await member.roles.add(role);
+        await member.roles.add(reward.roleId);
     }
 }
 

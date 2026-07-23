@@ -247,26 +247,6 @@ db.exec(`
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS hero_active_buffs (
-        user_id TEXT NOT NULL,
-        buff_key TEXT NOT NULL,
-        source_item_key TEXT NOT NULL,
-        context TEXT NOT NULL,
-        charges INTEGER NOT NULL DEFAULT 1,
-        bonuses_json TEXT NOT NULL DEFAULT '{}',
-        activated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        expires_at TEXT,
-        PRIMARY KEY(user_id, buff_key)
-    );
-
-    CREATE TABLE IF NOT EXISTS hero_consumable_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT NOT NULL,
-        item_key TEXT NOT NULL,
-        effect_json TEXT NOT NULL DEFAULT '{}',
-        used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-
     CREATE INDEX IF NOT EXISTS idx_hero_history_user ON hero_history(user_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_hero_inventory_user ON hero_inventory(user_id);
     CREATE INDEX IF NOT EXISTS idx_hero_expeditions_user_status ON hero_expeditions(user_id, status);
@@ -274,8 +254,6 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_hero_chests_user ON hero_chests(user_id);
     CREATE INDEX IF NOT EXISTS idx_hero_crafting_user ON hero_crafting_history(user_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_hero_upgrades_user ON hero_upgrade_history(user_id, id DESC);
-    CREATE INDEX IF NOT EXISTS idx_hero_buffs_user ON hero_active_buffs(user_id, context);
-    CREATE INDEX IF NOT EXISTS idx_hero_consumables_user ON hero_consumable_history(user_id, id DESC);
 `);
 
 // V15.6.3: safe additive migration for existing databases.

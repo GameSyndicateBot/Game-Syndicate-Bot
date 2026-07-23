@@ -3,7 +3,6 @@
 const { getHero } = require('../../systems/hero/heroService');
 const { getEffectiveHero, getEquipment, getEquipmentBonuses } = require('../../systems/hero/itemService');
 const { getActiveCompanion } = require('../../systems/hero/companionService');
-const { consumeContextBuffs } = require('../../systems/hero/alchemyService');
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, Number(n) || 0)); }
 
@@ -12,8 +11,6 @@ function buildHeroSnapshot(userId) {
   if (!base) return null;
   const hero = getEffectiveHero(base) || base;
   const bonuses = getEquipmentBonuses(userId) || {};
-  const temporary = consumeContextBuffs(userId, 'world_boss');
-  for (const [key, value] of Object.entries(temporary.bonuses || {})) bonuses[key] = (Number(bonuses[key]) || 0) + (Number(value) || 0);
   const equipment = getEquipment(userId).map(item => ({
     slot: item.slot,
     itemKey: item.item_key,
@@ -26,8 +23,7 @@ function buildHeroSnapshot(userId) {
   // so it contributes roughly 20–30% at the very top end.
   const levelDamage = clamp((Number(hero.level || 1) - 1) * 0.35, 0, 8);
   const statDamage = clamp((Number(hero.strength || 0) + Number(hero.intelligence || 0) + Number(hero.dexterity || 0)) / 18, 0, 9);
-  const bombDamagePercent = clamp(Number(bonuses.boss_flat_damage || 0) / 20, 0, 8);
-  const explicitDamage = clamp(Number(bonuses.world_boss_damage || 0) + bombDamagePercent, 0, 18);
+  const explicitDamage = clamp(bonuses.world_boss_damage, 0, 12);
   const damagePercent = clamp(levelDamage + statDamage + explicitDamage, 0, 25);
 
   const hpPercent = clamp((Number(hero.level || 1) - 1) * 0.25 + Number(hero.max_hp || 0) / 80, 0, 20);
@@ -46,7 +42,7 @@ function buildHeroSnapshot(userId) {
       intelligence: Number(hero.intelligence || 0),
       luck: Number(hero.luck || 0),
     },
-    combat: { damagePercent, hpPercent, resistancePercent, consumablesUsed: temporary.consumed },
+    combat: { damagePercent, hpPercent, resistancePercent },
     equipment,
     companion: companion ? {
       key: companion.companion_key,

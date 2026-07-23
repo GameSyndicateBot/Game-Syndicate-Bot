@@ -1,8 +1,8 @@
 {
   "name": "gs-core",
-  "version": "15.6.4-fix.5",
+  "version": "15.6.3",
   "private": true,
-  "description": "Game Syndicate V15.6.4 with verified Discord REST command publication and V15.6.3-compatible runtime",
+  "description": "Game Syndicate V15.6.2 crafting and blacksmith",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

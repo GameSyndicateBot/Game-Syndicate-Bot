@@ -57,14 +57,6 @@ for (const file of commandFiles) {
 client.once('clientReady', () => {
     console.log(`✅ Бот ${client.user.tag} запущен!`);
 
-    // Команды синхронизируются уже после запуска бота и никогда не блокируют старт.
-    // Один PUT заменяет весь серверный набор без предварительного удаления.
-    const { syncDiscordCommands } = require('./scripts/syncDiscordCommands');
-    syncDiscordCommands(client).catch(error => {
-        console.error('⚠️ Не удалось синхронизировать slash-команды, бот продолжает работать:');
-        console.error(error?.rawError?.message || error?.message || error);
-    });
-
     // Пересчитываем пропущенные серии реакций и выдаём достижения
     // по уже накопленной статистике и коллекциям карточек.
     setTimeout(async () => {
@@ -200,14 +192,6 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
-            return;
-        }
-
-        if (interaction.isAutocomplete()) {
-            const command = client.commands.get(interaction.commandName);
-            if (command?.autocomplete) {
-                await command.autocomplete(interaction);
-            }
             return;
         }
 
