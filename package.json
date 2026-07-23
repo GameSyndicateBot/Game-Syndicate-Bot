@@ -1,8 +1,8 @@
 {
   "name": "gs-core",
-  "version": "15.6.1",
+  "version": "15.6.2",
   "private": true,
-  "description": "Game Syndicate V15.6.1 materials and chests",
+  "description": "Game Syndicate V15.6.2 crafting and blacksmith",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

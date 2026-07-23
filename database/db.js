@@ -222,11 +222,23 @@ db.exec(`
         opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS hero_crafting_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        recipe_key TEXT NOT NULL,
+        item_key TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        dust_spent INTEGER NOT NULL DEFAULT 0,
+        materials_json TEXT NOT NULL DEFAULT '{}',
+        crafted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_hero_history_user ON hero_history(user_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_hero_inventory_user ON hero_inventory(user_id);
     CREATE INDEX IF NOT EXISTS idx_hero_expeditions_user_status ON hero_expeditions(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_hero_materials_user ON hero_materials(user_id);
     CREATE INDEX IF NOT EXISTS idx_hero_chests_user ON hero_chests(user_id);
+    CREATE INDEX IF NOT EXISTS idx_hero_crafting_user ON hero_crafting_history(user_id, id DESC);
 `);
 
 db.prepare(`

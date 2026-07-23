@@ -1,6 +1,6 @@
 {
-  "name": "GS CORE STABLE V15.6.1 — MATERIALS & CHESTS",
-  "version": "15.6.1",
-  "buildId": "v15.6.1-materials-chests-20260723",
+  "name": "GS CORE STABLE V15.6.2 — CRAFTING & BLACKSMITH",
+  "version": "15.6.2",
+  "buildId": "v15.6.2-crafting-blacksmith-20260723",
   "startup": "node index.js"
 }

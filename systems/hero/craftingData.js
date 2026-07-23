@@ -1,0 +1,28 @@
+const RECIPES = Object.freeze({
+  rusty_blade: { itemKey:'rusty_blade', npc:'Кузнец Бран', dust:80, level:1, materials:{ iron_ore:4, wood:2 } },
+  hunters_bow: { itemKey:'hunters_bow', npc:'Кузнец Бран', dust:90, level:1, materials:{ wood:6, leather:2 } },
+  novice_staff: { itemKey:'novice_staff', npc:'Кузнец Бран', dust:100, level:1, materials:{ wood:5, crystal:1 } },
+  patched_leather: { itemKey:'patched_leather', npc:'Кузнец Бран', dust:110, level:1, materials:{ leather:7, wood:2 } },
+  leather_cap: { itemKey:'leather_cap', npc:'Кузнец Бран', dust:75, level:1, materials:{ leather:4 } },
+  worn_boots: { itemKey:'worn_boots', npc:'Кузнец Бран', dust:90, level:1, materials:{ leather:5, wood:1 } },
+  copper_ring: { itemKey:'copper_ring', npc:'Кузнец Бран', dust:120, level:2, materials:{ iron_ore:3, crystal:1 } },
+  forest_amulet: { itemKey:'forest_amulet', npc:'Кузнец Бран', dust:130, level:2, materials:{ wood:4, herb:3, essence:1 } },
+  iron_axe: { itemKey:'iron_axe', npc:'Кузнец Бран', dust:260, level:3, materials:{ iron_ore:12, wood:4, stone:2 } },
+  chainmail: { itemKey:'chainmail', npc:'Кузнец Бран', dust:300, level:3, materials:{ iron_ore:15, leather:4 } },
+  iron_helm: { itemKey:'iron_helm', npc:'Кузнец Бран', dust:240, level:3, materials:{ iron_ore:10, leather:2 } },
+  duelist_gloves: { itemKey:'duelist_gloves', npc:'Кузнец Бран', dust:270, level:4, materials:{ leather:8, iron_ore:5, essence:1 } },
+  mountain_boots: { itemKey:'mountain_boots', npc:'Кузнец Бран', dust:280, level:4, materials:{ leather:8, iron_ore:6, stone:3 } },
+  ring_strength: { itemKey:'ring_strength', npc:'Кузнец Бран', dust:360, level:5, materials:{ iron_ore:7, crystal:3, essence:1 } },
+  sun_amulet: { itemKey:'sun_amulet', npc:'Кузнец Бран', dust:390, level:5, materials:{ crystal:3, essence:3, ancient_fragment:1 } },
+  shadow_dagger: { itemKey:'shadow_dagger', npc:'Кузнец Бран', dust:850, level:7, materials:{ iron_ore:18, crystal:7, essence:5, void_crystal:1 } },
+  paladin_plate: { itemKey:'paladin_plate', npc:'Кузнец Бран', dust:900, level:7, materials:{ iron_ore:25, leather:8, crystal:5, ancient_fragment:3 } },
+  seer_crown: { itemKey:'seer_crown', npc:'Кузнец Бран', dust:820, level:7, materials:{ crystal:8, essence:7, ancient_fragment:3 } },
+  rune_gauntlets: { itemKey:'rune_gauntlets', npc:'Кузнец Бран', dust:780, level:7, materials:{ iron_ore:15, crystal:6, essence:5, ancient_fragment:2 } },
+  healing_potion_small: { itemKey:'healing_potion_small', npc:'Алхимик Лира', dust:35, level:1, materials:{ herb:4, essence:1 } },
+  healing_potion_large: { itemKey:'healing_potion_large', npc:'Алхимик Лира', dust:110, level:4, materials:{ herb:10, essence:4, crystal:1 } },
+  rage_scroll: { itemKey:'rage_scroll', npc:'Алхимик Лира', dust:230, level:6, materials:{ essence:5, bone:4, crystal:3 } },
+  defense_scroll: { itemKey:'defense_scroll', npc:'Алхимик Лира', dust:230, level:6, materials:{ essence:5, stone:5, crystal:3 } },
+  alchemist_bomb: { itemKey:'alchemist_bomb', npc:'Алхимик Лира', dust:420, level:8, materials:{ essence:8, crystal:6, iron_ore:5, void_crystal:1 } },
+});
+
+module.exports = { RECIPES };
