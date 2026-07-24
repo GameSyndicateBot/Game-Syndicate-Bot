@@ -21,6 +21,8 @@ function getCategoryInfo(category) {
         streaks: { icon: 'STR', title: 'Серии' },
         special: { icon: 'SPC', title: 'Особые' },
         xp: { icon: 'XP', title: 'XP' },
+        guild: { icon: 'GLD', title: 'Гильдия героев' },
+        expeditions: { icon: 'MAP', title: 'Экспедиции' },
     };
 
     return categories[category] || { icon: 'ACH', title: category };
@@ -95,6 +97,8 @@ async function createAchievementsOverviewCard(user, achievements, unlockedIds) {
         'streaks',
         'special',
         'xp',
+        'guild',
+        'expeditions',
     ];
     const visibleCategoryCount = categoriesOrder.filter(category =>
         achievements.some(achievement => (achievement.category || 'other') === category)

@@ -28,6 +28,8 @@ const categories = [
     { label: 'Ежедневки', value: 'daily', emoji: '🎯' },
     { label: 'Серии', value: 'streaks', emoji: '🔥' },
     { label: 'Особые', value: 'special', emoji: '🌙' },
+    { label: 'Гильдия героев', value: 'guild', emoji: '🏰' },
+    { label: 'Экспедиции', value: 'expeditions', emoji: '🗺️' },
     { label: 'XP', value: 'xp', emoji: '⚡' },
 ];
 

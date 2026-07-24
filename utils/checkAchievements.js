@@ -100,6 +100,62 @@ function getQuickEventStats(userId) {
     };
 }
 
+
+function getGuildHeroStats(userId) {
+    const hero = db.prepare(`SELECT level FROM heroes WHERE user_id = ?`).get(userId);
+    const maxClass = db.prepare(`SELECT COALESCE(MAX(level), 0) AS value FROM hero_class_progress WHERE user_id = ?`).get(userId)?.value || 0;
+    const trainedClasses = db.prepare(`SELECT COUNT(*) AS value FROM hero_class_progress WHERE user_id = ? AND level >= 2`).get(userId)?.value || 0;
+    const crafts = db.prepare(`SELECT COUNT(*) AS value FROM hero_crafting_history WHERE user_id = ?`).get(userId)?.value || 0;
+    const upgrades = db.prepare(`SELECT COUNT(*) AS value FROM hero_upgrade_history WHERE user_id = ? AND success = 1`).get(userId)?.value || 0;
+    const consumables = db.prepare(`SELECT COUNT(*) AS value FROM hero_consumable_history WHERE user_id = ?`).get(userId)?.value || 0;
+    const companions = db.prepare(`SELECT COUNT(*) AS value FROM hero_companions WHERE user_id = ?`).get(userId)?.value || 0;
+    const artifacts = db.prepare(`SELECT COUNT(*) AS value FROM hero_artifacts WHERE user_id = ?`).get(userId)?.value || 0;
+
+    return {
+        heroCreated: hero ? 1 : 0,
+        heroLevel: Number(hero?.level || 0),
+        maxClassLevel: Number(maxClass),
+        trainedClasses: Number(trainedClasses),
+        crafts: Number(crafts),
+        successfulUpgrades: Number(upgrades),
+        consumables: Number(consumables),
+        companions: Number(companions),
+        artifacts: Number(artifacts),
+    };
+}
+
+function getExpeditionAchievementStats(userId) {
+    const rows = db.prepare(`
+        SELECT location_key, result_json
+        FROM hero_expeditions
+        WHERE user_id = ? AND status = 'resolved'
+    `).all(userId);
+
+    let great = 0;
+    const uniqueLocations = new Set();
+
+    for (const row of rows) {
+        if (row.location_key) uniqueLocations.add(row.location_key);
+        try {
+            const result = JSON.parse(row.result_json || '{}');
+            if (result?.outcome === 'great') great++;
+        } catch (_) {}
+    }
+
+    const minibossWins = db.prepare(`
+        SELECT COUNT(*) AS value
+        FROM miniboss_kills
+        WHERE user_id = ? AND outcome = 'victory'
+    `).get(userId)?.value || 0;
+
+    return {
+        completed: rows.length,
+        great,
+        uniqueLocations: uniqueLocations.size,
+        minibossWins: Number(minibossWins),
+    };
+}
+
 function isAchievementCompleted(achievement, player, member) {
     const now = new Date();
 
@@ -174,6 +230,46 @@ function isAchievementCompleted(achievement, player, member) {
 
         case 'quick_event_unique_types':
             return getQuickEventStats(player.user_id).uniqueTypes >= achievement.target;
+
+
+        case 'guild_hero_created':
+            return getGuildHeroStats(player.user_id).heroCreated >= achievement.target;
+
+        case 'guild_hero_level':
+            return getGuildHeroStats(player.user_id).heroLevel >= achievement.target;
+
+        case 'guild_max_class_level':
+            return getGuildHeroStats(player.user_id).maxClassLevel >= achievement.target;
+
+        case 'guild_trained_classes':
+            return getGuildHeroStats(player.user_id).trainedClasses >= achievement.target;
+
+        case 'guild_crafts':
+            return getGuildHeroStats(player.user_id).crafts >= achievement.target;
+
+        case 'guild_successful_upgrades':
+            return getGuildHeroStats(player.user_id).successfulUpgrades >= achievement.target;
+
+        case 'guild_consumables':
+            return getGuildHeroStats(player.user_id).consumables >= achievement.target;
+
+        case 'guild_companions':
+            return getGuildHeroStats(player.user_id).companions >= achievement.target;
+
+        case 'guild_artifacts':
+            return getGuildHeroStats(player.user_id).artifacts >= achievement.target;
+
+        case 'expeditions_completed':
+            return getExpeditionAchievementStats(player.user_id).completed >= achievement.target;
+
+        case 'expeditions_great':
+            return getExpeditionAchievementStats(player.user_id).great >= achievement.target;
+
+        case 'expeditions_unique_locations':
+            return getExpeditionAchievementStats(player.user_id).uniqueLocations >= achievement.target;
+
+        case 'expedition_miniboss_wins':
+            return getExpeditionAchievementStats(player.user_id).minibossWins >= achievement.target;
 
         case 'card_rarity_complete':
         case 'boss_pack_type_complete':

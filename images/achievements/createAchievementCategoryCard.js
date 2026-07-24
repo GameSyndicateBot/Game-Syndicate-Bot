@@ -36,6 +36,8 @@ const categoryTitles = {
     special: 'Особые',
     xp: 'XP',
     quick_events: 'Quick Events',
+    guild: 'Гильдия героев',
+    expeditions: 'Экспедиции',
 };
 
 async function createAchievementCategoryCard(category, achievements, unlockedIds, page = 1) {
