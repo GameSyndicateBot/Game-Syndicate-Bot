@@ -1,12 +1,156 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getHero } = require('../systems/hero/heroService');
 const { LOCATIONS } = require('../systems/hero/expeditionData');
-const { getDailyLocations, getActiveExpedition, getLatestExpeditions, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt } = require('../systems/hero/expeditionService');
+const { getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow } = require('../systems/hero/expeditionService');
+const { createExpeditionHubCard } = require('../images/hero/createExpeditionHubCard');
 
 function ts(value, style = 'R') { return `<t:${Math.floor(new Date(value).getTime() / 1000)}:${style}>`; }
 function stars(n) { return '★'.repeat(n) + '☆'.repeat(5 - n); }
 function outcomeLabel(key) { return ({ great:'🌟 Великолепный успех', success:'✅ Успех', partial:'⚠️ Частичный успех', fail:'❌ Провал' })[key] || key; }
-function noHero() { return { content: '❌ Сначала создай героя командой `/hero create`.', flags: MessageFlags.Ephemeral }; }
+function noHero() { return { content: '❌ Сначала создай героя в постоянном **Guild Hub**.', flags: MessageFlags.Ephemeral }; }
+
+
+const EXPEDITION_CHANNEL_ID = '1529566430301782017';
+const HUB_MARKER = '🗺️ **EXPEDITION HUB • GAME SYNDICATE**';
+let lastAutoHubSignature = null;
+let lastHubMessageId = null;
+
+function hubRows(world, locked) {
+  const buttons = world.locations.slice(0, 3).map((location, index) =>
+    new ButtonBuilder()
+      .setCustomId(`expedition:start:${location.key}`)
+      .setLabel(location.name)
+      .setStyle(index === 0 ? ButtonStyle.Success : index === 1 ? ButtonStyle.Primary : ButtonStyle.Danger)
+      .setDisabled(locked)
+  );
+  return [
+    new ActionRowBuilder().addComponents(...buttons),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('expedition:status').setLabel('Моя экспедиция').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('expedition:return').setLabel('Забрать результат').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('expedition:history').setLabel('История').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('expedition:refresh').setLabel('Обновить хаб').setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+function bossLabel(date) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).format(date) + ' МСК';
+}
+
+async function hubPayload(guildId = 'global') {
+  const world = getDailyWorld(guildId);
+  const window = expeditionWindow();
+  const boss = nextBossAt();
+  const buffer = await createExpeditionHubCard({ world, nextBossLabel: bossLabel(boss), locked: !window.fits });
+  return {
+    content: `${HUB_MARKER}\nВыбери одну из трёх локаций. Поход длится **4 часа**. Личные результаты открываются только тебе.`,
+    files: [new AttachmentBuilder(buffer, { name: 'gs-expedition-hub.png' })],
+    components: hubRows(world, !window.fits),
+  };
+}
+
+async function ensureExpeditionHub(client) {
+  try {
+    const channel = await client.channels.fetch(EXPEDITION_CHANNEL_ID);
+    if (!channel?.isTextBased()) return null;
+    const recent = await channel.messages.fetch({ limit: 50 });
+    const existing = recent.find(m => m.author.id === client.user.id && m.content.startsWith(HUB_MARKER));
+    const payload = await hubPayload(channel.guildId || 'global');
+    if (existing) {
+      await existing.edit(payload);
+      lastHubMessageId = existing.id;
+      return existing;
+    }
+    const created = await channel.send(payload);
+    lastHubMessageId = created.id;
+    return created;
+  } catch (error) {
+    console.error('[Expedition Hub] Не удалось создать/обновить панель:', error);
+    return null;
+  }
+}
+
+function currentHubSignature(guildId = 'global') {
+  const world = getDailyWorld(guildId);
+  const window = expeditionWindow();
+  return `${world.dateKey || ''}|${world.weather?.name || ''}|${world.locations.map(l => l.key).join(',')}|${window.fits ? 'open' : 'locked'}|${bossLabel(nextBossAt())}`;
+}
+
+async function refreshExpeditionHubIfNeeded(client) {
+  const channel = await client.channels.fetch(EXPEDITION_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return null;
+  const signature = currentHubSignature(channel.guildId || 'global');
+  if (signature === lastAutoHubSignature && lastHubMessageId) {
+    const existing = await channel.messages.fetch(lastHubMessageId).catch(() => null);
+    if (existing) return null;
+  }
+  const message = await ensureExpeditionHub(client);
+  if (message) lastAutoHubSignature = signature;
+  return message;
+}
+
+async function handleComponent(interaction) {
+  if (interaction.channelId !== EXPEDITION_CHANNEL_ID) {
+    return interaction.reply({ content: `Панель экспедиций доступна только в канале <#${EXPEDITION_CHANNEL_ID}>.`, flags: MessageFlags.Ephemeral });
+  }
+
+  const parts = interaction.customId.split(':');
+  const action = parts[1];
+  let hero = getHero(interaction.user.id);
+  if (!hero) return interaction.reply(noHero());
+  if (hero.status === 'wounded' && recoverHero(interaction.user.id)) hero = getHero(interaction.user.id);
+
+  if (action === 'refresh') {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const message = await ensureExpeditionHub(interaction.client);
+    return interaction.editReply(message ? '✅ Expedition Hub обновлён.' : '❌ Не удалось обновить хаб.');
+  }
+
+  if (action === 'start') {
+    const result = startExpedition(interaction.user.id, parts[2], interaction.guildId || 'global');
+    const errors = {
+      busy: '❌ Герой сейчас недоступен.', active: '❌ Герой уже находится в экспедиции.',
+      boss_active: '❌ Сейчас идёт регистрация или бой с World Boss.',
+      boss_window: `❌ До World Boss осталось менее 4 часов. Герой не успеет вернуться к бою ${result.nextBossAt ? ts(result.nextBossAt) : ''}.`,
+      not_offered: '❌ Эта локация сегодня уже недоступна. Обнови хаб.',
+    };
+    if (!result.ok) return interaction.reply({ content: errors[result.reason] || '❌ Не удалось начать экспедицию.', flags: MessageFlags.Ephemeral });
+    return interaction.reply({
+      embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`)
+        .setDescription(`**${hero.name}** отправился в **${result.location.name}**.\n\nВозвращение ${ts(result.expedition.returns_at)}. После этого нажми **«Забрать результат»**.`)
+        .addFields({ name: 'Опасность', value: stars(result.location.difficulty), inline: true }, { name: 'Шанс успеха', value: `${Math.round(computeSuccessChance(hero, result.location))}%`, inline: true })],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  if (action === 'status') {
+    const active = getActiveExpedition(interaction.user.id);
+    if (!active) return interaction.reply({ content: 'ℹ️ Активной экспедиции нет. Герой свободен.', flags: MessageFlags.Ephemeral });
+    const loc = LOCATIONS[active.location_key];
+    const ready = Date.now() >= new Date(active.returns_at).getTime();
+    return interaction.reply({ content: ready ? `✅ **${hero.name}** вернулся из локации **${loc?.name || active.location_key}**. Нажми **«Забрать результат»**.` : `⏳ **${hero.name}** исследует **${loc?.name || active.location_key}** и вернётся ${ts(active.returns_at)}.`, flags: MessageFlags.Ephemeral });
+  }
+
+  if (action === 'return') {
+    const result = resolveExpedition(interaction.user.id);
+    if (!result.ok) {
+      const text = result.reason === 'not_ready' ? `⏳ Герой ещё в пути. Возвращение ${ts(result.expedition.returns_at)}.` : '❌ Завершённой экспедиции пока нет.';
+      return interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
+    }
+    const r = result.result;
+    const rewards = [`✨ **+${r.xp} XP**`, r.dust ? `💠 **+${r.dust} Dust**` : null, `🏅 **+${r.reputation} репутации**`, r.item ? `🎁 **${r.item.name}** [${r.item.rarity}]` : null, r.companion ? `🐾 **Новый питомец: ${r.companion.name}**` : null, r.injuryHours ? `🩹 Ранение на ${r.injuryHours} ч.` : null].filter(Boolean).join('\n');
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(r.outcome === 'fail' ? 0xEF4444 : r.outcome === 'partial' ? 0xF59E0B : 0x22C55E).setTitle(`${result.location.icon} ${outcomeLabel(r.outcome)}`).setDescription(`${r.event}\n\n${rewards}`)], flags: MessageFlags.Ephemeral });
+  }
+
+  if (action === 'history') {
+    const rows = getLatestExpeditions(interaction.user.id, 8);
+    const text = rows.length ? rows.map(e => { const loc = LOCATIONS[e.location_key]; let result = 'В пути'; try { const r = JSON.parse(e.result_json || 'null'); if (r) result = outcomeLabel(r.outcome); } catch {} return `${loc?.icon || '🗺️'} **${loc?.name || e.location_key}** — ${result}\n${ts(e.started_at, 'd')}`; }).join('\n\n') : 'Герой ещё не участвовал в экспедициях.';
+    return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x9333EA).setTitle(`📜 Экспедиции: ${hero.name}`).setDescription(text)], flags: MessageFlags.Ephemeral });
+  }
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -25,19 +169,30 @@ module.exports = {
   },
 
   async execute(interaction) {
+    if (interaction.channelId !== EXPEDITION_CHANNEL_ID) return interaction.reply({ content: `Команда доступна только в канале <#${EXPEDITION_CHANNEL_ID}>.`, flags: MessageFlags.Ephemeral });
     const sub = interaction.options.getSubcommand();
     let hero = getHero(interaction.user.id);
     if (!hero) return interaction.reply(noHero());
     if (hero.status === 'wounded' && recoverHero(interaction.user.id)) hero = getHero(interaction.user.id);
 
     if (sub === 'locations') {
-      const offered = getDailyLocations(interaction.guildId || 'dm');
+      const world = getDailyWorld(interaction.guildId || 'dm');
+      const offered = world.locations;
       const active = getActiveExpedition(interaction.user.id);
+      const window = expeditionWindow();
       const text = offered.map(l => {
         const chance = computeSuccessChance(hero, l);
         return `${l.icon} **${l.name}** · ${stars(l.difficulty)}\n${l.description}\n🎯 Твой шанс успеха: **${Math.round(chance)}%** · ⏳ **4 ч.** · ${l.dailyTheme.icon} **${l.dailyTheme.name}**\n${l.dailyTheme.description}\nКлюч: \`${l.key}\``;
       }).join('\n\n');
-      return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x7C3AED).setTitle('🗺️ Экспедиции на сегодня').setDescription(text).setFooter({ text: active ? 'Твой герой уже находится в экспедиции.' : `Следующий World Boss: ${ts(nextBossAt(), 't')} по МСК. Экспедиция должна завершиться до него.` })], flags: MessageFlags.Ephemeral });
+      const lockText = window.fits
+        ? `✅ До World Boss достаточно времени. Поход на 4 часа доступен.`
+        : `⚠️ До World Boss осталось менее 4 часов. Новые экспедиции закрыты.`;
+      return interaction.reply({ embeds: [new EmbedBuilder().setColor(window.fits ? 0x7C3AED : 0xEF4444).setTitle('🗺️ Экспедиции на сегодня').setDescription(`${world.weather.icon} **Погода: ${world.weather.name}**
+${world.weather.description}
+
+${text}
+
+${lockText}`).setFooter({ text: active ? 'Твой герой уже находится в экспедиции.' : `Следующий World Boss: ${ts(nextBossAt(), 't')} по МСК.` })], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'start') {
@@ -46,7 +201,7 @@ module.exports = {
       if (!result.ok) return interaction.reply({ content: errors[result.reason] || '❌ Не удалось начать экспедицию.', flags: MessageFlags.Ephemeral });
       let expeditionBuffs = {}; try { expeditionBuffs = JSON.parse(result.expedition.buffs_json || '{}') || {}; } catch {}
       const activeEffects = expeditionBuffs.effects?.length ? `\n\n🧪 Активировано: ${expeditionBuffs.effects.map(e => `**${e.icon} ${e.name}**`).join(', ')}` : '';
-      return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`).setDescription(`**${hero.name}** отправился в локацию **${result.location.name}**.\n\nВернётся ${ts(result.expedition.returns_at)} (${ts(result.expedition.returns_at, 'f')}).\nПосле этого используй \`/expedition return\`.${activeEffects}`).addFields({ name:'Опасность', value:stars(result.location.difficulty), inline:true }, { name:'Ожидаемый шанс', value:`${Math.round(computeSuccessChance(hero, result.location, expeditionBuffs.bonuses || {}))}%`, inline:true })] });
+      return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`).setDescription(`**${hero.name}** отправился в локацию **${result.location.name}**.\n\nВернётся ${ts(result.expedition.returns_at)} (${ts(result.expedition.returns_at, 'f')}).\nПосле этого используй \`/expedition return\`.${activeEffects}`).addFields({ name:'Опасность', value:stars(result.location.difficulty), inline:true }, { name:'Ожидаемый шанс', value:`${Math.round(computeSuccessChance(hero, result.location, expeditionBuffs.bonuses || {}))}%`, inline:true }, { name:'Погода', value:`${result.location.weather?.icon || '🌤️'} ${result.location.weather?.name || 'Без изменений'}`, inline:true })] });
     }
 
     if (sub === 'status') {
@@ -79,4 +234,8 @@ module.exports = {
       return interaction.reply({ embeds:[new EmbedBuilder().setColor(0x9333EA).setTitle(`📜 Экспедиции: ${hero.name}`).setDescription(text)], flags:MessageFlags.Ephemeral });
     }
   },
+  handleComponent,
+  ensureExpeditionHub,
+  EXPEDITION_CHANNEL_ID,
+  refreshExpeditionHubIfNeeded,
 };

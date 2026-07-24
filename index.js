@@ -72,6 +72,25 @@ client.once('clientReady', () => {
         }
     }, 8000);
 
+    // Восстанавливаем постоянный Expedition Hub и обновляем его при смене дня/окна World Boss.
+    setTimeout(async () => {
+        try {
+            const expeditionCommand = client.commands.get('expedition');
+            if (expeditionCommand?.refreshExpeditionHubIfNeeded) await expeditionCommand.refreshExpeditionHubIfNeeded(client);
+        } catch (error) {
+            console.error('[Expedition Hub] Ошибка автозапуска:', error);
+        }
+    }, 10000);
+
+    setInterval(async () => {
+        try {
+            const expeditionCommand = client.commands.get('expedition');
+            if (expeditionCommand?.refreshExpeditionHubIfNeeded) await expeditionCommand.refreshExpeditionHubIfNeeded(client);
+        } catch (error) {
+            console.error('[Expedition Hub] Ошибка автообновления:', error);
+        }
+    }, 60 * 1000);
+
     // Пересчитываем пропущенные серии реакций и выдаём достижения
     // по уже накопленной статистике и коллекциям карточек.
     setTimeout(async () => {
@@ -138,6 +157,11 @@ client.on('interactionCreate', async interaction => {
             if (interaction.customId.startsWith('quickevent_')) {
                 const { handleQuickEventComponent } = require('./systems/quickEventSystem');
                 return await handleQuickEventComponent(interaction);
+            }
+
+            if (interaction.customId.startsWith('expedition:')) {
+                const command = client.commands.get('expedition');
+                if (command?.handleComponent) return await command.handleComponent(interaction);
             }
 
             if (interaction.customId.startsWith('guild:')) {

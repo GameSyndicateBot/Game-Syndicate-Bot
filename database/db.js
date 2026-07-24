@@ -261,6 +261,32 @@ try { db.prepare("ALTER TABLE hero_expeditions ADD COLUMN buffs_json TEXT NOT NU
     if (!String(error.message).includes('duplicate column name')) throw error;
 }
 
+// V16.1.0: expedition snapshots and persistent daily world state.
+for (const migration of [
+    "ALTER TABLE hero_expeditions ADD COLUMN guild_id TEXT NOT NULL DEFAULT 'global'",
+    "ALTER TABLE hero_expeditions ADD COLUMN location_snapshot_json TEXT NOT NULL DEFAULT '{}'",
+    "ALTER TABLE hero_expeditions ADD COLUMN hero_snapshot_json TEXT NOT NULL DEFAULT '{}'",
+    "ALTER TABLE hero_expeditions ADD COLUMN hp_before INTEGER",
+    "ALTER TABLE hero_expeditions ADD COLUMN hp_after INTEGER"
+]) {
+    try { db.prepare(migration).run(); } catch (error) {
+        if (!String(error?.message || error).includes('duplicate column name')) throw error;
+    }
+}
+
+db.exec(`
+    CREATE TABLE IF NOT EXISTS expedition_daily_worlds (
+        guild_id TEXT NOT NULL,
+        date_key TEXT NOT NULL,
+        locations_json TEXT NOT NULL,
+        weather_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(guild_id, date_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_expedition_daily_worlds_date
+        ON expedition_daily_worlds(date_key);
+`);
+
 try { db.prepare('ALTER TABLE hero_inventory ADD COLUMN upgrade_level INTEGER NOT NULL DEFAULT 0').run(); } catch (error) {
     if (!String(error?.message || error).includes('duplicate column name')) throw error;
 }

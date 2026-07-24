@@ -17,11 +17,10 @@ function rngFromSeed(seed) { let s = hashNumber(seed) % 2147483647; return () =>
 function randomInt(rng, min, max) { return Math.floor(rng() * (max - min + 1)) + min; }
 function pick(rng, list) { return list[Math.floor(rng() * list.length)]; }
 
-function getDailyLocations(guildId = 'global', dateKey = todayKey()) {
+function buildDailyWorld(guildId = 'global', dateKey = todayKey()) {
   const entries = Object.entries(LOCATIONS);
   const rng = rngFromSeed(`gs-expeditions:${guildId}:${dateKey}`);
   const shuffled = [...entries].sort(() => rng() - 0.5);
-  // Не выдаём все самые сложные локации одновременно.
   const selected = shuffled.slice(0, 3);
   if (!selected.some(([, l]) => l.difficulty <= 2)) {
     const easy = entries.find(([, l]) => l.difficulty <= 2);
@@ -32,9 +31,39 @@ function getDailyLocations(guildId = 'global', dateKey = todayKey()) {
     { key:'danger', icon:'☠️', name:'Высокий риск', description:'Опасность выше, но награды заметно ценнее.', success:-8, rare:18, dust:1.55 },
     { key:'mystery', icon:'🔮', name:'Неизведанный путь', description:'Повышен шанс встретить питомца или обнаружить артефакт.', success:-2, rare:8, dust:1.15 },
   ];
-  return selected.map(([key, data], index) => ({ key, ...data, durationHours: 4, dailyTheme: dailyThemes[index] }));
+  const weatherPool = [
+    { key:'clear', icon:'☀️', name:'Ясное небо', description:'Дороги открыты. Шанс успеха немного выше.', success:3, rare:0, dust:1 },
+    { key:'rain', icon:'🌧️', name:'Ливень', description:'Тропы опаснее, зато алхимических материалов больше.', success:-3, rare:4, dust:1.05 },
+    { key:'fog', icon:'🌫️', name:'Густой туман', description:'Сложнее ориентироваться, но тайники легче остаются незамеченными.', success:-4, rare:8, dust:1.05 },
+    { key:'moon', icon:'🌕', name:'Полная луна', description:'Мистические события и редкие находки происходят чаще.', success:0, rare:12, dust:1 },
+    { key:'wind', icon:'🌬️', name:'Сильный ветер', description:'Путь утомительнее, но караваны оставляют больше добычи.', success:-2, rare:2, dust:1.12 },
+  ];
+  const weather = pick(rng, weatherPool);
+  const locations = selected.map(([key, data], index) => ({
+    key, ...data, durationHours: 4, dailyTheme: dailyThemes[index], weather,
+  }));
+  return { guildId, dateKey, weather, locations };
 }
 
+function getDailyWorld(guildId = 'global', dateKey = todayKey()) {
+  const row = db.prepare('SELECT * FROM expedition_daily_worlds WHERE guild_id=? AND date_key=?').get(guildId, dateKey);
+  if (row) {
+    try {
+      const locations = JSON.parse(row.locations_json || '[]');
+      const weather = JSON.parse(row.weather_json || '{}');
+      if (Array.isArray(locations) && locations.length === 3) return { guildId, dateKey, weather, locations };
+    } catch (_) {}
+  }
+  const world = buildDailyWorld(guildId, dateKey);
+  db.prepare(`INSERT INTO expedition_daily_worlds(guild_id,date_key,locations_json,weather_json)
+    VALUES(?,?,?,?) ON CONFLICT(guild_id,date_key) DO UPDATE SET locations_json=excluded.locations_json,weather_json=excluded.weather_json`)
+    .run(guildId, dateKey, JSON.stringify(world.locations), JSON.stringify(world.weather));
+  return world;
+}
+
+function getDailyLocations(guildId = 'global', dateKey = todayKey()) {
+  return getDailyWorld(guildId, dateKey).locations;
+}
 function getActiveExpedition(userId) {
   return db.prepare("SELECT * FROM hero_expeditions WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1").get(userId) || null;
 }
@@ -82,7 +111,18 @@ function startExpedition(userId, locationKey, guildId = 'global') {
   const returnsAt = new Date(Date.now() + durationMs).toISOString();
   const alchemy = consumeContextBuffs(userId, 'expedition');
   const buffPayload = { bonuses: alchemy.bonuses || {}, consumed: alchemy.consumed || [], effects: describeBuffKeys(alchemy.consumed || []) };
-  const info = db.prepare(`INSERT INTO hero_expeditions (user_id,location_key,status,returns_at,buffs_json) VALUES (?,?,'active',?,?)`).run(userId, locationKey, returnsAt, JSON.stringify(buffPayload));
+  const heroSnapshot = {
+    name: hero.name, level: hero.level, hp: hero.hp, max_hp: hero.max_hp,
+    class_key: hero.class_key, origin_key: hero.origin_key,
+    strength: hero.strength, defense: hero.defense, dexterity: hero.dexterity,
+    intelligence: hero.intelligence, luck: hero.luck,
+  };
+  const info = db.prepare(`INSERT INTO hero_expeditions
+    (user_id,location_key,status,returns_at,buffs_json,guild_id,location_snapshot_json,hero_snapshot_json,hp_before)
+    VALUES (?,?,'active',?,?,?,?,?,?)`).run(
+      userId, locationKey, returnsAt, JSON.stringify(buffPayload), guildId,
+      JSON.stringify(location), JSON.stringify(heroSnapshot), Number(hero.hp || hero.max_hp || 0)
+    );
   db.prepare("UPDATE heroes SET status='expedition', updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(userId);
   const buffText = buffPayload.effects.length ? ` Активировано: ${buffPayload.effects.map(e => `${e.icon} ${e.name}`).join(', ')}.` : '';
   addHistory(userId, 'expedition_started', `${location.icon} Герой отправился в локацию «${location.name}».${buffText}`, { expeditionId: Number(info.lastInsertRowid), locationKey, alchemy: buffPayload });
@@ -108,7 +148,8 @@ function computeSuccessChance(hero, location, extraBonuses = {}) {
   const difficultyPenalty = location.difficulty * 11;
   const equipment = getEquipmentBonuses(hero.user_id);
   const dailyThemeBonus = Number(location.dailyTheme?.success || 0);
-  return Math.max(28, Math.min(97, 72 + dailyThemeBonus + levelPower + classPower + luckPower + origin + (equipment.expedition_success || 0) + (Number(extraBonuses.expedition_success) || 0) - difficultyPenalty));
+  const weatherBonus = Number(location.weather?.success || 0);
+  return Math.max(28, Math.min(97, 72 + dailyThemeBonus + weatherBonus + levelPower + classPower + luckPower + origin + (equipment.expedition_success || 0) + (Number(extraBonuses.expedition_success) || 0) - difficultyPenalty));
 }
 function ensurePlayer(userId) {
   db.prepare(`INSERT OR IGNORE INTO players (user_id, username) VALUES (?, ?)`).run(userId, `Hero ${String(userId).slice(-4)}`);
@@ -116,6 +157,32 @@ function ensurePlayer(userId) {
 function addReputation(userId, locationKey, amount) {
   db.prepare(`INSERT INTO hero_reputation (user_id,location_key,reputation) VALUES (?,?,?)
     ON CONFLICT(user_id,location_key) DO UPDATE SET reputation=reputation+excluded.reputation, rank=1+((reputation+excluded.reputation)/100), updated_at=CURRENT_TIMESTAMP`).run(userId, locationKey, amount);
+}
+
+function buildExpeditionStory(rng, location, outcome, rewards = {}) {
+  const openings = {
+    whispering_forest: ['Под шорох древних ветвей герой углубился в Шепчущий лес.', 'Следуя по звериной тропе, герой обнаружил заброшенный охотничий лагерь.'],
+    misty_marsh: ['Сквозь ядовитый туман герой пробирался по зыбким мосткам.', 'Болотные огни увели героя к затонувшему святилищу.'],
+    sunken_ruins: ['Вода отступила и открыла вход в древний храм.', 'Среди затопленных колонн герой заметил следы прежней экспедиции.'],
+    iron_mountains: ['На перевале разыгралась буря, скрывшая старую шахту.', 'Звон металла привёл героя к заброшенным штольням.'],
+    ash_desert: ['Пепельный ветер заметал следы каравана.', 'Под раскалённым песком показались руины древней дороги.'],
+    moon_catacombs: ['Лунный свет проник сквозь трещины катакомб.', 'За некромантской печатью послышался шёпот давно погибших стражей.'],
+    crimson_citadel: ['Ворота Багровой цитадели открылись с тяжёлым скрипом.', 'Проклятые стражи заметили героя на внутреннем дворе крепости.'],
+    void_rift: ['Пространство вокруг Разлома дрожало и искажало каждый шаг.', 'Из Пустоты донёсся зов, обещавший силу и сокровища.'],
+  };
+  const middle = {
+    great: ['Герой разгадал скрытый механизм и добрался до нетронутого тайника.', 'Опасный противник был побеждён без единой ошибки, открыв путь к редкой добыче.'],
+    success: ['Путь оказался трудным, но осторожность помогла избежать главных ловушек.', 'После короткой схватки герой продолжил поиски и собрал достойную добычу.'],
+    partial: ['Непогода и ловушки заставили повернуть назад раньше времени.', 'Часть припасов была потеряна, однако герой сумел сохранить найденное.'],
+    fail: ['Засада оказалась слишком хорошо подготовленной, и герою пришлось отступить.', 'Сработавшая ловушка уничтожила припасы и едва не стоила герою жизни.'],
+  };
+  const extras = [];
+  if (rewards.companion) extras.push(`На обратном пути за героем последовал новый спутник — ${rewards.companion.name}.`);
+  if (rewards.item) extras.push(`Среди находок оказался предмет «${rewards.item.name}».`);
+  if (rewards.chest) extras.push(`В укрытии был найден сундук «${rewards.chest.name}».`);
+  if (rewards.injuryHours) extras.push('Герой вернулся раненым и теперь нуждается в восстановлении.');
+  if (rewards.dustLost) extras.push('Во время отступления часть Dust была потеряна.');
+  return [pick(rng, openings[location.key] || EVENTS[outcome]), pick(rng, middle[outcome] || EVENTS[outcome]), ...extras].join(' ');
 }
 
 function resolveExpedition(userId, { force = false } = {}) {
@@ -128,7 +195,8 @@ function resolveExpedition(userId, { force = false } = {}) {
   let expeditionBuffs = {};
   try { expeditionBuffs = JSON.parse(expedition.buffs_json || '{}') || {}; } catch { expeditionBuffs = {}; }
   const alchemyBonuses = expeditionBuffs.bonuses || {};
-  const location = LOCATIONS[expedition.location_key];
+  let location = LOCATIONS[expedition.location_key];
+  try { location = { ...location, ...(JSON.parse(expedition.location_snapshot_json || '{}') || {}) }; } catch (_) {}
   const rng = rngFromSeed(`resolve:${expedition.id}:${expedition.user_id}:${expedition.started_at}`);
   const chance = computeSuccessChance(hero, location, alchemyBonuses);
   const roll = rng() * 100;
@@ -139,8 +207,9 @@ function resolveExpedition(userId, { force = false } = {}) {
 
   let dust = 0, xp = 0, reputation = 0, item = null, companion = null, injuryHours = 0, dustLost = 0;
   const theme = location.dailyTheme || {};
-  const dustMultiplier = Number(theme.dust || 1);
-  const themeRare = Number(theme.rare || 0);
+  const weather = location.weather || {};
+  const dustMultiplier = Number(theme.dust || 1) * Number(weather.dust || 1);
+  const themeRare = Number(theme.rare || 0) + Number(weather.rare || 0);
   if (outcome === 'great') {
     dust = Math.round(randomInt(rng, ...location.dust) * 1.45 * dustMultiplier); xp = Math.round(randomInt(rng, ...location.baseXp) * 1.35); reputation = 18;
     const maxTier = Math.min(5, Math.max(1, location.difficulty + (rng() < 0.28 ? 1 : 0)));
@@ -179,11 +248,13 @@ function resolveExpedition(userId, { force = false } = {}) {
   const leveledHero = grantXp(userId, xp);
   addReputation(userId, expedition.location_key, reputation);
   const recoveryUntil = injuryHours ? new Date(Date.now() + injuryHours * 3600000).toISOString() : null;
+  const hpAfter = injuryHours ? Math.max(1, Math.round(baseHero.max_hp * 0.35)) : baseHero.max_hp;
   db.prepare("UPDATE heroes SET status=?, recovery_until=?, hp=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
-    .run(injuryHours ? 'wounded' : 'ready', recoveryUntil, injuryHours ? Math.max(1, Math.round(baseHero.max_hp * 0.35)) : baseHero.max_hp, userId);
+    .run(injuryHours ? 'wounded' : 'ready', recoveryUntil, hpAfter, userId);
   const resourceRewards = expeditionMaterialRewards(userId, expedition.location_key, location.difficulty, outcome, expedition.id);
-  const result = { outcome, chance: Math.round(chance), alchemy: expeditionBuffs.effects || [], alchemyBonuses, roll: Math.round(roll), dust, dustLost, xp, reputation, item: item ? { name: item.name, rarity: item.rarity } : null, companion, dailyTheme: theme, materials: resourceRewards.materials.map(m => ({ key: m.key, name: m.name, icon: m.icon, quantity: m.quantity })), chest: resourceRewards.chest ? { key: resourceRewards.chest.key, name: resourceRewards.chest.name, icon: resourceRewards.chest.icon } : null, injuryHours, event: pick(rng, EVENTS[outcome]), levelsGained: leveledHero?.levelsGained || 0 };
-  db.prepare("UPDATE hero_expeditions SET status='resolved', resolved_at=CURRENT_TIMESTAMP, result_json=? WHERE id=?").run(JSON.stringify(result), expedition.id);
+  const event = buildExpeditionStory(rng, location, outcome, { item, companion, injuryHours, dustLost, chest: resourceRewards.chest });
+  const result = { outcome, chance: Math.round(chance), alchemy: expeditionBuffs.effects || [], alchemyBonuses, roll: Math.round(roll), dust, dustLost, xp, reputation, item: item ? { name: item.name, rarity: item.rarity } : null, companion, dailyTheme: theme, weather, materials: resourceRewards.materials.map(m => ({ key: m.key, name: m.name, icon: m.icon, quantity: m.quantity })), chest: resourceRewards.chest ? { key: resourceRewards.chest.key, name: resourceRewards.chest.name, icon: resourceRewards.chest.icon } : null, injuryHours, event, hpBefore: Number(expedition.hp_before || baseHero.hp || baseHero.max_hp), hpAfter, levelsGained: leveledHero?.levelsGained || 0 };
+  db.prepare("UPDATE hero_expeditions SET status='resolved', resolved_at=CURRENT_TIMESTAMP, result_json=?, hp_after=? WHERE id=?").run(JSON.stringify(result), hpAfter, expedition.id);
   const alchemyText = result.alchemy.length ? ` Использовано: ${result.alchemy.map(e => `${e.icon} ${e.name}`).join(', ')}.` : '';
   const rewardText = [dust ? `+${dust} Dust` : null, dustLost ? `−${dustLost} Dust` : null, `+${xp} XP`, item ? `предмет «${item.name}»` : null, companion ? `питомец «${companion.name}»` : null, result.materials.length ? `материалы ×${result.materials.reduce((sum,m)=>sum+m.quantity,0)}` : null, result.chest ? `сундук «${result.chest.name}»` : null].filter(Boolean).join(', ');
   addHistory(userId, 'expedition_resolved', `${location.icon} ${location.name}: ${result.event} Награда: ${rewardText}.${alchemyText}`, { expeditionId: expedition.id, ...result });
@@ -199,4 +270,4 @@ function recoverHero(userId) {
   return true;
 }
 
-module.exports = { todayKey, getDailyLocations, getActiveExpedition, getLatestExpeditions, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow };
+module.exports = { todayKey, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow };

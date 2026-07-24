@@ -10,8 +10,9 @@ const { CLASSES, MINIONS, BOSSES } = require('./config');
 const { createWorldBossBattleCard, cardFile } = require('../../images/worldBoss/createWorldBossBattleCard');
 const { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, hpMultiplier, resistancePercent, heroSummary } = require('./heroIntegration');
 const { consumeContextBuffs, describeBuffKeys } = require('../../systems/hero/alchemyService');
+const GAME_CHANNELS = require('../../config/gameChannels');
 
-const CHANNEL_ID = process.env.WORLD_BOSS_CHANNEL_ID || '1529226831797158130';
+const CHANNEL_ID = GAME_CHANNELS.worldBoss;
 const AUTO_SCHEDULE_ENABLED = String(process.env.WORLD_BOSS_AUTO_SCHEDULE || 'false').toLowerCase() === 'true';
 const REGISTRATION_MS = 10 * 60 * 1000;
 const ROLL_MS = 15 * 1000;

@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "15.8.0",
+  "version": "16.1.1",
   "private": true,
-  "description": "Game Syndicate V15.8.0 Hero Guild foundation",
+  "description": "Game Syndicate V16.1.1 Living Expeditions with permanent Expedition Hub",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
