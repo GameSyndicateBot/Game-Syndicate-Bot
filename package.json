@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "15.6.6",
+  "version": "15.8.0",
   "private": true,
-  "description": "Game Syndicate V15.6.6 interactive alchemist UI",
+  "description": "Game Syndicate V15.8.0 Hero Guild foundation",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

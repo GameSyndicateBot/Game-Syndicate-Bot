@@ -836,6 +836,13 @@ async function handle(interaction) {
   if (interaction.customId === `wb_join_${id}` || interaction.customId === `wb_leave_${id}`) {
     if (b.status !== 'registration') { await interaction.reply({ content: 'Регистрация уже завершена.', flags: MessageFlags.Ephemeral }); return true; }
     if (interaction.customId.includes('join')) {
+      try {
+        const expedition = db.prepare("SELECT returns_at FROM hero_expeditions WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1").get(uid);
+        if (expedition) {
+          await interaction.reply({ content: `❌ Твой герой сейчас в экспедиции и вернётся <t:${Math.floor(new Date(expedition.returns_at).getTime()/1000)}:R>. Пока он в походе, участвовать в World Boss нельзя.`, flags: MessageFlags.Ephemeral });
+          return true;
+        }
+      } catch (_) {}
       const snapshot = buildHeroSnapshot(uid);
       if (!snapshot) {
         await interaction.reply({ content: '❌ Сначала создай героя в системе экспедиций через `/hero create`. В World Boss участвует именно твой постоянный персонаж.', flags: MessageFlags.Ephemeral });
