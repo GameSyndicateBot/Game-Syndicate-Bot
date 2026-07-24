@@ -4,6 +4,7 @@ const { getHero, createHero, getHistory } = require('../systems/hero/heroService
 const { getInventory, getEquipment, getEffectiveHero, getInventoryItem, equipItem, unequipItem, getCollection, formatBonuses, parseBonuses, applyUpgradeToBonuses } = require('../systems/hero/itemService');
 const { SLOT_LABELS, TYPE_LABELS, RARITY_LABELS } = require('../systems/hero/itemData');
 const { createHeroCard } = require('../images/hero/createHeroCard');
+const { getAllClassProgress, classXpForNextLevel, classWorldBossBonuses, getMasteryRank, classProgressPercent } = require('../systems/hero/classProgressService');
 
 const classChoices = Object.entries(HERO_CLASSES).map(([value,c])=>({name:`${c.icon} ${c.name}`,value}));
 const originChoices = Object.entries(ORIGINS).map(([value,o])=>({name:`${o.icon} ${o.name}`,value}));
@@ -40,8 +41,14 @@ module.exports={
  async execute(interaction){
   const sub=interaction.options.getSubcommand();
   if(sub==='classes'){
-   const text=Object.values(HERO_CLASSES).map(c=>`${c.icon} **${c.name}** — ${c.role}\n❤️ ${c.hp} · ⚔️ ${c.strength} · 🛡️ ${c.defense} · 🏃 ${c.dexterity} · 🧠 ${c.intelligence} · 🍀 ${c.luck}`).join('\n\n');
-   return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('⚔️ 12 классов героев').setDescription(text)],flags:MessageFlags.Ephemeral});
+   const hero=getHero(interaction.user.id);
+   if(!hero){
+    const text=Object.values(HERO_CLASSES).map(c=>`${c.icon} **${c.name}** — ${c.role}\n❤️ ${c.hp} · ⚔️ ${c.strength} · 🛡️ ${c.defense} · 🏃 ${c.dexterity} · 🧠 ${c.intelligence} · 🍀 ${c.luck}`).join('\n\n');
+    return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('⚔️ 12 классов героев').setDescription(text)],flags:MessageFlags.Ephemeral});
+   }
+   const rows=getAllClassProgress(interaction.user.id);
+   const text=rows.map(row=>{const c=HERO_CLASSES[row.class_key],rank=getMasteryRank(row.level),pct=classProgressPercent(row.level,row.xp),b=classWorldBossBonuses(row.level);return `${c.icon} **${c.name} Lv.${row.level}** • ${rank.name}\n${row.level>=50?'MAX':`${row.xp}/${classXpForNextLevel(row.level)} XP`} • ${pct}% • WB: ⚔️+${b.damagePercent}% ❤️+${b.hpPercent}% 🛡️+${b.resistancePercent}%`;}).join('\n\n');
+   return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle(`📚 Классы героя ${hero.name}`).setDescription(text).setFooter({text:'Класс получает XP только в тех экспедициях, где он был выбран.'})],flags:MessageFlags.Ephemeral});
   }
   if(sub==='origins'){
    const text=Object.values(ORIGINS).map(o=>`${o.icon} **${o.name}** — ${o.description}\n*${o.passive}*`).join('\n\n');

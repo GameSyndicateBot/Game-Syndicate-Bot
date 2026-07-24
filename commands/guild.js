@@ -6,6 +6,7 @@ const {
 const { getHero, createHero } = require('../systems/hero/heroService');
 const { getEffectiveHero, getInventory, getEquipment } = require('../systems/hero/itemService');
 const { HERO_CLASSES, ORIGINS, GENDERS } = require('../systems/hero/heroData');
+const { getAllClassProgress, getClassProgress, classXpForNextLevel, classWorldBossBonuses, getMasteryRank, getNextMilestone, classProgressPercent } = require('../systems/hero/classProgressService');
 const { getActiveExpedition } = require('../systems/hero/expeditionService');
 const { createGuildHubCard } = require('../images/hero/createGuildHubCard');
 const { createHeroCard } = require('../images/hero/createHeroCard');
@@ -26,6 +27,7 @@ function hubRows() {
       new ButtonBuilder().setCustomId('guild:alchemist').setLabel('Алхимик').setEmoji('🧪').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('guild:pets').setLabel('Питомцы').setEmoji('🐾').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('guild:artifacts').setLabel('Артефакты').setEmoji('💍').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:classes').setLabel('Классы').setEmoji('📚').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('guild:codex').setLabel('Кодекс').setEmoji('📖').setStyle(ButtonStyle.Secondary),
     ),
   ];
@@ -118,6 +120,66 @@ async function showInventory(interaction) {
   });
 }
 
+
+function progressBar(percent, size = 10) {
+  const filled = Math.max(0, Math.min(size, Math.round((Number(percent) || 0) / 100 * size)));
+  return `${'▰'.repeat(filled)}${'▱'.repeat(size - filled)}`;
+}
+
+function classesMenu(userId) {
+  const rows = getAllClassProgress(userId);
+  return [new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('guild:classes:select')
+      .setPlaceholder('Открыть подробности класса')
+      .addOptions(rows.map(row => {
+        const cls = HERO_CLASSES[row.class_key];
+        const rank = getMasteryRank(row.level);
+        return {
+          label: `${cls.name} • Lv.${row.level}`,
+          value: row.class_key,
+          emoji: cls.icon,
+          description: `${rank.name} • ${row.expeditions_completed || 0} экспедиций`,
+        };
+      })),
+  )];
+}
+
+async function showClasses(interaction) {
+  const hero = getHero(interaction.user.id);
+  if (!hero) return interaction.reply({ content: '❌ Сначала создай героя.', flags: MessageFlags.Ephemeral });
+  const rows = getAllClassProgress(interaction.user.id);
+  const text = rows.map(row => {
+    const cls = HERO_CLASSES[row.class_key];
+    const pct = classProgressPercent(row.level, row.xp);
+    const rank = getMasteryRank(row.level);
+    const xpText = row.level >= 50 ? 'MAX' : `${row.xp}/${classXpForNextLevel(row.level)} XP`;
+    return `${cls.icon} **${cls.name} Lv.${row.level}** • ${rank.icon} ${rank.name}\n${progressBar(pct)} ${xpText}`;
+  }).join('\n\n');
+  return interaction.reply({
+    content: `## 📚 Классы героя — ${hero.name}\nОпыт получает класс, выбранный перед экспедицией. В World Boss можно выбрать любой класс, а его прокачка даст небольшой ограниченный бонус.\n\n${text}`,
+    components: classesMenu(interaction.user.id),
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function showClassDetails(interaction, classKey) {
+  const hero = getHero(interaction.user.id);
+  if (!hero) return interaction.update({ content: '❌ Герой не найден.', components: [] });
+  const row = getClassProgress(interaction.user.id, classKey) || { class_key: classKey, level: 1, xp: 0, expeditions_completed: 0 };
+  const cls = HERO_CLASSES[classKey];
+  if (!cls) return interaction.update({ content: '❌ Неизвестный класс.', components: classesMenu(interaction.user.id) });
+  const bonus = classWorldBossBonuses(row.level);
+  const rank = getMasteryRank(row.level);
+  const next = getNextMilestone(row.level);
+  const pct = classProgressPercent(row.level, row.xp);
+  const xpText = row.level >= 50 ? 'Максимальный уровень' : `${row.xp}/${classXpForNextLevel(row.level)} XP`;
+  return interaction.update({
+    content: `## ${cls.icon} ${cls.name} — Lv.${row.level}\n**Роль:** ${cls.role}\n**Мастерство:** ${rank.icon} ${rank.name}\n**Экспедиций этим классом:** ${row.expeditions_completed || 0}\n\n${progressBar(pct, 12)} **${xpText}**\n${next ? `Следующий ранг: **${next.name}** на Lv.${next.level}` : 'Достигнут высший ранг класса.'}\n\n### Бонусы в World Boss\n⚔️ Урон: **+${bonus.damagePercent}%**\n❤️ HP: **+${bonus.hpPercent}%**\n🛡️ Сопротивление: **+${bonus.resistancePercent}%**\n\n*Бонусы уже ограничены общими капами World Boss и не заменяют правильный выбор способностей и командную игру.*`,
+    components: classesMenu(interaction.user.id),
+  });
+}
+
 async function handleComponent(interaction) {
   const parts = interaction.customId.split(':');
   const action = parts[1];
@@ -158,6 +220,8 @@ async function handleComponent(interaction) {
 
   if (action === 'profile') return showProfile(interaction);
   if (action === 'inventory') return showInventory(interaction);
+  if (action === 'classes' && parts.length === 2) return showClasses(interaction);
+  if (action === 'classes' && parts[2] === 'select') return showClassDetails(interaction, interaction.values?.[0]);
 
   if (action === 'alchemist') {
     return interaction.reply({ content: '🧪 Открой полноценную мастерскую командой `/alchemist`.', flags: MessageFlags.Ephemeral });

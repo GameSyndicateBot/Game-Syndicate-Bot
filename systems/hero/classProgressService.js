@@ -45,7 +45,30 @@ function classWorldBossBonuses(level) {
     resistancePercent: Math.round(progress*4*10)/10,
   };
 }
+const MASTERY_RANKS = Object.freeze([
+  { level: 1, name: 'Новичок', icon: '◽' },
+  { level: 5, name: 'Ученик', icon: '▫️' },
+  { level: 10, name: 'Адепт', icon: '🔹' },
+  { level: 20, name: 'Ветеран', icon: '🔷' },
+  { level: 30, name: 'Эксперт', icon: '💠' },
+  { level: 40, name: 'Мастер', icon: '⭐' },
+  { level: 50, name: 'Легенда класса', icon: '🌟' },
+]);
+
+function getMasteryRank(level) {
+  const value = Math.max(1, Math.min(MAX_CLASS_LEVEL, Number(level || 1)));
+  return [...MASTERY_RANKS].reverse().find(rank => value >= rank.level) || MASTERY_RANKS[0];
+}
+function getNextMilestone(level) {
+  const value = Math.max(1, Number(level || 1));
+  return MASTERY_RANKS.find(rank => rank.level > value) || null;
+}
+function classProgressPercent(level, xp) {
+  const value = Math.max(1, Math.min(MAX_CLASS_LEVEL, Number(level || 1)));
+  if (value >= MAX_CLASS_LEVEL) return 100;
+  return Math.max(0, Math.min(100, Math.floor((Number(xp || 0) / classXpForNextLevel(value)) * 100)));
+}
 function serializeClassProgress(userId) {
   const out={}; for(const row of getAllClassProgress(userId)) out[row.class_key]={level:Number(row.level||1),xp:Number(row.xp||0)}; return out;
 }
-module.exports={MAX_CLASS_LEVEL,normalizeClassKey,isValidClass,classXpForNextLevel,ensureClassProgress,getClassProgress,getAllClassProgress,grantClassXp,classWorldBossBonuses,serializeClassProgress};
+module.exports={MAX_CLASS_LEVEL,MASTERY_RANKS,normalizeClassKey,isValidClass,classXpForNextLevel,ensureClassProgress,getClassProgress,getAllClassProgress,grantClassXp,classWorldBossBonuses,getMasteryRank,getNextMilestone,classProgressPercent,serializeClassProgress};
