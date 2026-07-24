@@ -25,6 +25,13 @@ const RECIPES = Object.freeze({
   rage_scroll: { itemKey:'rage_scroll', npc:'Алхимик Лира', dust:230, level:6, materials:{ essence:5, bone:4, crystal:3 } },
   defense_scroll: { itemKey:'defense_scroll', npc:'Алхимик Лира', dust:230, level:6, materials:{ essence:5, stone:5, crystal:3 } },
   alchemist_bomb: { itemKey:'alchemist_bomb', npc:'Алхимик Лира', dust:420, level:8, materials:{ essence:8, crystal:6, iron_ore:5, void_crystal:1 } },
+  healing_potion_supreme: { itemKey:'healing_potion_supreme', npc:'Алхимик Лира', dust:260, level:7, materials:{ herb:16, essence:8, crystal:3, ancient_fragment:1 } },
+  sturdy_draught: { itemKey:'sturdy_draught', npc:'Алхимик Лира', dust:150, level:5, materials:{ herb:10, leather:3, essence:3, crystal:1 } },
+  treasure_incense: { itemKey:'treasure_incense', npc:'Алхимик Лира', dust:210, level:6, materials:{ herb:8, wood:5, essence:5, ancient_fragment:1 } },
+  grand_fortune_elixir: { itemKey:'grand_fortune_elixir', npc:'Алхимик Лира', dust:480, level:9, materials:{ herb:15, essence:10, crystal:6, ancient_fragment:3, void_crystal:1 } },
+  war_elixir: { itemKey:'war_elixir', npc:'Алхимик Лира', dust:380, level:8, materials:{ essence:9, bone:8, crystal:5, ancient_fragment:2 } },
+  stone_skin_elixir: { itemKey:'stone_skin_elixir', npc:'Алхимик Лира', dust:380, level:8, materials:{ essence:8, stone:10, crystal:5, ancient_fragment:2 } },
+  greater_alchemist_bomb: { itemKey:'greater_alchemist_bomb', npc:'Алхимик Лира', dust:900, level:11, materials:{ essence:15, crystal:10, iron_ore:10, ancient_fragment:5, void_crystal:3 } },
 });
 
 module.exports = { RECIPES };

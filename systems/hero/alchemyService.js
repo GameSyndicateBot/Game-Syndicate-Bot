@@ -50,6 +50,17 @@ function useConsumable(userId, itemKey) {
   if (effect.kind === 'buff') {
     const active = db.prepare('SELECT charges FROM hero_active_buffs WHERE user_id=? AND buff_key=? AND charges>0').get(userId, itemKey);
     if (active) return { ok: false, reason: 'already_active' };
+    if (effect.group) {
+      const contextBuffs = getActiveBuffs(userId, effect.context);
+      const conflicting = contextBuffs.find(row => {
+        const activeEffect = ALCHEMY_EFFECTS[row.buff_key] || ALCHEMY_EFFECTS[row.source_item_key];
+        return activeEffect?.group === effect.group;
+      });
+      if (conflicting) {
+        const activeEffect = ALCHEMY_EFFECTS[conflicting.buff_key] || ALCHEMY_EFFECTS[conflicting.source_item_key];
+        return { ok: false, reason: 'conflicting_active', conflicting: activeEffect?.name || conflicting.buff_key };
+      }
+    }
   }
   const tx = db.transaction(() => {
     if (!removeOneInventoryItem(userId, itemKey)) return { ok: false, reason: 'none' };

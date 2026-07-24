@@ -117,6 +117,13 @@ function recipesView(userId) {
   return { embeds: [embed], components };
 }
 
+function canCraftQuantity(recipe, quantity) {
+  const qty = Math.max(1, Number(quantity) || 1);
+  return recipe.heroLevel >= recipe.level
+    && recipe.dustBalance >= recipe.dust * qty
+    && recipe.materials.every(material => material.owned >= material.required * qty);
+}
+
 function recipeView(userId, key, notice = '') {
   const recipe = hydrateRecipe(key, userId);
   if (!recipe || recipe.npc !== NPC) return recipesView(userId);
@@ -143,8 +150,9 @@ function recipeView(userId, key, notice = '') {
     .setFooter({ text: recipe.canCraft ? 'Все ресурсы собраны — предмет можно создать.' : 'Недостающие ресурсы добываются в экспедициях и сундуках.' });
 
   const back = new ButtonBuilder().setCustomId(cid(userId, 'recipes')).setLabel('К рецептам').setEmoji('⬅️').setStyle(ButtonStyle.Secondary);
-  const create = new ButtonBuilder().setCustomId(cid(userId, 'craft', key)).setLabel('Создать 1').setEmoji('⚒️').setStyle(ButtonStyle.Success).setDisabled(!recipe.canCraft);
-  const row = new ActionRowBuilder().addComponents(back, create);
+  const create = new ButtonBuilder().setCustomId(cid(userId, 'craft', `${key}:1`)).setLabel('Создать 1').setEmoji('⚒️').setStyle(ButtonStyle.Success).setDisabled(!canCraftQuantity(recipe, 1));
+  const createThree = new ButtonBuilder().setCustomId(cid(userId, 'craft', `${key}:3`)).setLabel('Создать 3').setEmoji('🧪').setStyle(ButtonStyle.Primary).setDisabled(!canCraftQuantity(recipe, 3));
+  const row = new ActionRowBuilder().addComponents(back, create, createThree);
   return { embeds: [embed], components: [navRow(userId), row] };
 }
 
@@ -232,18 +240,21 @@ module.exports = {
     }
 
     if (action === 'craft') {
-      const result = craft(ownerId, value, 1);
+      const valueParts = value.split(':');
+      const quantity = Math.max(1, Math.min(3, Number(valueParts.pop()) || 1));
+      const recipeKey = valueParts.join(':');
+      const result = craft(ownerId, recipeKey, quantity);
       if (!result.ok) {
         const notices = {
           level: '❌ Уровень героя недостаточен.',
-          materials: '❌ Не хватает материалов.',
-          dust: '❌ Не хватает Dust.',
+          materials: `❌ Не хватает материалов для создания ×${quantity}.`,
+          dust: `❌ Не хватает Dust для создания ×${quantity}.`,
           invalid_recipe: '❌ Рецепт не найден.',
           error: '❌ Во время создания произошла ошибка. Ресурсы возвращены.',
         };
-        return sendView(interaction, recipeView(ownerId, value, notices[result.reason] || '❌ Предмет создать не удалось.'));
+        return sendView(interaction, recipeView(ownerId, recipeKey, notices[result.reason] || '❌ Предмет создать не удалось.'));
       }
-      return sendView(interaction, recipeView(ownerId, value, `✅ Создан предмет: **${result.recipe.item.name} ×1**. Потрачено **${result.spent} Dust**.`));
+      return sendView(interaction, recipeView(ownerId, recipeKey, `✅ Создан предмет: **${result.recipe.item.name} ×${quantity}**. Потрачено **${result.spent} Dust**.`));
     }
 
     if (action === 'use' && interaction.isStringSelectMenu()) {
@@ -254,6 +265,7 @@ module.exports = {
           none: '❌ Этого предмета больше нет в сумке.',
           full_hp: '❤️ У героя уже полное здоровье — зелье не потрачено.',
           already_active: '✨ Такой эффект уже активен. Сначала израсходуй его.',
+          conflicting_active: result.conflicting ? `✨ Уже активен предмет той же группы: **${result.conflicting}**. Сначала израсходуй его.` : '✨ Уже активен несовместимый эффект той же группы.',
           unsupported: '❌ Этот предмет пока нельзя применить.',
         };
         return sendView(interaction, bagView(ownerId, notices[result.reason] || '❌ Предмет применить не удалось.'));
