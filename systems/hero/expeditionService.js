@@ -122,7 +122,7 @@ function nextBossAt(now = new Date()) {
   const MSK = 3 * 60 * 60 * 1000;
   const local = new Date(now.getTime() + MSK);
   const y = local.getUTCFullYear(), m = local.getUTCMonth(), d = local.getUTCDate();
-  for (const hour of [15, 21]) {
+  for (const hour of [13, 20]) {
     const candidate = new Date(Date.UTC(y, m, d, hour, 0, 0) - MSK);
     if (candidate.getTime() > now.getTime()) return candidate;
   }

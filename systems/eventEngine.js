@@ -2,7 +2,7 @@ let isEventRunning = false;
 let schedulerTimer = null;
 let lastTriggeredSlot = null;
 
-const BOSS_HOURS_MSK = new Set([9, 15, 21]);
+const BOSS_HOURS_MSK = new Set([13, 20]);
 
 function getMoscowDateParts(date = new Date()) {
     const parts = new Intl.DateTimeFormat('en-CA', {

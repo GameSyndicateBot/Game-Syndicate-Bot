@@ -14,7 +14,7 @@ async function createGuildCard(hero,user,active,nextBoss){
  ctx.fillStyle='#ddd6fe';ctx.font='bold 23px Arial';ctx.fillText(`Статус: ${active ? '🧭 В экспедиции' : hero.status==='wounded' ? '🩹 Восстанавливается' : '✅ Готов'}`,410,452);
  panel(ctx,75,545,410,205);panel(ctx,545,545,410,205);panel(ctx,1015,545,390,205);
  ctx.fillStyle='#fff';ctx.font='bold 31px Arial';ctx.fillText('🧭 ЭКСПЕДИЦИИ',110,605);ctx.fillText('🧪 АЛХИМИЯ',580,605);ctx.fillText('👹 WORLD BOSS',1050,605);
- ctx.fillStyle='#c4b5fd';ctx.font='22px Arial';ctx.fillText(active?'Герой вернётся к назначенному времени.':'3 локации меняются ежедневно.',110,650);ctx.fillText('Зелья, свитки и бомбы',580,650);ctx.fillText('Каждый день в 15:00 и 21:00',1050,650);ctx.fillText('Длительность похода: 4 часа.',110,688);ctx.fillText('усиливают походы и рейды.',580,688);ctx.fillText('по московскому времени.',1050,688);
+ ctx.fillStyle='#c4b5fd';ctx.font='22px Arial';ctx.fillText(active?'Герой вернётся к назначенному времени.':'3 локации меняются ежедневно.',110,650);ctx.fillText('Зелья, свитки и бомбы',580,650);ctx.fillText('Каждый день в 13:00 и 20:00',1050,650);ctx.fillText('Длительность похода: 4 часа.',110,688);ctx.fillText('усиливают походы и рейды.',580,688);ctx.fillText('по московскому времени.',1050,688);
  ctx.fillStyle='#a78bfa';ctx.font='bold 20px Arial';ctx.fillText(`Следующий босс: ${nextBoss.toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} МСК`,1050,726);
  return c.toBuffer('image/png');
 }
