@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { createCanvas, loadImage } = require('canvas');
 const { CLASSES } = require('../../services/worldBoss/config');
+const { drawUiIcon } = require('../ui/drawUiIcon');
 
 const W = 1600;
 const H = 900;
@@ -59,12 +60,20 @@ function ellipsize(ctx, value, maxWidth) {
 }
 function effectLine(e) {
   const out = [];
-  if (e.shield) out.push(`🛡 ${e.shield}`);
+  if (e.shield) out.push(`Щит ${e.shield}`);
   if (e.skillCd) out.push(`Навык КД ${e.skillCd}`);
   if (e.ultCd) out.push(`Ульта КД ${e.ultCd}`);
-  if (e.skillSilencedTurns) out.push(`🔒 навык ${e.skillSilencedTurns}`);
-  if (e.ultSilencedTurns) out.push(`⛓ ульта ${e.ultSilencedTurns}`);
+  if (e.skillSilencedTurns) out.push(`Навык заблокирован ${e.skillSilencedTurns}`);
+  if (e.ultSilencedTurns) out.push(`Ульта заблокирована ${e.ultSilencedTurns}`);
   return out.join(' • ') || 'Эффектов нет';
+}
+function stripEmoji(value) {
+  return String(value)
+    .replace(/[\u{1F000}-\u{1FAFF}]/gu, '')
+    .replace(/[\u2600-\u27BF]/g, '')
+    .replace(/[\uFE0E\uFE0F]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 async function createWorldBossBattleCard({ battle, players, state, effectsByUser = {}, currentUserId = null }) {
@@ -84,9 +93,12 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
   else { ctx.fillStyle = '#29163d'; rounded(ctx, 48, 90, 390, 455, 18); ctx.fill(); text(ctx, 'BOSS', 243, 325, 58, '#b995ff', 'bold', 'center'); }
   text(ctx, battle.boss_name, 243, 585, 31, '#fff', 'bold', 'center');
   bar(ctx, 58, 610, 370, 34, battle.boss_hp, battle.boss_max_hp, '#c7354b', `${battle.boss_hp} / ${battle.boss_max_hp} HP`);
-  bar(ctx, 58, 660, 370, 29, Number(state.rage || 0), 100, '#d77b23', `🔥 Ярость ${Number(state.rage || 0)} / 100`);
-  text(ctx, `👾 Миньонов: ${(state.minions || []).length}`, 65, 732, 22, '#eee', 'bold');
-  text(ctx, `⚔️ Статус: ${battle.status === 'active' ? 'бой идёт' : battle.status}`, 65, 770, 21, '#d6c9e8');
+  drawUiIcon(ctx, 'flame', 62, 661, 25, '#f59e0b');
+  bar(ctx, 92, 660, 336, 29, Number(state.rage || 0), 100, '#d77b23', `Ярость ${Number(state.rage || 0)} / 100`);
+  drawUiIcon(ctx, 'minion', 64, 709, 24, '#d8bdff');
+  text(ctx, `Миньонов: ${(state.minions || []).length}`, 96, 732, 22, '#eee', 'bold');
+  drawUiIcon(ctx, 'swords', 64, 747, 24, '#d8bdff');
+  text(ctx, `Статус: ${battle.status === 'active' ? 'бой идёт' : battle.status}`, 96, 770, 21, '#d6c9e8');
   const enemyNames = (state.minions || []).slice(0, 3).map(m => `${m.name} ${m.hp}/${m.maxHp}`).join(' • ');
   text(ctx, ellipsize(ctx, enemyNames || 'Миньоны не призваны', 350), 65, 818, 17, '#bdb4c8');
 
@@ -99,7 +111,7 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
     const p = shown[i], c = CLASSES[p.class_key] || { name: 'Без класса', role: 'support' }, e = effectsByUser[p.user_id] || {};
     const col = i % cols, row = Math.floor(i / cols), x = 505 + col * 337, y = 132 + row * 142;
     ctx.save(); rounded(ctx, x, y, itemW, itemH, 16); ctx.fillStyle = p.user_id === currentUserId ? 'rgba(123,67,190,.56)' : p.status === 'dead' ? 'rgba(48,45,54,.72)' : 'rgba(23,17,35,.82)'; ctx.fill(); ctx.strokeStyle = p.user_id === currentUserId ? '#d4a8ff' : 'rgba(255,255,255,.12)'; ctx.lineWidth = p.user_id === currentUserId ? 3 : 1; ctx.stroke(); ctx.restore();
-    text(ctx, p.user_id === currentUserId ? '▶' : (p.status === 'dead' ? '☠' : '●'), x + 14, y + 27, 18, p.user_id === currentUserId ? '#e7c8ff' : p.status === 'dead' ? '#aaa' : '#6ee7a7', 'bold');
+    text(ctx, p.user_id === currentUserId ? '▶' : (p.status === 'dead' ? 'X' : '●'), x + 14, y + 27, 18, p.user_id === currentUserId ? '#e7c8ff' : p.status === 'dead' ? '#aaa' : '#6ee7a7', 'bold');
     text(ctx, ellipsize(ctx, p.hero_name || p.displayName || p.username || `Игрок ${i + 1}`, 165), x + 42, y + 28, 20, '#fff', 'bold');
     text(ctx, `${c.name} • ур.${p.hero_level || 1}`, x + itemW - 14, y + 28, 17, '#cdb7de', 'normal', 'right');
     bar(ctx, x + 14, y + 44, itemW - 28, 23, p.hp, p.max_hp, '#3fbf72', `${p.hp}/${p.max_hp} HP`);
@@ -126,7 +138,7 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
   const logs = (state.log || []).slice(-8).reverse();
   let ly = 482;
   for (const line of logs) {
-    const clean = String(line).replace(/<@!?\d+>/g, 'Игрок').replace(/\*\*/g, '');
+    const clean = stripEmoji(String(line).replace(/<@!?\d+>/g, 'Игрок').replace(/\*\*/g, ''));
     const words = clean.split(/\s+/); let current = '';
     for (const word of words) {
       const candidate = current ? `${current} ${word}` : word;
@@ -138,7 +150,12 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
     if (current && ly <= 830) { text(ctx, `• ${current}`, 1225, ly, 16, '#d0cad5'); ly += 27; }
     if (ly > 830) break;
   }
-  text(ctx, '❤️ HP   🔷 Мана   ⚡ Энергия   🔥 Ярость   💥 Ульта', 800, 883, 16, '#c8bfd1', 'bold', 'center');
+  const legendY = 882;
+  const legend = [
+    ['heart', 'HP', '#ef476f'], ['mana', 'Мана', '#7c83ff'], ['energy', 'Энергия', '#f7c948'], ['flame', 'Ярость', '#f59e0b'], ['ult', 'Ульта', '#d8b4fe']
+  ];
+  let lx = 520;
+  for (const [icon, label, color] of legend) { drawUiIcon(ctx, icon, lx, legendY - 17, 18, color); text(ctx, label, lx + 25, legendY, 16, '#c8bfd1', 'bold'); lx += label === 'Энергия' ? 150 : 115; }
   return canvas.toBuffer('image/png');
 }
 

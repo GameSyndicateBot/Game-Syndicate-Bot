@@ -1,4 +1,5 @@
 const { createCanvas } = require('canvas');
+const { drawUiIcon } = require('../ui/drawUiIcon');
 
 function rr(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -12,9 +13,10 @@ function panel(ctx, x, y, w, h, title, subtitle, icon) {
   ctx.strokeStyle = 'rgba(168, 85, 247, .72)';
   ctx.lineWidth = 2;
   ctx.stroke();
+  drawUiIcon(ctx, icon, x + 24, y + 21, 34, '#d8b4fe');
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 29px Arial';
-  ctx.fillText(`${icon} ${title}`, x + 26, y + 49);
+  ctx.fillText(title, x + 70, y + 49);
   ctx.fillStyle = '#c4b5fd';
   ctx.font = '21px Arial';
   ctx.fillText(subtitle, x + 26, y + 88);
@@ -61,19 +63,20 @@ async function createGuildHubCard() {
 
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 37px Arial';
-  ctx.fillText('🧙 ТВОЯ ИСТОРИЯ НАЧИНАЕТСЯ ЗДЕСЬ', 115, 260);
+  drawUiIcon(ctx, 'hero', 112, 226, 38, '#ffffff');
+  ctx.fillText('ТВОЯ ИСТОРИЯ НАЧИНАЕТСЯ ЗДЕСЬ', 164, 260);
   ctx.fillStyle = '#ddd6fe';
   ctx.font = '23px Arial';
   ctx.fillText('Выбери класс, происхождение и имя. Один участник — один постоянный герой.', 116, 302);
 
-  panel(ctx, 74, 382, 318, 132, 'ПРОФИЛЬ', 'Уровень, XP и характеристики', '👤');
-  panel(ctx, 420, 382, 318, 132, 'ИНВЕНТАРЬ', 'Предметы и экипировка', '🎒');
-  panel(ctx, 766, 382, 318, 132, 'КУЗНЕЦ', 'Крафт и улучшения', '⚒️');
-  panel(ctx, 1112, 382, 314, 132, 'АЛХИМИК', 'Зелья и усиления', '🧪');
+  panel(ctx, 74, 382, 318, 132, 'ПРОФИЛЬ', 'Уровень, XP и характеристики', 'profile');
+  panel(ctx, 420, 382, 318, 132, 'ИНВЕНТАРЬ', 'Предметы и экипировка', 'inventory');
+  panel(ctx, 766, 382, 318, 132, 'КУЗНЕЦ', 'Крафт и улучшения', 'hammer');
+  panel(ctx, 1112, 382, 314, 132, 'АЛХИМИК', 'Зелья и усиления', 'alchemy');
 
-  panel(ctx, 74, 548, 424, 132, 'ПИТОМЦЫ', 'Спутники из экспедиций', '🐾');
-  panel(ctx, 538, 548, 424, 132, 'АРТЕФАКТЫ', 'Редкие реликвии и бонусы', '💍');
-  panel(ctx, 1002, 548, 424, 132, 'КОДЕКС', 'Классы, правила и открытия', '📖');
+  panel(ctx, 74, 548, 424, 132, 'ПИТОМЦЫ', 'Спутники из экспедиций', 'paw');
+  panel(ctx, 538, 548, 424, 132, 'АРТЕФАКТЫ', 'Редкие реликвии и бонусы', 'artifact');
+  panel(ctx, 1002, 548, 424, 132, 'КОДЕКС', 'Классы, правила и открытия', 'book');
 
   rr(ctx, 74, 724, 1352, 94, 24);
   ctx.fillStyle = 'rgba(17, 7, 31, .9)';
@@ -82,7 +85,8 @@ async function createGuildHubCard() {
   ctx.stroke();
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 26px Arial';
-  ctx.fillText('🗺️ ЭКСПЕДИЦИИ', 112, 766);
+  drawUiIcon(ctx, 'compass', 110, 738, 34, '#ffffff');
+  ctx.fillText('ЭКСПЕДИЦИИ', 156, 766);
   ctx.fillStyle = '#c4b5fd';
   ctx.font = '21px Arial';
   ctx.fillText('4 часа в пути • ежедневные локации • герой в походе не участвует в World Boss', 112, 798);
