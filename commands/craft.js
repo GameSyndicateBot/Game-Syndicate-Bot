@@ -32,7 +32,7 @@ module.exports={
   if(!recipe)return interaction.reply({content:'❌ Рецепт не найден.',flags:MessageFlags.Ephemeral});
   if(sub==='info'){
    const status=recipe.canCraft?'✅ Можно создать сейчас':'🔒 Пока не хватает ресурсов или уровня';
-   return interaction.reply({embeds:[new EmbedBuilder().setColor(rarityColors[recipe.item.rarity]||0x7C3AED).setTitle(`🔨 ${recipe.item.name}`).setDescription(`${recipe.item.description}\n\n**Мастер:** ${recipe.npc}\n**Требуемый уровень:** ${recipe.level}\n**Стоимость:** 💠 ${recipe.dust} Dust\n\n**Материалы**\n${materialLines(recipe)}\n\n${status}`).setFooter({text:`Твой уровень: ${recipe.heroLevel} • Dust: ${recipe.dust}`})],flags:MessageFlags.Ephemeral});
+   return interaction.reply({embeds:[new EmbedBuilder().setColor(rarityColors[recipe.item.rarity]||0x7C3AED).setTitle(`🔨 ${recipe.item.name}`).setDescription(`${recipe.item.description}\n\n**Мастер:** ${recipe.npc}\n**Требуемый уровень:** ${recipe.level}\n**Стоимость:** 💠 ${recipe.dust} Dust\n\n**Материалы**\n${materialLines(recipe)}\n\n${status}`).setFooter({text:`Твой уровень: ${recipe.heroLevel} • Dust: ${recipe.dustBalance}`})],flags:MessageFlags.Ephemeral});
   }
   const quantity=interaction.options.getInteger('quantity')||1;
   const result=craft(interaction.user.id,key,quantity);

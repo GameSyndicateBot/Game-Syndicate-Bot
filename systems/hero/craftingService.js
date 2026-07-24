@@ -20,15 +20,15 @@ function hydrateRecipe(key, userId = null) {
     owned: owned.get(materialKey) || 0,
     ...(MATERIALS[materialKey] || { name:materialKey, icon:'📦', rarity:'unknown' }),
   }));
-  const dust = userId ? getCardDust(userId) : 0;
+  const dustBalance = userId ? getCardDust(userId) : 0;
   return {
     key,
     ...recipe,
     item: ITEMS[recipe.itemKey],
     materials,
     heroLevel: hero?.level || 0,
-    dust,
-    canCraft: !!hero && hero.level >= recipe.level && dust >= recipe.dust && materials.every(m => m.owned >= m.required),
+    dustBalance,
+    canCraft: !!hero && hero.level >= recipe.level && dustBalance >= recipe.dust && materials.every(m => m.owned >= m.required),
   };
 }
 

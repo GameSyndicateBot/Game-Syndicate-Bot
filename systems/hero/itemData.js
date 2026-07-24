@@ -44,6 +44,8 @@ const ITEMS = Object.freeze({
 
   healing_potion_small:{name:'Малое зелье лечения',type:'consumable',rarity:'common',description:'Восстанавливает часть здоровья героя.',lore:'Красный настой с горьким запахом трав.',bonuses:{heal:30},consumable:1},
   healing_potion_large:{name:'Большое зелье лечения',type:'consumable',rarity:'rare',description:'Восстанавливает много здоровья.',lore:'Рецепт хранится у алхимиков Старого города.',bonuses:{heal:75},consumable:1},
+  swift_tonic:{name:'Тоник следопыта',type:'consumable',rarity:'common',description:'Повышает шанс успеха следующей экспедиции.',lore:'Лёгкий мятный настой, обостряющий внимание в дороге.',bonuses:{expedition_success:8},consumable:1},
+  fortune_elixir:{name:'Эликсир удачи',type:'consumable',rarity:'rare',description:'Усиливает успех экспедиции и шанс редкой находки.',lore:'На дне флакона всегда остаётся одна золотая искра.',bonuses:{expedition_success:6,rare_find:12},consumable:1},
   rage_scroll:{name:'Свиток ярости',type:'consumable',rarity:'rare',description:'Временно усиливает урон в бою.',lore:'Буквы на нём невозможно читать спокойно.',bonuses:{world_boss_damage:10},consumable:1},
   defense_scroll:{name:'Свиток защиты',type:'consumable',rarity:'rare',description:'Создаёт кратковременный защитный барьер.',lore:'Чернила становятся серебряными перед ударом.',bonuses:{world_boss_resistance:10},consumable:1},
   alchemist_bomb:{name:'Алхимическая бомба',type:'consumable',rarity:'epic',description:'Наносит дополнительный урон мировому боссу.',lore:'Хрупкое стекло. Не трясти.',bonuses:{boss_flat_damage:120},consumable:1},

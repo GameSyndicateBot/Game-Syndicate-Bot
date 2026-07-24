@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "15.6.5",
+  "version": "15.6.6",
   "private": true,
-  "description": "Game Syndicate V15.6.5 alchemy integration",
+  "description": "Game Syndicate V15.6.6 interactive alchemist UI",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

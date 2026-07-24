@@ -126,6 +126,13 @@ client.on('interactionCreate', async interaction => {
                 return await handleQuickEventComponent(interaction);
             }
 
+            if (interaction.customId.startsWith('alchemist:')) {
+                const command = client.commands.get('alchemist');
+                if (command?.handleComponent) {
+                    return await command.handleComponent(interaction);
+                }
+            }
+
             if (interaction.customId.startsWith('achievements_')) {
                 const command = client.commands.get('achievements');
                 if (command?.handleComponent) {
