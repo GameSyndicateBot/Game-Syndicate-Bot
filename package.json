@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "16.3.1",
+  "version": "16.3.2",
   "private": true,
   "description": "Game Syndicate V16.3.1 Class Mastery UI and balanced World Boss progression",
   "main": "index.js",
