@@ -1,13 +1,217 @@
-const { SlashCommandBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
-const { getHero } = require('../systems/hero/heroService');
-const { getActiveExpedition, getDailyLocations, computeSuccessChance, nextBossAt } = require('../systems/hero/expeditionService');
-const { getActiveBuffs } = require('../systems/hero/alchemyService');
-const { createGuildCard } = require('../images/hero/createGuildCard');
-function rows(uid){return [new ActionRowBuilder().addComponents(
- new ButtonBuilder().setCustomId(`guild:home:${uid}`).setLabel('Гильдия').setEmoji('🏰').setStyle(ButtonStyle.Primary),
- new ButtonBuilder().setCustomId(`guild:expeditions:${uid}`).setLabel('Экспедиции').setEmoji('🧭').setStyle(ButtonStyle.Secondary),
- new ButtonBuilder().setCustomId(`guild:alchemy:${uid}`).setLabel('Алхимия').setEmoji('🧪').setStyle(ButtonStyle.Secondary),
- new ButtonBuilder().setCustomId(`guild:boss:${uid}`).setLabel('World Boss').setEmoji('👹').setStyle(ButtonStyle.Danger)
-)];}
-async function home(interaction,edit=false){const hero=getHero(interaction.user.id);if(!hero){const p={content:'❌ Сначала создай героя через `/hero create`.',flags:MessageFlags.Ephemeral};return edit?interaction.update(p):interaction.reply(p);}const active=getActiveExpedition(interaction.user.id),next=nextBossAt();const buffer=await createGuildCard(hero,interaction.user,active,next);const p={content:'## 🏰 Гильдия героев Game Syndicate',files:[new AttachmentBuilder(buffer,{name:'gs-hero-guild.png'})],components:rows(interaction.user.id)};return edit?interaction.update(p):interaction.editReply(p);}
-module.exports={data:new SlashCommandBuilder().setName('guild').setDescription('Открыть интерактивное меню Гильдии героев'),async execute(interaction){await interaction.deferReply();return home(interaction,false);},async handleComponent(interaction){const [_,page,owner]=interaction.customId.split(':');if(owner!==interaction.user.id)return interaction.reply({content:'Это меню принадлежит другому участнику.',flags:MessageFlags.Ephemeral});if(page==='home')return home(interaction,true);const hero=getHero(interaction.user.id);if(!hero)return interaction.reply({content:'Сначала создай героя.',flags:MessageFlags.Ephemeral});if(page==='expeditions'){const active=getActiveExpedition(interaction.user.id);const locs=getDailyLocations(interaction.guildId||'dm');const text=locs.map(l=>`${l.dailyTheme.icon} **${l.name} — ${l.dailyTheme.name}**\n${l.description}\n🎯 ${Math.round(computeSuccessChance(hero,l))}% • ⏳ 4 ч.\n${l.dailyTheme.description}`).join('\n\n');return interaction.update({content:'## 🧭 Экспедиции гильдии',embeds:[new EmbedBuilder().setColor(0x7c3aed).setDescription(text).setFooter({text:active?'Твой герой уже в экспедиции.':'Выбор и запуск: /expedition start'})],files:[],components:rows(owner)});}if(page==='alchemy'){const buffs=getActiveBuffs(interaction.user.id);const text=buffs.length?buffs.map(b=>`✨ **${b.source_item_key}** • ${b.context==='world_boss'?'World Boss':'Экспедиция'} • зарядов ${b.charges}`).join('\n'):'Активных эффектов нет. Открой `/alchemist`, чтобы создать и применить расходники.';return interaction.update({content:'## 🧪 Алхимическая мастерская',embeds:[new EmbedBuilder().setColor(0xa855f7).setDescription(text)],files:[],components:rows(owner)});}if(page==='boss'){const next=nextBossAt();return interaction.update({content:'## 👹 Мировой босс',embeds:[new EmbedBuilder().setColor(0xdc2626).setDescription(`Бои проходят ежедневно в **15:00** и **21:00 МСК**.\n\nСледующий сбор: <t:${Math.floor(next.getTime()/1000)}:R>.\n\nГерой, находящийся в экспедиции, не сможет зарегистрироваться на бой.`)],files:[],components:rows(owner)});}}};
+const {
+  SlashCommandBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags,
+} = require('discord.js');
+
+const { getHero, createHero } = require('../systems/hero/heroService');
+const { getEffectiveHero, getInventory, getEquipment } = require('../systems/hero/itemService');
+const { HERO_CLASSES, ORIGINS, GENDERS } = require('../systems/hero/heroData');
+const { getActiveExpedition } = require('../systems/hero/expeditionService');
+const { createGuildHubCard } = require('../images/hero/createGuildHubCard');
+const { createHeroCard } = require('../images/hero/createHeroCard');
+
+const GUILD_CHANNEL_ID = '1530165282512044032';
+const EXPEDITION_CHANNEL_ID = '1529566430301782017';
+const HUB_MARKER = '🏰 **ГИЛЬДИЯ ГЕРОЕВ • GAME SYNDICATE**';
+
+function hubRows() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guild:create').setLabel('Создать героя').setEmoji('🧙').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('guild:profile').setLabel('Профиль').setEmoji('👤').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('guild:inventory').setLabel('Инвентарь').setEmoji('🎒').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:blacksmith').setLabel('Кузнец').setEmoji('⚒️').setStyle(ButtonStyle.Secondary),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guild:alchemist').setLabel('Алхимик').setEmoji('🧪').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:pets').setLabel('Питомцы').setEmoji('🐾').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:artifacts').setLabel('Артефакты').setEmoji('💍').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:codex').setLabel('Кодекс').setEmoji('📖').setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+async function hubPayload() {
+  const buffer = await createGuildHubCard();
+  return {
+    content: `${HUB_MARKER}\nСоздай героя и управляй его развитием через кнопки ниже.`,
+    files: [new AttachmentBuilder(buffer, { name: 'gs-guild-hub.png' })],
+    components: hubRows(),
+  };
+}
+
+async function ensureGuildHub(client) {
+  try {
+    const channel = await client.channels.fetch(GUILD_CHANNEL_ID);
+    if (!channel?.isTextBased()) return null;
+    const recent = await channel.messages.fetch({ limit: 50 });
+    const existing = recent.find(m => m.author.id === client.user.id && m.content.startsWith(HUB_MARKER));
+    const payload = await hubPayload();
+    if (existing) {
+      await existing.edit(payload);
+      return existing;
+    }
+    return await channel.send(payload);
+  } catch (error) {
+    console.error('[Guild Hub] Не удалось создать/обновить панель:', error);
+    return null;
+  }
+}
+
+function creationSummary(state) {
+  const gender = state.gender ? GENDERS[state.gender] : 'не выбран';
+  const cls = state.classKey ? `${HERO_CLASSES[state.classKey].icon} ${HERO_CLASSES[state.classKey].name}` : 'не выбран';
+  const origin = state.originKey ? `${ORIGINS[state.originKey].icon} ${ORIGINS[state.originKey].name}` : 'не выбрано';
+  return `## 🧙 Создание героя\n**Пол:** ${gender}\n**Класс:** ${cls}\n**Происхождение:** ${origin}`;
+}
+
+function genderMenu() {
+  return [new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId('guild:create:gender').setPlaceholder('Выбери пол героя').addOptions(
+      { label: 'Мужской', value: 'male', emoji: '♂️' },
+      { label: 'Женский', value: 'female', emoji: '♀️' },
+    ),
+  )];
+}
+
+function classMenu(gender) {
+  const options = Object.entries(HERO_CLASSES).map(([value, c]) => ({
+    label: c.name, value, emoji: c.icon, description: `${c.role} • HP ${c.hp}`,
+  }));
+  return [new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId(`guild:create:class:${gender}`).setPlaceholder('Выбери класс героя').addOptions(options),
+  )];
+}
+
+function originMenu(gender, classKey) {
+  const options = Object.entries(ORIGINS).map(([value, o]) => ({
+    label: o.name, value, emoji: o.icon, description: o.passive.slice(0, 100),
+  }));
+  return [new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId(`guild:create:origin:${gender}:${classKey}`).setPlaceholder('Выбери происхождение').addOptions(options),
+  )];
+}
+
+async function showProfile(interaction) {
+  const base = getHero(interaction.user.id);
+  if (!base) return interaction.reply({ content: '❌ Сначала создай героя кнопкой **«Создать героя»**.', flags: MessageFlags.Ephemeral });
+  const hero = getEffectiveHero(base);
+  const buffer = await createHeroCard(hero, interaction.user);
+  return interaction.reply({
+    content: `👤 **Профиль героя ${hero.name}**`,
+    files: [new AttachmentBuilder(buffer, { name: `hero-${interaction.user.id}.png` })],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function showInventory(interaction) {
+  const hero = getHero(interaction.user.id);
+  if (!hero) return interaction.reply({ content: '❌ Сначала создай героя.', flags: MessageFlags.Ephemeral });
+  const items = getInventory(interaction.user.id, { limit: 30 });
+  const equipment = getEquipment(interaction.user.id);
+  const text = items.length
+    ? items.slice(0, 20).map(i => `**#${i.id} ${i.name}** ×${i.quantity} • ${i.rarity}`).join('\n')
+    : 'Инвентарь пока пуст.';
+  return interaction.reply({
+    content: `## 🎒 Инвентарь — ${hero.name}\nЭкипировано предметов: **${equipment.length}**\n\n${text}`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function handleComponent(interaction) {
+  const parts = interaction.customId.split(':');
+  const action = parts[1];
+
+  if (action === 'create' && parts.length === 2) {
+    if (getHero(interaction.user.id)) {
+      return interaction.reply({ content: 'ℹ️ У тебя уже есть герой. Открой его через кнопку **«Профиль»**.', flags: MessageFlags.Ephemeral });
+    }
+    return interaction.reply({ content: creationSummary({}), components: genderMenu(), flags: MessageFlags.Ephemeral });
+  }
+
+  if (action === 'create' && parts[2] === 'gender') {
+    const gender = interaction.values[0];
+    return interaction.update({ content: creationSummary({ gender }), components: classMenu(gender) });
+  }
+
+  if (action === 'create' && parts[2] === 'class') {
+    const gender = parts[3];
+    const classKey = interaction.values[0];
+    return interaction.update({ content: creationSummary({ gender, classKey }), components: originMenu(gender, classKey) });
+  }
+
+  if (action === 'create' && parts[2] === 'origin') {
+    const [, , , gender, classKey] = parts;
+    const originKey = interaction.values[0];
+    const modal = new ModalBuilder()
+      .setCustomId(`guild:create:modal:${gender}:${classKey}:${originKey}`)
+      .setTitle('Имя героя');
+    const input = new TextInputBuilder()
+      .setCustomId('hero_name')
+      .setLabel('Имя героя')
+      .setPlaceholder('От 2 до 24 символов')
+      .setMinLength(2).setMaxLength(24).setRequired(true)
+      .setStyle(TextInputStyle.Short);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    return interaction.showModal(modal);
+  }
+
+  if (action === 'profile') return showProfile(interaction);
+  if (action === 'inventory') return showInventory(interaction);
+
+  if (action === 'alchemist') {
+    return interaction.reply({ content: '🧪 Открой полноценную мастерскую командой `/alchemist`.', flags: MessageFlags.Ephemeral });
+  }
+
+  if (action === 'codex') {
+    const classes = Object.values(HERO_CLASSES).map(c => `${c.icon} **${c.name}** — ${c.role}`).join('\n');
+    return interaction.reply({
+      content: `## 📖 Кодекс Гильдии\n\n### Классы\n${classes}\n\n🗺️ Экспедиции проходят в канале <#${EXPEDITION_CHANNEL_ID}>.\n👹 На World Boss нельзя идти, пока герой находится в экспедиции.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const soon = {
+    blacksmith: '⚒️ Кузнец',
+    pets: '🐾 Питомцы',
+    artifacts: '💍 Артефакты',
+  };
+  if (soon[action]) return interaction.reply({ content: `${soon[action]} — раздел уже подготовлен в хабе и будет подключён в следующем обновлении.`, flags: MessageFlags.Ephemeral });
+}
+
+async function handleModal(interaction) {
+  const parts = interaction.customId.split(':');
+  const gender = parts[3], classKey = parts[4], originKey = parts[5];
+  if (getHero(interaction.user.id)) {
+    return interaction.reply({ content: '❌ Герой уже существует.', flags: MessageFlags.Ephemeral });
+  }
+  const name = interaction.fields.getTextInputValue('hero_name');
+  const result = createHero({ userId: interaction.user.id, name, gender, classKey, originKey });
+  if (!result.ok) {
+    const reason = result.reason === 'name' ? 'Имя должно содержать от 2 до 24 символов.' : 'Не удалось создать героя.';
+    return interaction.reply({ content: `❌ ${reason}`, flags: MessageFlags.Ephemeral });
+  }
+  const hero = getEffectiveHero(result.hero);
+  const buffer = await createHeroCard(hero, interaction.user);
+  return interaction.reply({
+    content: `✨ **${hero.name}** вступает в Гильдию героев!\nТеперь ему доступны экспедиции в <#${EXPEDITION_CHANNEL_ID}> и участие в World Boss, когда он свободен.`,
+    files: [new AttachmentBuilder(buffer, { name: `hero-${interaction.user.id}.png` })],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+module.exports = {
+  data: new SlashCommandBuilder().setName('guild').setDescription('Опубликовать или обновить главное меню Гильдии героев'),
+  async execute(interaction) {
+    if (interaction.channelId !== GUILD_CHANNEL_ID) {
+      return interaction.reply({ content: `Команда доступна только в канале <#${GUILD_CHANNEL_ID}>.`, flags: MessageFlags.Ephemeral });
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const message = await ensureGuildHub(interaction.client);
+    return interaction.editReply(message ? '✅ Главное меню Гильдии опубликовано или обновлено.' : '❌ Не удалось опубликовать меню. Проверь права бота.');
+  },
+  handleComponent,
+  handleModal,
+  ensureGuildHub,
+  GUILD_CHANNEL_ID,
+};

@@ -62,6 +62,16 @@ client.once('clientReady', () => {
     // Это защищает сервер от случайного удаления команд и дневного лимита Discord.
     console.log('ℹ️ Автоматическая регистрация slash-команд при запуске отключена.');
 
+    // Восстанавливаем закрепляемую панель Гильдии после перезапуска.
+    setTimeout(async () => {
+        try {
+            const guildCommand = client.commands.get('guild');
+            if (guildCommand?.ensureGuildHub) await guildCommand.ensureGuildHub(client);
+        } catch (error) {
+            console.error('[Guild Hub] Ошибка автозапуска:', error);
+        }
+    }, 8000);
+
     // Пересчитываем пропущенные серии реакций и выдаём достижения
     // по уже накопленной статистике и коллекциям карточек.
     setTimeout(async () => {
@@ -87,6 +97,10 @@ client.on('interactionCreate', async interaction => {
         if (interaction.isModalSubmit()) {
             if (interaction.customId === 'game_create_modal') {
                 const command = client.commands.get('game');
+                if (command?.handleModal) return await command.handleModal(interaction);
+            }
+            if (interaction.customId.startsWith('guild:create:modal:')) {
+                const command = client.commands.get('guild');
                 if (command?.handleModal) return await command.handleModal(interaction);
             }
             return;
