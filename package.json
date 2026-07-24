@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "16.5.5",
+  "version": "16.5.6",
   "private": true,
   "description": "Game Syndicate V16.5.4 Interactive Guide",
   "main": "index.js",
