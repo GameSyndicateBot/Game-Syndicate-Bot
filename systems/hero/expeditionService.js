@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { db, addCardDust, removeCardDust } = require('../../database/db');
 const { getHero, addHistory, grantXp } = require('./heroService');
 const { HERO_CLASSES, ORIGINS } = require('./heroData');
-const { LOCATIONS, EVENTS } = require('./expeditionData');
+const { LOCATIONS, LOCATION_RARITIES, EVENTS } = require('./expeditionData');
 const { EXPEDITION_LOOT, RARITY_ORDER } = require('./itemData');
 const { grantItem, getEffectiveHero, getEquipmentBonuses } = require('./itemService');
 const { grantCompanion } = require('./companionService');
@@ -17,32 +17,62 @@ function rngFromSeed(seed) { let s = hashNumber(seed) % 2147483647; return () =>
 function randomInt(rng, min, max) { return Math.floor(rng() * (max - min + 1)) + min; }
 function pick(rng, list) { return list[Math.floor(rng() * list.length)]; }
 
-function buildDailyWorld(guildId = 'global', dateKey = todayKey()) {
-  const entries = Object.entries(LOCATIONS);
-  const rng = rngFromSeed(`gs-expeditions:${guildId}:${dateKey}`);
-  const shuffled = [...entries].sort(() => rng() - 0.5);
-  const selected = shuffled.slice(0, 3);
-  if (!selected.some(([, l]) => l.difficulty <= 2)) {
-    const easy = entries.find(([, l]) => l.difficulty <= 2);
-    selected[2] = easy;
+function moscowHour(now = new Date()) {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone:'Europe/Moscow', hour:'2-digit', hour12:false }).format(now));
+}
+function specialWorldFlags(guildId='global', dateKey=todayKey(), weatherKey='clear') {
+  let afterBoss = false;
+  try {
+    const row = db.prepare("SELECT 1 FROM world_boss_battles WHERE status IN ('victory','defeated','completed') AND date(created_at)=date('now') LIMIT 1").get();
+    afterBoss = Boolean(row);
+  } catch (_) {}
+  return { after_boss: afterBoss, full_moon: (hashNumber(`moon:${dateKey}`) % 29) === 14, blood_moon: (hashNumber(`blood:${dateKey}`) % 45) === 0, storm: ['storm','snow'].includes(weatherKey) };
+}
+function isLocationEligible(location, hour, flags) {
+  if (location.time === 'night' && !(hour >= 19 || hour < 6)) return false;
+  if (location.time === 'day' && !(hour >= 6 && hour < 19)) return false;
+  if (location.condition && !flags[location.condition]) return false;
+  return true;
+}
+function weightedPickUnique(rng, pool, count) {
+  const remaining=[...pool], out=[];
+  while (remaining.length && out.length<count) {
+    const total=remaining.reduce((sum,[,l])=>sum+(LOCATION_RARITIES[l.rarity]?.weight||1),0);
+    let roll=rng()*total, index=0;
+    for (; index<remaining.length; index++) { roll -= LOCATION_RARITIES[remaining[index][1].rarity]?.weight||1; if (roll<=0) break; }
+    out.push(remaining.splice(Math.min(index,remaining.length-1),1)[0]);
   }
-  const dailyThemes = [
-    { key:'treasure', icon:'💰', name:'Богатая добыча', description:'Сегодня здесь больше Dust, материалов и шанс редкой находки.', success:2, rare:12, dust:1.30 },
-    { key:'danger', icon:'☠️', name:'Высокий риск', description:'Опасность выше, но награды заметно ценнее.', success:-8, rare:18, dust:1.55 },
-    { key:'mystery', icon:'🔮', name:'Неизведанный путь', description:'Повышен шанс встретить питомца или обнаружить артефакт.', success:-2, rare:8, dust:1.15 },
-  ];
+  return out;
+}
+function buildDailyWorld(guildId = 'global', dateKey = todayKey()) {
+  const rng = rngFromSeed(`gs-expeditions-v162:${guildId}:${dateKey}`);
   const weatherPool = [
     { key:'clear', icon:'☀️', name:'Ясное небо', description:'Дороги открыты. Шанс успеха немного выше.', success:3, rare:0, dust:1 },
-    { key:'rain', icon:'🌧️', name:'Ливень', description:'Тропы опаснее, зато алхимических материалов больше.', success:-3, rare:4, dust:1.05 },
-    { key:'fog', icon:'🌫️', name:'Густой туман', description:'Сложнее ориентироваться, но тайники легче остаются незамеченными.', success:-4, rare:8, dust:1.05 },
-    { key:'moon', icon:'🌕', name:'Полная луна', description:'Мистические события и редкие находки происходят чаще.', success:0, rare:12, dust:1 },
-    { key:'wind', icon:'🌬️', name:'Сильный ветер', description:'Путь утомительнее, но караваны оставляют больше добычи.', success:-2, rare:2, dust:1.12 },
+    { key:'rain', icon:'🌧️', name:'Ливень', description:'Больше трав и алхимических материалов.', success:-3, rare:4, dust:1.05 },
+    { key:'fog', icon:'🌫️', name:'Густой туман', description:'Тайники встречаются чаще, но путь опаснее.', success:-4, rare:8, dust:1.05 },
+    { key:'moon', icon:'🌕', name:'Полная луна', description:'Ночные и мистические маршруты становятся вероятнее.', success:0, rare:12, dust:1 },
+    { key:'wind', icon:'🌬️', name:'Сильный ветер', description:'Караваны оставляют больше добычи.', success:-2, rare:2, dust:1.12 },
+    { key:'storm', icon:'⛈️', name:'Гроза', description:'Открываются штормовые мировые маршруты.', success:-6, rare:16, dust:1.25 },
+    { key:'snow', icon:'❄️', name:'Метель', description:'Ледяные локации получают повышенную награду.', success:-5, rare:10, dust:1.20 },
   ];
   const weather = pick(rng, weatherPool);
-  const locations = selected.map(([key, data], index) => ({
-    key, ...data, durationHours: 4, dailyTheme: dailyThemes[index], weather,
-  }));
-  return { guildId, dateKey, weather, locations };
+  const flags = specialWorldFlags(guildId,dateKey,weather.key);
+  if (weather.key==='moon') flags.full_moon=true;
+  const hour = moscowHour();
+  let pool=Object.entries(LOCATIONS).filter(([,l])=>isLocationEligible(l,hour,flags));
+  // Keep daily rotation diverse: one accessible route and no duplicate region when possible.
+  let selected=weightedPickUnique(rng,pool,3);
+  if (!selected.some(([,l])=>l.difficulty<=2)) {
+    const easy=pool.filter(([,l])=>l.difficulty<=2).find(([k])=>!selected.some(([x])=>x===k));
+    if (easy) selected[2]=easy;
+  }
+  const dailyThemes=[
+    { key:'treasure', icon:'💰', name:'Богатая добыча', description:'Больше Dust, материалов и редких находок.', success:2, rare:12, dust:1.30 },
+    { key:'danger', icon:'☠️', name:'Высокий риск', description:'Опасность выше, но награды ценнее.', success:-8, rare:18, dust:1.55 },
+    { key:'mystery', icon:'🔮', name:'Неизведанный путь', description:'Повышен шанс питомца или артефакта.', success:-2, rare:8, dust:1.15 },
+  ];
+  const locations=selected.map(([key,data],index)=>({key,...data,durationHours:4,dailyTheme:dailyThemes[index],weather,rarityInfo:LOCATION_RARITIES[data.rarity]}));
+  return {guildId,dateKey,weather,locations,flags,hour,totalCatalog:Object.keys(LOCATIONS).length};
 }
 
 function getDailyWorld(guildId = 'global', dateKey = todayKey()) {
@@ -95,6 +125,29 @@ function expeditionWindow(now = new Date(), durationHours = 4) {
   return { nextBoss, returnsAt, fits: returnsAt.getTime() <= nextBoss.getTime() };
 }
 
+function playerName(userId) {
+  try { return db.prepare('SELECT username FROM players WHERE user_id=?').get(userId)?.username || `Герой ${String(userId).slice(-4)}`; } catch (_) { return `Герой ${String(userId).slice(-4)}`; }
+}
+function recordActivity(guildId,userId,location,eventType,summary,rarity='common',dust=0) {
+  const username=playerName(userId);
+  db.prepare('INSERT INTO expedition_activity(guild_id,user_id,username,location_key,event_type,summary,rarity,dust) VALUES(?,?,?,?,?,?,?,?)')
+    .run(guildId||'global',userId,username,location.key||location.location_key,eventType,summary,rarity,dust||0);
+  db.prepare('DELETE FROM expedition_activity WHERE id NOT IN (SELECT id FROM expedition_activity ORDER BY id DESC LIMIT 500)').run();
+}
+function getWorldActivity(guildId='global',limit=5) {
+  try { return db.prepare('SELECT * FROM expedition_activity WHERE guild_id=? ORDER BY id DESC LIMIT ?').all(guildId,limit); } catch (_) { return []; }
+}
+function getWorldStats(guildId='global') {
+  try {
+    const active=db.prepare("SELECT COUNT(*) n FROM hero_expeditions WHERE guild_id=? AND status='active'").get(guildId)?.n||0;
+    const completed=db.prepare("SELECT COUNT(*) n FROM hero_expeditions WHERE guild_id=? AND status='resolved' AND date(resolved_at)=date('now')").get(guildId)?.n||0;
+    const failed=db.prepare("SELECT result_json FROM hero_expeditions WHERE guild_id=? AND status='resolved' AND date(resolved_at)=date('now')").all(guildId).filter(r=>{try{return JSON.parse(r.result_json||'{}').outcome==='fail'}catch{return false}}).length;
+    const totalHeroes=db.prepare('SELECT COUNT(*) n FROM heroes').get()?.n||0;
+    const dustToday=db.prepare("SELECT result_json FROM hero_expeditions WHERE guild_id=? AND status='resolved' AND date(resolved_at)=date('now')").all(guildId).reduce((sum,r)=>{try{return sum+(JSON.parse(r.result_json||'{}').dust||0)}catch{return sum}},0);
+    return {active,free:Math.max(0,totalHeroes-active),completed,failed,dustToday};
+  } catch (_) { return {active:0,free:0,completed:0,failed:0,dustToday:0}; }
+}
+
 function startExpedition(userId, locationKey, guildId = 'global') {
   const hero = getHero(userId);
   if (!hero) return { ok: false, reason: 'no_hero' };
@@ -125,6 +178,7 @@ function startExpedition(userId, locationKey, guildId = 'global') {
     );
   db.prepare("UPDATE heroes SET status='expedition', updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(userId);
   const buffText = buffPayload.effects.length ? ` Активировано: ${buffPayload.effects.map(e => `${e.icon} ${e.name}`).join(', ')}.` : '';
+  recordActivity(guildId,userId,location,'started',`${location.icon} ${playerName(userId)} отправился в «${location.name}»`,location.rarity,0);
   addHistory(userId, 'expedition_started', `${location.icon} Герой отправился в локацию «${location.name}».${buffText}`, { expeditionId: Number(info.lastInsertRowid), locationKey, alchemy: buffPayload });
   return { ok: true, expedition: db.prepare('SELECT * FROM hero_expeditions WHERE id=?').get(info.lastInsertRowid), location };
 }
@@ -257,6 +311,8 @@ function resolveExpedition(userId, { force = false } = {}) {
   db.prepare("UPDATE hero_expeditions SET status='resolved', resolved_at=CURRENT_TIMESTAMP, result_json=?, hp_after=? WHERE id=?").run(JSON.stringify(result), hpAfter, expedition.id);
   const alchemyText = result.alchemy.length ? ` Использовано: ${result.alchemy.map(e => `${e.icon} ${e.name}`).join(', ')}.` : '';
   const rewardText = [dust ? `+${dust} Dust` : null, dustLost ? `−${dustLost} Dust` : null, `+${xp} XP`, item ? `предмет «${item.name}»` : null, companion ? `питомец «${companion.name}»` : null, result.materials.length ? `материалы ×${result.materials.reduce((sum,m)=>sum+m.quantity,0)}` : null, result.chest ? `сундук «${result.chest.name}»` : null].filter(Boolean).join(', ');
+  recordActivity(expedition.guild_id||'global',userId,location,'resolved',`${location.icon} ${playerName(userId)} вернулся из «${location.name}»: ${outcome === 'great' ? 'редкая находка' : outcome === 'fail' ? 'неудача' : `+${dust} Dust`}`,location.rarity,dust);
+  try { db.prepare(`INSERT INTO expedition_discoveries(guild_id,location_key,discovered_by,visits) VALUES(?,?,?,1) ON CONFLICT(guild_id,location_key) DO UPDATE SET visits=visits+1`).run(expedition.guild_id||'global',expedition.location_key,userId); } catch (_) {}
   addHistory(userId, 'expedition_resolved', `${location.icon} ${location.name}: ${result.event} Награда: ${rewardText}.${alchemyText}`, { expeditionId: expedition.id, ...result });
   return { ok: true, expedition: { ...expedition, status: 'resolved' }, location: { key: expedition.location_key, ...location }, result };
 }
@@ -270,4 +326,4 @@ function recoverHero(userId) {
   return true;
 }
 
-module.exports = { todayKey, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow };
+module.exports = { todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow };

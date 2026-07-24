@@ -89,16 +89,16 @@ function locationPanel(ctx, x, y, w, h, location, accent) {
   ctx.fill();
 }
 
-async function createExpeditionHubCard({ world, nextBossLabel, locked }) {
-  const c = createCanvas(1500, 920);
+async function createExpeditionHubCard({ world, nextBossLabel, locked, stats = {}, activity = [] }) {
+  const c = createCanvas(1500, 1160);
   const ctx = c.getContext('2d');
 
-  const bg = ctx.createLinearGradient(0, 0, 1500, 920);
+  const bg = ctx.createLinearGradient(0, 0, 1500, 1160);
   bg.addColorStop(0, '#020006');
   bg.addColorStop(.48, '#210d3c');
   bg.addColorStop(1, '#06000c');
   ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, 1500, 920);
+  ctx.fillRect(0, 0, 1500, 1160);
 
   ctx.globalAlpha = .07;
   ctx.fillStyle = '#d8b4fe';
@@ -108,7 +108,7 @@ async function createExpeditionHubCard({ world, nextBossLabel, locked }) {
 
   ctx.strokeStyle = locked ? '#ef4444' : '#8b5cf6';
   ctx.lineWidth = 5;
-  rr(ctx, 28, 28, 1444, 864, 36);
+  rr(ctx, 28, 28, 1444, 1104, 36);
   ctx.stroke();
 
   ctx.fillStyle = '#ffffff';
@@ -174,7 +174,16 @@ async function createExpeditionHubCard({ world, nextBossLabel, locked }) {
   ctx.fillStyle = '#8b5cf6';
   ctx.font = 'bold 19px Arial';
   ctx.textAlign = 'right';
-  ctx.fillText('GAME SYNDICATE • EXPEDITION HUB V16.1.2', 1392, 858);
+  // Living world stats
+  rr(ctx, 74, 824, 1352, 238, 25); ctx.fillStyle='rgba(10,4,22,.94)'; ctx.fill(); ctx.strokeStyle='#8b5cf6'; ctx.lineWidth=2; ctx.stroke();
+  ctx.textAlign='left'; ctx.fillStyle='#fff'; ctx.font='bold 25px Arial'; ctx.fillText('ЖИВОЙ МИР',104,866);
+  ctx.fillStyle='#ddd6fe'; ctx.font='20px Arial'; ctx.fillText(`В походе: ${stats.active||0}   Свободны: ${stats.free||0}   Сегодня завершено: ${stats.completed||0}   Провалено: ${stats.failed||0}   Dust: ${stats.dustToday||0}`,104,905);
+  ctx.fillStyle='#c084fc'; ctx.font='bold 20px Arial'; ctx.fillText('ПОСЛЕДНИЕ СОБЫТИЯ',104,947);
+  ctx.font='17px Arial'; ctx.fillStyle='#e9d5ff';
+  const rows=(activity||[]).slice(0,4); if(!rows.length) ctx.fillText('Мир ждёт первых исследователей…',104,982);
+  rows.forEach((a,i)=>{ const text=String(a.summary||'').slice(0,125); ctx.fillText(text,104,982+i*27); });
+  ctx.fillStyle = '#8b5cf6'; ctx.font = 'bold 19px Arial'; ctx.textAlign = 'right';
+  ctx.fillText('GAME SYNDICATE • EXPEDITION HUB V16.2', 1392, 1110);
   ctx.textAlign = 'left';
 
   return c.toBuffer('image/png');

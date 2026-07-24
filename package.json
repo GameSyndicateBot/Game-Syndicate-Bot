@@ -2,7 +2,7 @@
   "name": "game-syndicate-bot",
   "version": "16.1.1",
   "private": true,
-  "description": "Game Syndicate V16.1.2 Living Expeditions Hub text overflow fix",
+  "description": "Game Syndicate V16.2.0 Living Expeditions Hub text overflow fix",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

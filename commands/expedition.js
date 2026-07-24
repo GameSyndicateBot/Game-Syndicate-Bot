@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getHero } = require('../systems/hero/heroService');
 const { LOCATIONS } = require('../systems/hero/expeditionData');
-const { getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow } = require('../systems/hero/expeditionService');
+const { getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, getWorldStats, getWorldActivity } = require('../systems/hero/expeditionService');
 const { createExpeditionHubCard } = require('../images/hero/createExpeditionHubCard');
 
 function ts(value, style = 'R') { return `<t:${Math.floor(new Date(value).getTime() / 1000)}:${style}>`; }
@@ -44,9 +44,10 @@ async function hubPayload(guildId = 'global') {
   const world = getDailyWorld(guildId);
   const window = expeditionWindow();
   const boss = nextBossAt();
-  const buffer = await createExpeditionHubCard({ world, nextBossLabel: bossLabel(boss), locked: !window.fits });
+  const stats=getWorldStats(guildId); const activity=getWorldActivity(guildId,5);
+  const buffer = await createExpeditionHubCard({ world, nextBossLabel: bossLabel(boss), locked: !window.fits, stats, activity });
   return {
-    content: `${HUB_MARKER}\nВыбери одну из трёх локаций. Поход длится **4 часа**. Личные результаты открываются только тебе.`,
+    content: `${HUB_MARKER}\nВыбери одну из трёх локаций. Поход длится **4 часа**. Личные результаты открываются только тебе. В каталоге **${world.totalCatalog || Object.keys(LOCATIONS).length} локаций** с редкостью и особыми условиями появления.`,
     files: [new AttachmentBuilder(buffer, { name: 'gs-expedition-hub.png' })],
     components: hubRows(world, !window.fits),
   };
@@ -76,7 +77,8 @@ async function ensureExpeditionHub(client) {
 function currentHubSignature(guildId = 'global') {
   const world = getDailyWorld(guildId);
   const window = expeditionWindow();
-  return `${world.dateKey || ''}|${world.weather?.name || ''}|${world.locations.map(l => l.key).join(',')}|${window.fits ? 'open' : 'locked'}|${bossLabel(nextBossAt())}`;
+  const stats=getWorldStats(guildId); const activity=getWorldActivity(guildId,1);
+  return `${world.dateKey || ''}|${world.weather?.name || ''}|${world.locations.map(l => l.key).join(',')}|${window.fits ? 'open' : 'locked'}|${bossLabel(nextBossAt())}|${stats.active}|${stats.completed}|${activity[0]?.id||0}`;
 }
 
 async function refreshExpeditionHubIfNeeded(client) {

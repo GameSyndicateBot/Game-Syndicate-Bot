@@ -287,6 +287,32 @@ db.exec(`
         ON expedition_daily_worlds(date_key);
 `);
 
+
+// V16.2: living expedition world, public activity and server discoveries.
+db.exec(`
+    CREATE TABLE IF NOT EXISTS expedition_activity (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL DEFAULT 'global',
+        user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        location_key TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        rarity TEXT NOT NULL DEFAULT 'common',
+        dust INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS expedition_discoveries (
+        guild_id TEXT NOT NULL,
+        location_key TEXT NOT NULL,
+        discovered_by TEXT NOT NULL,
+        discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        visits INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY(guild_id, location_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_expedition_activity_guild ON expedition_activity(guild_id, id DESC);
+`);
+
 try { db.prepare('ALTER TABLE hero_inventory ADD COLUMN upgrade_level INTEGER NOT NULL DEFAULT 0').run(); } catch (error) {
     if (!String(error?.message || error).includes('duplicate column name')) throw error;
 }
