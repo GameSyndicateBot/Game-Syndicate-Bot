@@ -3,6 +3,33 @@ const { getHero } = require('./heroService');
 const { getInventory, getInventoryItemByKey } = require('./itemService');
 const { ALCHEMY_EFFECTS } = require('./alchemyData');
 
+// Defensive additive migration. Expeditions call this module before consuming
+// potion effects, so missing alchemy tables must never break the interaction.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS hero_active_buffs (
+    user_id TEXT NOT NULL,
+    buff_key TEXT NOT NULL,
+    source_item_key TEXT NOT NULL,
+    context TEXT NOT NULL,
+    charges INTEGER NOT NULL DEFAULT 1,
+    bonuses_json TEXT NOT NULL DEFAULT '{}',
+    activated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT,
+    PRIMARY KEY(user_id, buff_key)
+  );
+  CREATE TABLE IF NOT EXISTS hero_consumable_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    effect_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_hero_active_buffs_user_context
+    ON hero_active_buffs(user_id, context);
+  CREATE INDEX IF NOT EXISTS idx_hero_consumables_user
+    ON hero_consumable_history(user_id, id DESC);
+`);
+
 function safeJson(value) { try { return JSON.parse(value || '{}') || {}; } catch { return {}; } }
 function mergeBonuses(rows) {
   const out = {};
