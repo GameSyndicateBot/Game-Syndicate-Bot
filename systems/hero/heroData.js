@@ -4,13 +4,13 @@ const HERO_CLASSES = Object.freeze({
   guardian: { name: 'Страж', icon: '🏰', hp: 135, strength: 9, defense: 15, dexterity: 4, intelligence: 4, luck: 4, role: 'Танк' },
   berserker: { name: 'Берсерк', icon: '⚙️', hp: 118, strength: 15, defense: 8, dexterity: 7, intelligence: 3, luck: 5, role: 'Поддержка / урон' },
   assassin: { name: 'Ассасин', icon: '🗡️', hp: 92, strength: 12, defense: 6, dexterity: 15, intelligence: 6, luck: 8, role: 'Урон' },
-  ranger: { name: 'Следопыт', icon: '🏹', hp: 102, strength: 10, defense: 7, dexterity: 14, intelligence: 6, luck: 9, role: 'Урон' },
+  archer: { name: 'Лучник', icon: '🏹', hp: 102, strength: 10, defense: 7, dexterity: 14, intelligence: 6, luck: 9, role: 'Урон' },
   engineer: { name: 'Инженер', icon: '🔧', hp: 108, strength: 8, defense: 9, dexterity: 9, intelligence: 14, luck: 6, role: 'Урон / поддержка' },
   mage: { name: 'Маг', icon: '🔮', hp: 88, strength: 4, defense: 5, dexterity: 7, intelligence: 17, luck: 7, role: 'Магический урон' },
-  warlock: { name: 'Чернокнижник', icon: '🌑', hp: 96, strength: 5, defense: 6, dexterity: 6, intelligence: 16, luck: 8, role: 'Магический урон' },
+  necromancer: { name: 'Некромант', icon: '☠️', hp: 96, strength: 5, defense: 6, dexterity: 6, intelligence: 16, luck: 8, role: 'Магический урон' },
   cleric: { name: 'Клирик', icon: '✝️', hp: 105, strength: 6, defense: 8, dexterity: 5, intelligence: 15, luck: 7, role: 'Лечение' },
   priest: { name: 'Жрец', icon: '✨', hp: 98, strength: 4, defense: 7, dexterity: 5, intelligence: 16, luck: 8, role: 'Лечение / поддержка' },
-  druid: { name: 'Друид', icon: '🌿', hp: 110, strength: 7, defense: 8, dexterity: 8, intelligence: 14, luck: 8, role: 'Поддержка / лечение' },
+  bard: { name: 'Бард', icon: '🎵', hp: 110, strength: 7, defense: 8, dexterity: 8, intelligence: 14, luck: 8, role: 'Поддержка / лечение' },
 });
 
 const ORIGINS = Object.freeze({

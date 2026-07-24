@@ -69,7 +69,7 @@ const ITEMS = Object.freeze({
 
 const STARTER_BY_CLASS = Object.freeze({
   warrior:'rusty_blade', paladin:'rusty_blade', guardian:'rusty_blade', berserker:'iron_axe',
-  ranger:'hunters_bow', assassin:'shadow_dagger', rogue:'hunters_bow', monk:'traveler_gloves',
+  archer:'hunters_bow', ranger:'hunters_bow', assassin:'shadow_dagger', rogue:'hunters_bow', monk:'traveler_gloves',
   mage:'novice_staff', healer:'novice_staff', necromancer:'novice_staff', bard:'hunters_bow'
 });
 

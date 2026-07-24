@@ -176,6 +176,16 @@ db.exec(`
         PRIMARY KEY(user_id, location_key)
     );
 
+    CREATE TABLE IF NOT EXISTS hero_class_progress (
+        user_id TEXT NOT NULL,
+        class_key TEXT NOT NULL,
+        level INTEGER NOT NULL DEFAULT 1,
+        xp INTEGER NOT NULL DEFAULT 0,
+        expeditions_completed INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, class_key)
+    );
+
     CREATE TABLE IF NOT EXISTS hero_expeditions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT NOT NULL,
@@ -978,6 +988,28 @@ function resetPlayer(userId) {
     db.prepare(`DELETE FROM streaks WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM players WHERE user_id = ?`).run(userId);
 }
+
+
+// V16.3.0 — отдельная прокачка классов и класс экспедиции.
+try { db.prepare("ALTER TABLE hero_expeditions ADD COLUMN class_key TEXT").run(); } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) console.error('[DB] hero_expeditions.class_key migration:', error.message);
+}
+try {
+    db.exec(`CREATE TABLE IF NOT EXISTS hero_class_progress (
+      user_id TEXT NOT NULL, class_key TEXT NOT NULL, level INTEGER NOT NULL DEFAULT 1,
+      xp INTEGER NOT NULL DEFAULT 0, expeditions_completed INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,class_key)
+    )`);
+} catch (error) { console.error('[DB] hero_class_progress migration:', error.message); }
+try {
+    db.prepare(`INSERT OR IGNORE INTO hero_class_progress(user_id,class_key,level,xp)
+      SELECT user_id,
+        CASE class_key WHEN 'ranger' THEN 'archer' WHEN 'warlock' THEN 'necromancer' WHEN 'druid' THEN 'bard' ELSE class_key END,
+        1,0 FROM heroes`).run();
+} catch (error) { console.error('[DB] initial class progress:', error.message); }
+try {
+    db.prepare("UPDATE heroes SET class_key=CASE class_key WHEN 'ranger' THEN 'archer' WHEN 'warlock' THEN 'necromancer' WHEN 'druid' THEN 'bard' ELSE class_key END WHERE class_key IN ('ranger','warlock','druid')").run();
+} catch (error) { console.error('[DB] class alias migration:', error.message); }
 
 module.exports = {
     db,

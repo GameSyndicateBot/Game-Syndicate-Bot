@@ -1,6 +1,7 @@
 const { db } = require('../../database/db');
 const { HERO_CLASSES, ORIGINS, xpForNextLevel } = require('./heroData');
 const { STARTER_BY_CLASS } = require('./itemData');
+const { ensureClassProgress, normalizeClassKey } = require('./classProgressService');
 
 function getHero(userId) {
   return db.prepare('SELECT * FROM heroes WHERE user_id = ?').get(userId) || null;
@@ -10,6 +11,7 @@ function getHeroByNumber(heroNumber) {
 }
 function createHero({ userId, name, gender, classKey, originKey }) {
   if (getHero(userId)) return { ok: false, reason: 'exists' };
+  classKey = normalizeClassKey(classKey);
   const heroClass = HERO_CLASSES[classKey];
   const origin = ORIGINS[originKey];
   if (!heroClass || !origin) return { ok: false, reason: 'invalid' };
@@ -26,6 +28,7 @@ function createHero({ userId, name, gender, classKey, originKey }) {
     VALUES (@userId,@name,@gender,@classKey,@originKey,@hp,@hp,@strength,@defense,@dexterity,@intelligence,@luck)`);
   const result = insert.run({ userId, name: cleanName, gender, classKey, originKey, ...stats });
   const hero = getHero(userId);
+  ensureClassProgress(userId, classKey);
   addHistory(userId, 'hero_created', `Герой ${cleanName} начал свой путь.`, null);
   try {
     const { grantItem } = require('./itemService');

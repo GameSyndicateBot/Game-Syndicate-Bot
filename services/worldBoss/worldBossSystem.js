@@ -8,7 +8,7 @@ const { db, getOrCreatePlayer, addCardDust } = require('../../database/db');
 const { addPack } = require('../../utils/packInventory');
 const { CLASSES, MINIONS, BOSSES } = require('./config');
 const { createWorldBossBattleCard, cardFile } = require('../../images/worldBoss/createWorldBossBattleCard');
-const { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, hpMultiplier, resistancePercent, heroSummary } = require('./heroIntegration');
+const { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, hpMultiplier, resistancePercent, heroSummary, selectedClassBonuses } = require('./heroIntegration');
 const { consumeContextBuffs, describeBuffKeys } = require('../../systems/hero/alchemyService');
 const GAME_CHANNELS = require('../../config/gameChannels');
 
@@ -376,7 +376,11 @@ async function assignChosenClass(id, user, key, auto = false) {
   classKey = s.availableClasses[pos]; const c = CLASSES[classKey]; if (!c) return { ok: false, reason: 'class' };
   s.availableClasses.splice(pos, 1); s.classChoiceIndex += 1; s.log.push(`${auto ? '⏱️ Автовыбор:' : '✅'} <@${user}> — ${roleIcon(c.role)} **${c.name}**.`); saveState(b, s);
   const joinedPlayer = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, user);
-  const heroMaxHp = Math.round(c.maxHp * hpMultiplier(joinedPlayer));
+  const playerWithClass = {...joinedPlayer,class_key:classKey};
+  const classBonus = selectedClassBonuses(playerWithClass);
+  const heroMaxHp = Math.round(c.maxHp * hpMultiplier(playerWithClass));
+  s.log.push(`📚 Мастерство ${c.name}: **Lv.${classBonus.level}** • урон +${classBonus.damagePercent}% • HP +${classBonus.hpPercent}% • защита +${classBonus.resistancePercent}%.`);
+  saveState(b,s);
   db.prepare("UPDATE world_boss_players SET class_key=?,hp=?,max_hp=?,energy=0,mana=?,ult_charge=0,status='alive',effects_json='{}' WHERE battle_id=? AND user_id=?").run(classKey, heroMaxHp, heroMaxHp, c.resourceType === 'mana' ? 100 : 0, id, user);
   if (s.classChoiceIndex >= s.classOrder.length) {
     b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const ns = stateOf(b); ns.initiativeRolls = {}; ns.log.push('🎲 Классы выбраны. Теперь бросьте d20 на инициативу боя.'); saveState(b, ns);
