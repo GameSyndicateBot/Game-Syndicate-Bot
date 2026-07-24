@@ -159,6 +159,11 @@ client.on('interactionCreate', async interaction => {
                 return await handleQuickEventComponent(interaction);
             }
 
+            if (interaction.customId.startsWith('guide:')) {
+                const command = client.commands.get('guide');
+                if (command?.handleComponent) return await command.handleComponent(interaction);
+            }
+
             if (interaction.customId.startsWith('hero:')) {
                 const command = client.commands.get('hero');
                 if (command?.handleComponent) return await command.handleComponent(interaction);

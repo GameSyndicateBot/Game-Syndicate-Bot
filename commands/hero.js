@@ -83,7 +83,12 @@ module.exports={
    const result=createHero({userId:interaction.user.id,name:interaction.options.getString('name'),gender:interaction.options.getString('gender'),classKey:interaction.options.getString('class'),originKey:interaction.options.getString('origin')});
    if(!result.ok)return interaction.reply({content:result.reason==='name'?'❌ Имя должно содержать от 2 до 24 символов.':'❌ Не удалось создать героя.',flags:MessageFlags.Ephemeral});
    await interaction.deferReply(); const effective=getEffectiveHero(result.hero); const buffer=await createHeroCard(effective,interaction.user);
-   return interaction.editReply({content:`✨ **${result.hero.name}** вступает в мир Game Syndicate и получает стартовый предмет!`,files:[new AttachmentBuilder(buffer,{name:`hero-${interaction.user.id}.png`})]});
+   const guideCommand=interaction.client.commands.get('guide');
+   return interaction.editReply({
+    content:`✨ **${result.hero.name}** вступает в мир Game Syndicate и получает стартовый предмет!\n\n📖 Открой краткое руководство, чтобы узнать, как развивать героя.`,
+    files:[new AttachmentBuilder(buffer,{name:`hero-${interaction.user.id}.png`})],
+    components:guideCommand?.makeWelcomeComponents?guideCommand.makeWelcomeComponents(interaction.user.id):[]
+   });
   }
   const target=interaction.options.getUser('user')||interaction.user;
   if(target.bot)return interaction.reply({content:'❌ У ботов нет героев.',flags:MessageFlags.Ephemeral});
