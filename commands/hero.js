@@ -47,7 +47,7 @@ module.exports={
     return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('⚔️ 12 классов героев').setDescription(text)],flags:MessageFlags.Ephemeral});
    }
    const rows=getAllClassProgress(interaction.user.id);
-   const text=rows.map(row=>{const c=HERO_CLASSES[row.class_key],rank=getMasteryRank(row.level),pct=classProgressPercent(row.level,row.xp),b=classWorldBossBonuses(row.level);return `${c.icon} **${c.name} Lv.${row.level}** • ${rank.name}\n${row.level>=50?'MAX':`${row.xp}/${classXpForNextLevel(row.level)} XP`} • ${pct}% • WB: ⚔️+${b.damagePercent}% ❤️+${b.hpPercent}% 🛡️+${b.resistancePercent}%`;}).join('\n\n');
+   const text=rows.map(row=>{const c=HERO_CLASSES[row.class_key],rank=getMasteryRank(row.level),pct=classProgressPercent(row.level,row.xp),b=classWorldBossBonuses(row.level,row.class_key);return `${c.icon} **${c.name} Lv.${row.level}** • ${rank.name}\n${row.level>=50?'MAX':`${row.xp}/${classXpForNextLevel(row.level)} XP`} • ${pct}% • WB: ⚔️+${b.damagePercent}% ❤️+${b.hpPercent}% 🛡️+${b.resistancePercent}%`;}).join('\n\n');
    return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle(`📚 Классы героя ${hero.name}`).setDescription(text).setFooter({text:'Класс получает XP только в тех экспедициях, где он был выбран.'})],flags:MessageFlags.Ephemeral});
   }
   if(sub==='origins'){
@@ -72,9 +72,16 @@ module.exports={
    return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${cls.icon} ${hero.name} — характеристики`).setDescription(lines).addFields({name:'Класс',value:`${cls.name} • ${cls.role}`,inline:true},{name:'Происхождение',value:`${org.icon} ${org.name}`,inline:true},{name:'Уровень',value:`${hero.level} • ${hero.xp}/${req} XP`,inline:true},{name:'Экспедиции',value:`+${b.expedition_success||0}% успех · +${b.rare_find||0}% редкая добыча`,inline:false},{name:'World Boss',value:`+${b.world_boss_damage||0}% урон · +${b.world_boss_resistance||0}% защита`,inline:false})]});
   }
   if(sub==='equipment'){
-   const by=new Map(getEquipment(target.id).map(e=>[e.slot,e]));
+   const classKey=interaction.options.getString('class');
+   const selectedClass=classKey?HERO_CLASSES[classKey]:null;
+   const items=classKey?getClassEquipment(target.id,classKey,{fallback:true}):getEquipment(target.id);
+   const by=new Map(items.map(e=>[e.slot,e]));
    const text=Object.entries(SLOT_LABELS).map(([k,l])=>{const i=by.get(k);return `${l}: ${i?`**${upgradedName(i)}** [${rarity(i.rarity)}]`:'—'}`;}).join('\n');
-   return interaction.reply({embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(`Экипировка: ${hero.name}`).setDescription(text).setFooter({text:'Используй /hero equip id:<номер> и /hero unequip.'})]});
+   const title=selectedClass?`Экипировка ${selectedClass.icon} ${selectedClass.name}: ${hero.name}`:`Экипировка: ${hero.name}`;
+   const footer=selectedClass
+    ?'Если у класса нет собственного комплекта, показывается общая экипировка.'
+    :'Используй /hero equip id:<номер> и /hero unequip.';
+   return interaction.reply({embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(title).setDescription(text).setFooter({text:footer})]});
   }
   if(sub==='inventory'){
    const category=interaction.options.getString('category')||'all'; const items=getInventory(interaction.user.id,{type:category==='all'?null:category,limit:40});

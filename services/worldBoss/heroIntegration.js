@@ -100,7 +100,7 @@ function selectedClassBonuses(player) {
   const s = parseSnapshot(player);
   const key = normalizeClassKey(player?.class_key);
   const level = Number(s?.classProgress?.[key]?.level || 1);
-  const mastery = classWorldBossBonuses(level);
+  const mastery = classWorldBossBonuses(level, key);
   const equipment = equipmentBonusesForClass(s, key);
   return { level, ...mastery, mastery, equipment };
 }

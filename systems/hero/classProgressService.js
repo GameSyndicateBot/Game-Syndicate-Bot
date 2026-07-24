@@ -6,6 +6,22 @@ const { HERO_CLASSES } = require('./heroData');
 const MAX_CLASS_LEVEL = 50;
 const CLASS_ALIASES = Object.freeze({ ranger: 'archer', warlock: 'necromancer', druid: 'bard' });
 
+const CLASS_BONUS_PROFILES = Object.freeze({
+  warrior:      { damage: 3.5, hp: 8.0, resistance: 6.0, title: 'Стойкость авангарда' },
+  paladin:      { damage: 3.0, hp: 7.0, resistance: 7.0, title: 'Священный оплот' },
+  guardian:     { damage: 2.5, hp: 9.0, resistance: 7.0, title: 'Несокрушимая стена' },
+  berserker:    { damage: 7.0, hp: 4.0, resistance: 2.5, title: 'Боевая ярость' },
+  assassin:     { damage: 9.0, hp: 2.0, resistance: 2.0, title: 'Смертельная точность' },
+  archer:       { damage: 8.5, hp: 2.5, resistance: 2.0, title: 'Безошибочный выстрел' },
+  engineer:     { damage: 6.5, hp: 4.0, resistance: 3.5, title: 'Тактическое превосходство' },
+  mage:         { damage: 9.0, hp: 2.0, resistance: 2.0, title: 'Магический натиск' },
+  necromancer:  { damage: 6.5, hp: 4.0, resistance: 4.0, title: 'Власть над тьмой' },
+  cleric:       { damage: 3.5, hp: 5.0, resistance: 5.0, title: 'Благословение жизни' },
+  priest:       { damage: 3.0, hp: 5.0, resistance: 5.5, title: 'Свет веры' },
+  bard:         { damage: 4.5, hp: 4.0, resistance: 4.0, title: 'Песнь поддержки' },
+});
+
+
 function normalizeClassKey(classKey) {
   const key = String(classKey || '').toLowerCase();
   return CLASS_ALIASES[key] || key;
@@ -37,12 +53,15 @@ function grantClassXp(userId,classKey,amount,{completed=true}={}) {
     .run(level,xp,completed?1:0,userId,key);
   return {...getClassProgress(userId,key),levelsGained:gained};
 }
-function classWorldBossBonuses(level) {
+function classWorldBossBonuses(level, classKey = null) {
   const progress=Math.max(0,Math.min(MAX_CLASS_LEVEL,Number(level||1))-1)/(MAX_CLASS_LEVEL-1);
+  const key=normalizeClassKey(classKey);
+  const profile=CLASS_BONUS_PROFILES[key] || { damage: 8, hp: 6, resistance: 4, title: 'Мастерство класса' };
   return {
-    damagePercent: Math.round(progress*8*10)/10,
-    hpPercent: Math.round(progress*6*10)/10,
-    resistancePercent: Math.round(progress*4*10)/10,
+    damagePercent: Math.round(progress*profile.damage*10)/10,
+    hpPercent: Math.round(progress*profile.hp*10)/10,
+    resistancePercent: Math.round(progress*profile.resistance*10)/10,
+    title: profile.title,
   };
 }
 const MASTERY_RANKS = Object.freeze([
@@ -71,4 +90,4 @@ function classProgressPercent(level, xp) {
 function serializeClassProgress(userId) {
   const out={}; for(const row of getAllClassProgress(userId)) out[row.class_key]={level:Number(row.level||1),xp:Number(row.xp||0)}; return out;
 }
-module.exports={MAX_CLASS_LEVEL,MASTERY_RANKS,normalizeClassKey,isValidClass,classXpForNextLevel,ensureClassProgress,getClassProgress,getAllClassProgress,grantClassXp,classWorldBossBonuses,getMasteryRank,getNextMilestone,classProgressPercent,serializeClassProgress};
+module.exports={MAX_CLASS_LEVEL,MASTERY_RANKS,CLASS_BONUS_PROFILES,normalizeClassKey,isValidClass,classXpForNextLevel,ensureClassProgress,getClassProgress,getAllClassProgress,grantClassXp,classWorldBossBonuses,getMasteryRank,getNextMilestone,classProgressPercent,serializeClassProgress};

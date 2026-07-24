@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "16.3.3",
+  "version": "16.3.4",
   "private": true,
   "description": "Game Syndicate V16.3.3 Class Equipment Loadouts and balanced World Boss integration",
   "main": "index.js",
