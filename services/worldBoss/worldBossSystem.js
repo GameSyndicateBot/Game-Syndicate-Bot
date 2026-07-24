@@ -9,6 +9,7 @@ const { addPack } = require('../../utils/packInventory');
 const { CLASSES, MINIONS, BOSSES } = require('./config');
 const { createWorldBossBattleCard, cardFile } = require('../../images/worldBoss/createWorldBossBattleCard');
 const { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, hpMultiplier, resistancePercent, heroSummary } = require('./heroIntegration');
+const { consumeContextBuffs, describeBuffKeys } = require('../../systems/hero/alchemyService');
 
 const CHANNEL_ID = process.env.WORLD_BOSS_CHANNEL_ID || '1529226831797158130';
 const AUTO_SCHEDULE_ENABLED = String(process.env.WORLD_BOSS_AUTO_SCHEDULE || 'false').toLowerCase() === 'true';
@@ -300,7 +301,18 @@ async function beginBattle(id) {
   const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='registration'").get(id); if (!b) return;
   const players = battlePlayers(id);
   if (players.length < 4) { db.prepare("UPDATE world_boss_battles SET status='cancelled',ended_at=? WHERE id=?").run(Date.now(), id); addLog(b, '❌ Недостаточно участников. Нужно минимум 4.'); await refresh(id); return scheduleRegular(); }
-  const state = stateOf(b); state.classRolls = {}; state.classPool = buildClassPool(players.length); state.availableClasses = [...state.classPool]; state.log.push('🎲 Бросьте d20 за право выбора класса. Через 15 секунд не бросившие попадут в конец очереди.'); saveState(b, state);
+  const state = stateOf(b); state.classRolls = {}; state.classPool = buildClassPool(players.length); state.availableClasses = [...state.classPool];
+  state.alchemy = {};
+  for (const player of players) {
+    const consumed = consumeContextBuffs(player.user_id, 'world_boss');
+    if (!consumed.consumed.length) continue;
+    const snapshot = parseSnapshot(player);
+    snapshot.alchemy = { ...(consumed.bonuses || {}), effects: describeBuffKeys(consumed.consumed) };
+    db.prepare('UPDATE world_boss_players SET hero_snapshot_json=? WHERE battle_id=? AND user_id=?').run(JSON.stringify(snapshot), id, player.user_id);
+    state.alchemy[player.user_id] = snapshot.alchemy;
+    state.log.push(`🧪 <@${player.user_id}> активирует: **${snapshot.alchemy.effects.map(e => `${e.icon} ${e.name}`).join(', ')}**.`);
+  }
+  state.log.push('🎲 Бросьте d20 за право выбора класса. Через 15 секунд не бросившие попадут в конец очереди.'); saveState(b, state);
   db.prepare("UPDATE world_boss_battles SET status='class_roll',turn_deadline=? WHERE id=?").run(Date.now() + ROLL_MS, id); await refresh(id);
   setTimer(id, () => autoFinishClassRoll(id).catch(console.error), ROLL_MS);
 }
@@ -375,8 +387,19 @@ async function startCombat(id) {
   clearTimer(id);
   let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id), s = stateOf(b), ps = battlePlayers(id);
   for (const p of ps) db.prepare('UPDATE world_boss_players SET initiative=? WHERE battle_id=? AND user_id=?').run(s.initiativeRolls[p.user_id], id, p.user_id);
-  const boss = BOSSES.find(x => x.cardId === b.boss_card_id), hp = scaledHp(boss.baseHp, ps.length); s.log.push('⚔️ Инициатива определена. Бой начался!'); saveState(b, s);
-  db.prepare("UPDATE world_boss_battles SET status='active',boss_hp=?,boss_max_hp=?,round_no=1,turn_index=0,turn_deadline=? WHERE id=?").run(hp, hp, Date.now() + TURN_MS, id); await refresh(id); armTurn(id);
+  const boss = BOSSES.find(x => x.cardId === b.boss_card_id), hp = scaledHp(boss.baseHp, ps.length);
+  let bombTotal = 0;
+  for (const p of ps) {
+    const snap = parseSnapshot(p);
+    const flat = Math.max(0, Number(snap?.alchemy?.boss_flat_damage || 0));
+    if (!flat) continue;
+    bombTotal += flat;
+    db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(flat, flat, id, p.user_id);
+    s.log.push(`💣 <@${p.user_id}> наносит боссу **${flat}** алхимического урона.`);
+  }
+  const startHp = Math.max(0, hp - bombTotal);
+  s.log.push(`⚔️ Инициатива определена. Бой начался!${bombTotal ? ` Бомбы наносят суммарно **${bombTotal}** урона.` : ''}`); saveState(b, s);
+  db.prepare("UPDATE world_boss_battles SET status='active',boss_hp=?,boss_max_hp=?,round_no=1,turn_index=0,turn_deadline=? WHERE id=?").run(startHp, hp, Date.now() + TURN_MS, id); await refresh(id); if (startHp <= 0) return finish(id, true); armTurn(id);
 }
 
 function currentPlayer(b) { const alive = battlePlayers(b.id).filter(p => p.status === 'alive'); return { alive, p: alive.length ? alive[b.turn_index % alive.length] : null }; }

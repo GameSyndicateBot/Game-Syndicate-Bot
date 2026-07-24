@@ -13,7 +13,7 @@ module.exports = {
     const key = interaction.options.getString('item');
     const result = useConsumable(interaction.user.id, key);
     if (!result.ok) {
-      const text = result.reason === 'no_hero' ? '❌ Сначала создай героя.' : result.reason === 'none' ? '❌ Этого расходника нет в инвентаре.' : '❌ Этот предмет пока нельзя использовать.';
+      const text = result.reason === 'no_hero' ? '❌ Сначала создай героя.' : result.reason === 'none' ? '❌ Этого расходника нет в инвентаре.' : result.reason === 'full_hp' ? '❤️ У героя уже полное здоровье — зелье не потрачено.' : result.reason === 'already_active' ? '✨ Такой эффект уже активен. Сначала израсходуй его в соответствующей активности.' : '❌ Этот предмет пока нельзя использовать.';
       return interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
     }
     const effect = result.effect;

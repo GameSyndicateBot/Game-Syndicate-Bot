@@ -57,9 +57,9 @@ function parseSnapshot(player) {
   try { return JSON.parse(player?.hero_snapshot_json || '{}') || {}; } catch { return {}; }
 }
 function heroName(player) { return player?.hero_name || parseSnapshot(player).name || `Игрок ${String(player?.user_id || '').slice(-4)}`; }
-function damageMultiplier(player) { return 1 + clamp(parseSnapshot(player)?.combat?.damagePercent, 0, 25) / 100; }
+function damageMultiplier(player) { const s = parseSnapshot(player); return 1 + clamp(Number(s?.combat?.damagePercent || 0) + Number(s?.alchemy?.world_boss_damage || 0), 0, 40) / 100; }
 function hpMultiplier(player) { return 1 + clamp(parseSnapshot(player)?.combat?.hpPercent, 0, 20) / 100; }
-function resistancePercent(player) { return clamp(parseSnapshot(player)?.combat?.resistancePercent, 0, 15); }
+function resistancePercent(player) { const s = parseSnapshot(player); return clamp(Number(s?.combat?.resistancePercent || 0) + Number(s?.alchemy?.world_boss_resistance || 0), 0, 30); }
 function heroSummary(player) {
   const s = parseSnapshot(player);
   const parts = [`**${heroName(player)}**`, `ур. ${Number(player?.hero_level || s.level || 1)}`];

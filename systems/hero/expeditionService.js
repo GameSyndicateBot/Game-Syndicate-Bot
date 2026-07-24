@@ -6,6 +6,7 @@ const { LOCATIONS, EVENTS } = require('./expeditionData');
 const { EXPEDITION_LOOT, RARITY_ORDER } = require('./itemData');
 const { grantItem, getEffectiveHero, getEquipmentBonuses } = require('./itemService');
 const { expeditionMaterialRewards } = require('./materialService');
+const { consumeContextBuffs, describeBuffKeys } = require('./alchemyService');
 
 function todayKey(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
@@ -50,9 +51,12 @@ function startExpedition(userId, locationKey, guildId = 'global') {
   const testMode = String(process.env.EXPEDITION_TEST_MODE || '').toLowerCase() === 'true';
   const durationMs = testMode ? 60 * 1000 : location.durationHours * 60 * 60 * 1000;
   const returnsAt = new Date(Date.now() + durationMs).toISOString();
-  const info = db.prepare(`INSERT INTO hero_expeditions (user_id,location_key,status,returns_at) VALUES (?,?,'active',?)`).run(userId, locationKey, returnsAt);
+  const alchemy = consumeContextBuffs(userId, 'expedition');
+  const buffPayload = { bonuses: alchemy.bonuses || {}, consumed: alchemy.consumed || [], effects: describeBuffKeys(alchemy.consumed || []) };
+  const info = db.prepare(`INSERT INTO hero_expeditions (user_id,location_key,status,returns_at,buffs_json) VALUES (?,?,'active',?,?)`).run(userId, locationKey, returnsAt, JSON.stringify(buffPayload));
   db.prepare("UPDATE heroes SET status='expedition', updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(userId);
-  addHistory(userId, 'expedition_started', `${location.icon} Герой отправился в локацию «${location.name}».`, { expeditionId: Number(info.lastInsertRowid), locationKey });
+  const buffText = buffPayload.effects.length ? ` Активировано: ${buffPayload.effects.map(e => `${e.icon} ${e.name}`).join(', ')}.` : '';
+  addHistory(userId, 'expedition_started', `${location.icon} Герой отправился в локацию «${location.name}».${buffText}`, { expeditionId: Number(info.lastInsertRowid), locationKey, alchemy: buffPayload });
   return { ok: true, expedition: db.prepare('SELECT * FROM hero_expeditions WHERE id=?').get(info.lastInsertRowid), location };
 }
 
@@ -66,7 +70,7 @@ function originBonus(originKey, location) {
   if (originKey === 'sailor' && (location.tags.includes('water') || location.tags.includes('ruins'))) return 3;
   return 0;
 }
-function computeSuccessChance(hero, location) {
+function computeSuccessChance(hero, location, extraBonuses = {}) {
   const relevant = Number(hero[location.stat] || 0);
   const levelPower = (hero.level - 1) * 2.2;
   const classPower = Math.max(0, relevant - 7) * 1.15;
@@ -74,7 +78,7 @@ function computeSuccessChance(hero, location) {
   const origin = originBonus(hero.origin_key, location);
   const difficultyPenalty = location.difficulty * 11;
   const equipment = getEquipmentBonuses(hero.user_id);
-  return Math.max(28, Math.min(92, 72 + levelPower + classPower + luckPower + origin + (equipment.expedition_success || 0) - difficultyPenalty));
+  return Math.max(28, Math.min(97, 72 + levelPower + classPower + luckPower + origin + (equipment.expedition_success || 0) + (Number(extraBonuses.expedition_success) || 0) - difficultyPenalty));
 }
 function ensurePlayer(userId) {
   db.prepare(`INSERT OR IGNORE INTO players (user_id, username) VALUES (?, ?)`).run(userId, `Hero ${String(userId).slice(-4)}`);
@@ -91,9 +95,12 @@ function resolveExpedition(userId, { force = false } = {}) {
   const baseHero = getHero(userId);
   const hero = getEffectiveHero(baseHero);
   const equipmentBonuses = getEquipmentBonuses(userId);
+  let expeditionBuffs = {};
+  try { expeditionBuffs = JSON.parse(expedition.buffs_json || '{}') || {}; } catch { expeditionBuffs = {}; }
+  const alchemyBonuses = expeditionBuffs.bonuses || {};
   const location = LOCATIONS[expedition.location_key];
   const rng = rngFromSeed(`resolve:${expedition.id}:${expedition.user_id}:${expedition.started_at}`);
-  const chance = computeSuccessChance(hero, location);
+  const chance = computeSuccessChance(hero, location, alchemyBonuses);
   const roll = rng() * 100;
   let outcome = 'fail';
   if (roll <= chance * 0.25) outcome = 'great';
@@ -108,7 +115,7 @@ function resolveExpedition(userId, { force = false } = {}) {
     item = grantItem(userId, pick(rng, itemPool), 1, `expedition:${expedition.id}`);
   } else if (outcome === 'success') {
     dust = randomInt(rng, ...location.dust); xp = randomInt(rng, ...location.baseXp); reputation = 10;
-    const findChance = Math.min(0.72, 0.34 + (equipmentBonuses.rare_find || 0) / 100);
+    const findChance = Math.min(0.90, 0.34 + ((equipmentBonuses.rare_find || 0) + (Number(alchemyBonuses.rare_find) || 0)) / 100);
     if (rng() < findChance) {
       const tier = Math.max(1, Math.min(4, location.difficulty + (rng() < 0.12 ? 1 : -1)));
       item = grantItem(userId, pick(rng, EXPEDITION_LOOT[tier]), 1, `expedition:${expedition.id}`);
@@ -131,10 +138,11 @@ function resolveExpedition(userId, { force = false } = {}) {
   db.prepare("UPDATE heroes SET status=?, recovery_until=?, hp=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
     .run(injuryHours ? 'wounded' : 'ready', recoveryUntil, injuryHours ? Math.max(1, Math.round(baseHero.max_hp * 0.35)) : baseHero.max_hp, userId);
   const resourceRewards = expeditionMaterialRewards(userId, expedition.location_key, location.difficulty, outcome, expedition.id);
-  const result = { outcome, chance: Math.round(chance), roll: Math.round(roll), dust, dustLost, xp, reputation, item: item ? { name: item.name, rarity: item.rarity } : null, materials: resourceRewards.materials.map(m => ({ key: m.key, name: m.name, icon: m.icon, quantity: m.quantity })), chest: resourceRewards.chest ? { key: resourceRewards.chest.key, name: resourceRewards.chest.name, icon: resourceRewards.chest.icon } : null, injuryHours, event: pick(rng, EVENTS[outcome]), levelsGained: leveledHero?.levelsGained || 0 };
+  const result = { outcome, chance: Math.round(chance), alchemy: expeditionBuffs.effects || [], alchemyBonuses, roll: Math.round(roll), dust, dustLost, xp, reputation, item: item ? { name: item.name, rarity: item.rarity } : null, materials: resourceRewards.materials.map(m => ({ key: m.key, name: m.name, icon: m.icon, quantity: m.quantity })), chest: resourceRewards.chest ? { key: resourceRewards.chest.key, name: resourceRewards.chest.name, icon: resourceRewards.chest.icon } : null, injuryHours, event: pick(rng, EVENTS[outcome]), levelsGained: leveledHero?.levelsGained || 0 };
   db.prepare("UPDATE hero_expeditions SET status='resolved', resolved_at=CURRENT_TIMESTAMP, result_json=? WHERE id=?").run(JSON.stringify(result), expedition.id);
+  const alchemyText = result.alchemy.length ? ` Использовано: ${result.alchemy.map(e => `${e.icon} ${e.name}`).join(', ')}.` : '';
   const rewardText = [dust ? `+${dust} Dust` : null, dustLost ? `−${dustLost} Dust` : null, `+${xp} XP`, item ? `предмет «${item.name}»` : null, result.materials.length ? `материалы ×${result.materials.reduce((sum,m)=>sum+m.quantity,0)}` : null, result.chest ? `сундук «${result.chest.name}»` : null].filter(Boolean).join(', ');
-  addHistory(userId, 'expedition_resolved', `${location.icon} ${location.name}: ${result.event} Награда: ${rewardText}.`, { expeditionId: expedition.id, ...result });
+  addHistory(userId, 'expedition_resolved', `${location.icon} ${location.name}: ${result.event} Награда: ${rewardText}.${alchemyText}`, { expeditionId: expedition.id, ...result });
   return { ok: true, expedition: { ...expedition, status: 'resolved' }, location: { key: expedition.location_key, ...location }, result };
 }
 

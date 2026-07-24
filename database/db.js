@@ -257,6 +257,10 @@ db.exec(`
 `);
 
 // V15.6.3: safe additive migration for existing databases.
+try { db.prepare("ALTER TABLE hero_expeditions ADD COLUMN buffs_json TEXT NOT NULL DEFAULT '{}'").run(); } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) throw error;
+}
+
 try { db.prepare('ALTER TABLE hero_inventory ADD COLUMN upgrade_level INTEGER NOT NULL DEFAULT 0').run(); } catch (error) {
     if (!String(error?.message || error).includes('duplicate column name')) throw error;
 }
