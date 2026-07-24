@@ -1034,6 +1034,46 @@ try {
     )`);
 } catch (error) { console.error('[DB] hero_class_equipment migration:', error.message); }
 
+
+// V16.5.0 — persistent living world, regional reputation and daily contracts.
+try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS world_regions (
+        guild_id TEXT NOT NULL DEFAULT 'global',
+        region_key TEXT NOT NULL,
+        reputation INTEGER NOT NULL DEFAULT 0,
+        stage INTEGER NOT NULL DEFAULT 1,
+        discovered INTEGER NOT NULL DEFAULT 0,
+        active_event_key TEXT NOT NULL DEFAULT 'calm',
+        event_date_key TEXT,
+        expeditions INTEGER NOT NULL DEFAULT 0,
+        successes INTEGER NOT NULL DEFAULT 0,
+        materials_collected INTEGER NOT NULL DEFAULT 0,
+        last_activity_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(guild_id, region_key)
+      );
+      CREATE TABLE IF NOT EXISTS world_contracts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL DEFAULT 'global',
+        date_key TEXT NOT NULL,
+        region_key TEXT NOT NULL,
+        contract_key TEXT NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        icon TEXT NOT NULL DEFAULT '📜',
+        target INTEGER NOT NULL,
+        progress INTEGER NOT NULL DEFAULT 0,
+        reward_text TEXT NOT NULL DEFAULT '',
+        completed INTEGER NOT NULL DEFAULT 0,
+        completed_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(guild_id, date_key, region_key, contract_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_world_regions_guild ON world_regions(guild_id, discovered, stage);
+      CREATE INDEX IF NOT EXISTS idx_world_contracts_daily ON world_contracts(guild_id, date_key, region_key);
+    `);
+} catch (error) { console.error('[DB] V16.5 world migration:', error.message); }
+
 module.exports = {
     db,
     getOrCreatePlayer,

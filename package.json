@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "16.4.0",
+  "version": "16.5.0",
   "private": true,
-  "description": "Game Syndicate V16.4.0 Autonomous Expedition Tactics",
+  "description": "Game Syndicate V16.5.0 Living World Stable",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

@@ -9,6 +9,7 @@ const { grantCompanion } = require('./companionService');
 const { expeditionMaterialRewards } = require('./materialService');
 const { consumeContextBuffs, describeBuffKeys } = require('./alchemyService');
 const { normalizeClassKey, isValidClass, ensureClassProgress, grantClassXp, getClassProgress } = require('./classProgressService');
+const { applyExpeditionResult } = require('../world/worldService');
 
 const EXPEDITION_TACTICS = {
   balanced: { key:'balanced', icon:'⚖️', name:'Сбалансированно', description:'Ровный риск и награда.', success:0, xp:1, dust:1, rare:0, injury:1 },
@@ -356,6 +357,9 @@ function resolveExpedition(userId, { force = false } = {}) {
   const rewardText = [dust ? `+${dust} Dust` : null, dustLost ? `−${dustLost} Dust` : null, `+${xp} XP`, item ? `предмет «${item.name}»` : null, companion ? `питомец «${companion.name}»` : null, result.materials.length ? `материалы ×${result.materials.reduce((sum,m)=>sum+m.quantity,0)}` : null, result.chest ? `сундук «${result.chest.name}»` : null].filter(Boolean).join(', ');
   recordActivity(expedition.guild_id||'global',userId,location,'resolved',`${location.icon} ${playerName(userId)} вернулся из «${location.name}»: ${outcome === 'great' ? 'редкая находка' : outcome === 'fail' ? 'неудача' : `+${dust} Dust`}`,location.rarity,dust);
   try { db.prepare(`INSERT INTO expedition_discoveries(guild_id,location_key,discovered_by,visits) VALUES(?,?,?,1) ON CONFLICT(guild_id,location_key) DO UPDATE SET visits=visits+1`).run(expedition.guild_id||'global',expedition.location_key,userId); } catch (_) {}
+  let worldProgress = null;
+  try { worldProgress = applyExpeditionResult(expedition.guild_id || 'global', location, result); } catch (error) { console.error('[World] expedition progress:', error.message); }
+  if (worldProgress) result.world = worldProgress;
   addHistory(userId, 'expedition_resolved', `${location.icon} ${location.name}: ${result.event} Награда: ${rewardText}.${alchemyText}`, { expeditionId: expedition.id, ...result });
   return { ok: true, expedition: { ...expedition, status: 'resolved' }, location: { key: expedition.location_key, ...location }, result };
 }
