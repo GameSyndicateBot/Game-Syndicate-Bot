@@ -1074,6 +1074,28 @@ try {
     `);
 } catch (error) { console.error('[DB] V16.5 world migration:', error.message); }
 
+
+// V16.5.1 — реальные награды контрактов и временные региональные эффекты.
+try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS world_region_buffs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL DEFAULT 'global',
+        region_key TEXT NOT NULL,
+        buff_key TEXT NOT NULL,
+        source_key TEXT NOT NULL,
+        value REAL NOT NULL DEFAULT 0,
+        description TEXT NOT NULL DEFAULT '',
+        starts_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(guild_id, region_key, buff_key, source_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_world_region_buffs_active
+        ON world_region_buffs(guild_id, region_key, expires_at);
+    `);
+} catch (error) { console.error('[DB] V16.5.1 world buffs migration:', error.message); }
+
 module.exports = {
     db,
     getOrCreatePlayer,
