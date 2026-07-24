@@ -55,6 +55,11 @@ module.exports = {
         .setLabel('Диагностика')
         .setEmoji('🩺')
         .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`control:rebuildexpedition:${owner}`)
+        .setLabel('Пересоздать хаб экспедиций')
+        .setEmoji('🗺️')
+        .setStyle(ButtonStyle.Danger),
     );
 
     await interaction.reply({ embeds: [embed], components: [row], flags: MessageFlags.Ephemeral });

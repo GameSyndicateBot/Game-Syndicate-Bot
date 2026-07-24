@@ -34,6 +34,7 @@ function mainRows(owner) {
     new ButtonBuilder().setCustomId(id('channels', owner)).setLabel('Каналы').setEmoji('📡').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(id('diagnostics', owner)).setLabel('Диагностика').setEmoji('🩺').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(id('refresh', owner)).setLabel('Обновить').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(id('rebuildexpedition', owner)).setLabel('Пересоздать хаб экспедиций').setEmoji('🗺️').setStyle(ButtonStyle.Danger),
   )];
 }
 
@@ -77,6 +78,18 @@ module.exports = {
     if(type==='home'||type==='refresh') return interaction.update({embeds:[mainEmbed(interaction)],components:mainRows(owner)});
     if(type==='channels') return interaction.update({embeds:[channelsEmbed(interaction)],components:channelRows(owner)});
     if(type==='diagnostics') return interaction.update({embeds:[diagnosticsEmbed(interaction)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(id('home',owner)).setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Primary))]});
+    if(type==='rebuildexpedition') {
+      await interaction.deferUpdate();
+      const result = await require('./expedition').rebuildExpeditionHub(interaction.client);
+      const embed = new EmbedBuilder()
+        .setColor(result.ok ? 0x22C55E : 0xEF4444)
+        .setTitle(result.ok ? '✅ Expedition Hub пересоздан' : '❌ Не удалось пересоздать Expedition Hub')
+        .setDescription(result.ok
+          ? `Создано новое публичное сообщение в <#${require('./expedition').EXPEDITION_CHANNEL_ID}>.\nУдалено старых хабов: **${result.deleted}**.\nНовый ID: \`${result.message.id}\`.`
+          : 'Проверьте доступ бота к каналу, разрешения **Просматривать канал**, **Отправлять сообщения**, **Прикреплять файлы**, **Управлять сообщениями** и логи запуска.')
+        .setTimestamp();
+      return interaction.editReply({ embeds:[embed], components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(id('home',owner)).setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Primary))] });
+    }
     if(type==='pick') {
       const meta=CHANNELS[extra]; if(!meta) return interaction.reply({content:'Неизвестная настройка.',flags:MessageFlags.Ephemeral});
       const select=new ChannelSelectMenuBuilder().setCustomId(id('save',owner,extra)).setPlaceholder(`Выберите: ${meta[0]}`).setChannelTypes(ChannelType.GuildText,ChannelType.GuildAnnouncement).setMinValues(1).setMaxValues(1);

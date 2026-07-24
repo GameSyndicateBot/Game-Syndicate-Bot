@@ -72,6 +72,36 @@ async function hubPayload(guildId = 'global') {
   };
 }
 
+
+async function rebuildExpeditionHub(client) {
+  try {
+    const channel = await client.channels.fetch(EXPEDITION_CHANNEL_ID);
+    if (!channel?.isTextBased()) return { ok: false, reason: 'channel_unavailable' };
+
+    const recent = await channel.messages.fetch({ limit: 100 });
+    const hubs = recent.filter(m => m.author.id === client.user.id && m.content.startsWith(HUB_MARKER));
+    let deleted = 0;
+    for (const message of hubs.values()) {
+      try {
+        await message.delete();
+        deleted += 1;
+      } catch (error) {
+        console.warn('[Expedition Hub] Не удалось удалить старый хаб:', message.id, error?.message || error);
+      }
+    }
+
+    const payload = await hubPayload(channel.guildId || 'global');
+    const created = await channel.send(payload);
+    lastHubMessageId = created.id;
+    lastAutoHubSignature = currentHubSignature(channel.guildId || 'global');
+    console.log(`[Expedition Hub] Публичный хаб пересоздан: ${created.id}; удалено старых: ${deleted}`);
+    return { ok: true, message: created, deleted };
+  } catch (error) {
+    console.error('[Expedition Hub] Не удалось пересоздать публичный хаб:', error);
+    return { ok: false, reason: 'rebuild_failed', error };
+  }
+}
+
 async function ensureExpeditionHub(client) {
   try {
     const channel = await client.channels.fetch(EXPEDITION_CHANNEL_ID);
@@ -292,4 +322,5 @@ ${lockText}`).setFooter({ text: active ? 'Твой герой уже наход�
   ensureExpeditionHub,
   EXPEDITION_CHANNEL_ID,
   refreshExpeditionHubIfNeeded,
+  rebuildExpeditionHub,
 };
