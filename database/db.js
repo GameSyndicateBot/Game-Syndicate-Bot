@@ -1001,6 +1001,10 @@ function resetPlayer(userId) {
 
 
 // V16.3.0 — отдельная прокачка классов и класс экспедиции.
+try { db.prepare("ALTER TABLE hero_expeditions ADD COLUMN tactic_key TEXT NOT NULL DEFAULT 'balanced'").run(); } catch (error) {
+    if (!String(error.message).includes('duplicate column name')) console.error('[DB] hero_expeditions.tactic_key migration:', error.message);
+}
+
 try { db.prepare("ALTER TABLE hero_expeditions ADD COLUMN class_key TEXT").run(); } catch (error) {
     if (!String(error.message).includes('duplicate column name')) console.error('[DB] hero_expeditions.class_key migration:', error.message);
 }
