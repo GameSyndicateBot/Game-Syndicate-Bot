@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "16.5.2",
+  "version": "16.5.3",
   "private": true,
   "description": "Game Syndicate V16.5.2 Regional Minibosses",
   "main": "index.js",

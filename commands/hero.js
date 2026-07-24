@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { HERO_CLASSES, ORIGINS, STAT_LABELS, xpForNextLevel } = require('../systems/hero/heroData');
-const { getHero, createHero, getHistory } = require('../systems/hero/heroService');
+const { getHero, createHero, getHistory, deleteHero } = require('../systems/hero/heroService');
 const { getInventory, getEquipment, getClassEquipment, getEffectiveHero, getInventoryItem, equipItem, equipItemForClass, unequipItem, unequipItemForClass, getCollection, formatBonuses, parseBonuses, applyUpgradeToBonuses } = require('../systems/hero/itemService');
 const { SLOT_LABELS, TYPE_LABELS, RARITY_LABELS } = require('../systems/hero/itemData');
 const { createHeroCard } = require('../images/hero/createHeroCard');
@@ -36,6 +36,7 @@ module.exports={
   .addSubcommand(s=>s.setName('unequip').setDescription('Снять предмет').addStringOption(o=>o.setName('slot').setDescription('Слот').setRequired(true).addChoices(...slotChoices)).addStringOption(o=>o.setName('class').setDescription('Снять из комплекта выбранного класса').addChoices(...classChoices)))
   .addSubcommand(s=>s.setName('collection').setDescription('Энциклопедия найденных предметов'))
   .addSubcommand(s=>s.setName('history').setDescription('Последние события истории героя').addUserOption(o=>o.setName('user').setDescription('Герой другого участника')))
+  .addSubcommand(s=>s.setName('delete').setDescription('Безвозвратно удалить своего героя и создать нового позже'))
   .addSubcommand(s=>s.setName('classes').setDescription('Список классов'))
   .addSubcommand(s=>s.setName('origins').setDescription('Список происхождений')),
  async execute(interaction){
@@ -53,6 +54,29 @@ module.exports={
   if(sub==='origins'){
    const text=Object.values(ORIGINS).map(o=>`${o.icon} **${o.name}** — ${o.description}\n*${o.passive}*`).join('\n\n');
    return interaction.reply({embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle('📜 Происхождения').setDescription(text)],flags:MessageFlags.Ephemeral});
+  }
+  if(sub==='delete'){
+   const hero=getHero(interaction.user.id);
+   if(!hero)return interaction.reply(missing());
+   const row=new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`hero:delete:prepare:${interaction.user.id}`).setLabel('Продолжить удаление').setEmoji('🗑️').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`hero:delete:cancel:${interaction.user.id}`).setLabel('Отмена').setStyle(ButtonStyle.Secondary)
+   );
+   return interaction.reply({
+    embeds:[new EmbedBuilder().setColor(0xDC2626).setTitle('⚠️ Удаление героя').setDescription(`Ты собираешься удалить героя **${hero.name}**.
+
+Будут удалены:
+• уровень и опыт героя;
+• прогресс всех классов;
+• инвентарь, экипировка и материалы;
+• спутники, артефакты и зелья;
+• история экспедиций и личная статистика мини-боссов.
+
+**Карточки, Dust, достижения сообщества, ежедневные задания и профиль Discord не удаляются.**
+
+Это действие нельзя отменить.`)],
+    components:[row],flags:MessageFlags.Ephemeral
+   });
   }
   if(sub==='create'){
    if(getHero(interaction.user.id))return interaction.reply({content:'❌ У тебя уже есть герой.',flags:MessageFlags.Ephemeral});
@@ -114,5 +138,44 @@ module.exports={
    const rows=getHistory(target.id,10);const text=rows.length?rows.map(r=>`**${date(r.created_at)}**\n${r.description}`).join('\n\n'):'История пока пуста.';
    return interaction.reply({embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle(`📖 История: ${hero.name}`).setDescription(text).setFooter({text:`HERO #${String(hero.hero_number).padStart(5,'0')}`})]});
   }
+ },
+ async handleComponent(interaction){
+  if(!interaction.isButton()||!interaction.customId.startsWith('hero:delete:'))return false;
+  const [, , action, ownerId]=interaction.customId.split(':');
+  if(interaction.user.id!==ownerId){
+   await interaction.reply({content:'❌ Эта кнопка принадлежит другому участнику.',flags:MessageFlags.Ephemeral});
+   return true;
+  }
+  if(action==='cancel'){
+   await interaction.update({content:'Удаление героя отменено.',embeds:[],components:[]});
+   return true;
+  }
+  const hero=getHero(ownerId);
+  if(!hero){
+   await interaction.update({content:'ℹ️ Герой уже удалён.',embeds:[],components:[]});
+   return true;
+  }
+  if(action==='prepare'){
+   const row=new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`hero:delete:confirm:${ownerId}`).setLabel(`Удалить ${hero.name} навсегда`).setEmoji('⚠️').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`hero:delete:cancel:${ownerId}`).setLabel('Отмена').setStyle(ButtonStyle.Secondary)
+   );
+   await interaction.update({embeds:[new EmbedBuilder().setColor(0x991B1B).setTitle('Последнее подтверждение').setDescription(`После нажатия красной кнопки герой **${hero.name}** и весь его RPG-прогресс будут удалены без возможности восстановления.
+
+Нового героя можно будет сразу создать командой \`/hero create\`.`)],components:[row]});
+   return true;
+  }
+  if(action==='confirm'){
+   const result=deleteHero(ownerId);
+   if(!result.ok){
+    await interaction.update({content:'❌ Не удалось удалить героя. Попробуй ещё раз.',embeds:[],components:[]});
+    return true;
+   }
+   await interaction.update({content:`🗑️ Герой **${result.heroName}** и его RPG-прогресс удалены.
+
+Создать нового героя: \`/hero create\``,embeds:[],components:[]});
+   return true;
+  }
+  return false;
  }
 };

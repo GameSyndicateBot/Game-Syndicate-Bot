@@ -55,6 +55,39 @@ function getEquipment(userId) {
     FROM hero_equipment he LEFT JOIN hero_inventory hi ON hi.id=he.inventory_id
     LEFT JOIN hero_items i ON i.item_key=hi.item_key WHERE he.user_id=?`).all(userId);
 }
+
+function deleteHero(userId) {
+  const hero = getHero(userId);
+  if (!hero) return { ok: false, reason: 'missing' };
+
+  const tx = db.transaction(() => {
+    // Удаляем только RPG-прогресс героя. Профиль сообщества, Dust,
+    // карточки, достижения и ежедневная активность остаются нетронутыми.
+    const explicitTables = [
+      'hero_class_equipment', 'hero_equipment', 'hero_active_buffs',
+      'hero_consumable_history', 'hero_upgrade_history', 'hero_crafting_history',
+      'hero_chest_openings', 'hero_chests', 'hero_materials', 'hero_shop_purchases',
+      'hero_expeditions', 'hero_class_progress', 'hero_reputation', 'hero_history',
+      'hero_artifacts', 'hero_companions', 'hero_item_collection', 'hero_inventory',
+      'player_miniboss_stats', 'miniboss_kills', 'expedition_activity'
+    ];
+
+    for (const table of explicitTables) {
+      const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
+      if (!exists) continue;
+      const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+      if (columns.some(column => column.name === 'user_id')) {
+        db.prepare(`DELETE FROM ${table} WHERE user_id=?`).run(userId);
+      }
+    }
+
+    db.prepare('DELETE FROM heroes WHERE user_id=?').run(userId);
+  });
+
+  tx();
+  return { ok: true, heroName: hero.name, heroNumber: hero.hero_number };
+}
+
 function grantXp(userId, amount) {
   const hero = getHero(userId); if (!hero) return null;
   let xp = hero.xp + Math.max(0, Number(amount) || 0), level = hero.level;
@@ -64,4 +97,4 @@ function grantXp(userId, amount) {
   if (levels) addHistory(userId, 'level_up', `Герой достиг уровня ${level}.`, { level });
   return { ...getHero(userId), levelsGained: levels };
 }
-module.exports = { getHero, getHeroByNumber, createHero, addHistory, getHistory, getInventory, getEquipment, grantXp };
+module.exports = { getHero, getHeroByNumber, createHero, deleteHero, addHistory, getHistory, getInventory, getEquipment, grantXp };
