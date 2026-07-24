@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { HERO_CLASSES, ORIGINS, STAT_LABELS, xpForNextLevel } = require('../systems/hero/heroData');
 const { getHero, createHero, getHistory } = require('../systems/hero/heroService');
-const { getInventory, getEquipment, getEffectiveHero, getInventoryItem, equipItem, unequipItem, getCollection, formatBonuses, parseBonuses, applyUpgradeToBonuses } = require('../systems/hero/itemService');
+const { getInventory, getEquipment, getClassEquipment, getEffectiveHero, getInventoryItem, equipItem, equipItemForClass, unequipItem, unequipItemForClass, getCollection, formatBonuses, parseBonuses, applyUpgradeToBonuses } = require('../systems/hero/itemService');
 const { SLOT_LABELS, TYPE_LABELS, RARITY_LABELS } = require('../systems/hero/itemData');
 const { createHeroCard } = require('../images/hero/createHeroCard');
 const { getAllClassProgress, classXpForNextLevel, classWorldBossBonuses, getMasteryRank, classProgressPercent } = require('../systems/hero/classProgressService');
@@ -29,11 +29,11 @@ module.exports={
    .addStringOption(o=>o.setName('origin').setDescription('Происхождение и пассивный бонус').setRequired(true).addChoices(...originChoices)))
   .addSubcommand(s=>s.setName('view').setDescription('Показать карточку героя').addUserOption(o=>o.setName('user').setDescription('Герой другого участника')))
   .addSubcommand(s=>s.setName('stats').setDescription('Характеристики с учётом экипировки').addUserOption(o=>o.setName('user').setDescription('Герой другого участника')))
-  .addSubcommand(s=>s.setName('equipment').setDescription('Показать экипировку героя').addUserOption(o=>o.setName('user').setDescription('Герой другого участника')))
+  .addSubcommand(s=>s.setName('equipment').setDescription('Показать экипировку героя или комплекта класса').addUserOption(o=>o.setName('user').setDescription('Герой другого участника')).addStringOption(o=>o.setName('class').setDescription('Комплект конкретного класса').addChoices(...classChoices)))
   .addSubcommand(s=>s.setName('inventory').setDescription('Показать инвентарь').addStringOption(o=>o.setName('category').setDescription('Категория').addChoices(...typeChoices)))
   .addSubcommand(s=>s.setName('item').setDescription('Подробности предмета по номеру из инвентаря').addIntegerOption(o=>o.setName('id').setDescription('Номер #ID').setMinValue(1).setRequired(true)))
-  .addSubcommand(s=>s.setName('equip').setDescription('Экипировать предмет по номеру #ID').addIntegerOption(o=>o.setName('id').setDescription('Номер предмета из /hero inventory').setMinValue(1).setRequired(true)))
-  .addSubcommand(s=>s.setName('unequip').setDescription('Снять предмет').addStringOption(o=>o.setName('slot').setDescription('Слот').setRequired(true).addChoices(...slotChoices)))
+  .addSubcommand(s=>s.setName('equip').setDescription('Экипировать предмет по номеру #ID').addIntegerOption(o=>o.setName('id').setDescription('Номер предмета из /hero inventory').setMinValue(1).setRequired(true)).addStringOption(o=>o.setName('class').setDescription('Сохранить в комплект выбранного класса').addChoices(...classChoices)))
+  .addSubcommand(s=>s.setName('unequip').setDescription('Снять предмет').addStringOption(o=>o.setName('slot').setDescription('Слот').setRequired(true).addChoices(...slotChoices)).addStringOption(o=>o.setName('class').setDescription('Снять из комплекта выбранного класса').addChoices(...classChoices)))
   .addSubcommand(s=>s.setName('collection').setDescription('Энциклопедия найденных предметов'))
   .addSubcommand(s=>s.setName('history').setDescription('Последние события истории героя').addUserOption(o=>o.setName('user').setDescription('Герой другого участника')))
   .addSubcommand(s=>s.setName('classes').setDescription('Список классов'))
@@ -86,11 +86,17 @@ module.exports={
    const bonuses=formatBonuses(applyUpgradeToBonuses(parseBonuses(item.bonuses_json),item.upgrade_level)); return interaction.reply({embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle(`${upgradedName(item)} · ${rarity(item.rarity)}`).setDescription(`${item.description}\n\n*${item.lore||'История предмета пока неизвестна.'}*`).addFields({name:'Тип',value:`${TYPE_LABELS[item.item_type]||item.item_type}${item.slot?` · ${SLOT_LABELS[item.slot]}`:''}`,inline:true},{name:'Количество',value:String(item.quantity),inline:true},{name:'Бонусы',value:bonuses.join('\n')||'Нет постоянных бонусов.'}).setFooter({text:`Инвентарный ID: #${item.id}`})],flags:MessageFlags.Ephemeral});
   }
   if(sub==='equip'){
-   const result=equipItem(interaction.user.id,interaction.options.getInteger('id')); if(!result.ok)return interaction.reply({content:result.reason==='not_equippable'?'❌ Этот предмет нельзя экипировать.':'❌ Предмет не найден.',flags:MessageFlags.Ephemeral});
-   return interaction.reply({content:`✅ **${upgradedName(result.item)}** экипирован в слот «${SLOT_LABELS[result.slot]}».`,flags:MessageFlags.Ephemeral});
+   const classKey=interaction.options.getString('class');
+   const result=classKey?equipItemForClass(interaction.user.id,interaction.options.getInteger('id'),classKey):equipItem(interaction.user.id,interaction.options.getInteger('id'));
+   if(!result.ok)return interaction.reply({content:result.reason==='not_equippable'?'❌ Этот предмет нельзя экипировать.':result.reason==='invalid_class'?'❌ Неизвестный класс.':'❌ Предмет не найден.',flags:MessageFlags.Ephemeral});
+   const c=classKey?HERO_CLASSES[classKey]:null;
+   return interaction.reply({content:`✅ **${upgradedName(result.item)}** экипирован в слот «${SLOT_LABELS[result.slot]}»${c?` комплекта ${c.icon} **${c.name}**`:' общей экипировки'}.`,flags:MessageFlags.Ephemeral});
   }
   if(sub==='unequip'){
-   const slot=interaction.options.getString('slot');const result=unequipItem(interaction.user.id,slot);return interaction.reply({content:result.ok?`✅ Слот «${SLOT_LABELS[slot]}» освобождён.`:'ℹ️ В этом слоте ничего не было.',flags:MessageFlags.Ephemeral});
+   const slot=interaction.options.getString('slot'),classKey=interaction.options.getString('class');
+   const result=classKey?unequipItemForClass(interaction.user.id,slot,classKey):unequipItem(interaction.user.id,slot);
+   const c=classKey?HERO_CLASSES[classKey]:null;
+   return interaction.reply({content:result.ok?`✅ Слот «${SLOT_LABELS[slot]}» освобождён${c?` в комплекте ${c.icon} **${c.name}**`:''}.`:'ℹ️ В этом слоте ничего не было.',flags:MessageFlags.Ephemeral});
   }
   if(sub==='collection'){
    const c=getCollection(interaction.user.id);const counts={};for(const i of c.rows)counts[i.rarity]=(counts[i.rarity]||0)+1;

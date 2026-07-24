@@ -1,7 +1,7 @@
 'use strict';
 
 const { getHero } = require('../../systems/hero/heroService');
-const { getEquipment, getEquipmentOnlyBonuses } = require('../../systems/hero/itemService');
+const { getEquipment, getEquipmentOnlyBonuses, getClassEquipment, getClassEquipmentOnlyBonuses } = require('../../systems/hero/itemService');
 const { getActiveCompanion } = require('../../systems/hero/companionService');
 const { serializeClassProgress, normalizeClassKey, classWorldBossBonuses } = require('../../systems/hero/classProgressService');
 
@@ -24,7 +24,7 @@ const CLASS_EQUIPMENT_PROFILES = Object.freeze({
 
 function equipmentBonusesForClass(snapshot, classKey) {
   const key = normalizeClassKey(classKey);
-  const stats = snapshot?.equipmentBonuses || {};
+  const stats = snapshot?.classEquipmentBonuses?.[key] || snapshot?.equipmentBonuses || {};
   const profile = CLASS_EQUIPMENT_PROFILES[key] || CLASS_EQUIPMENT_PROFILES.warrior;
   const primaryScore = profile.primary.reduce((sum, stat) => sum + Number(stats[stat] || 0), 0);
   const damagePercent = clamp(primaryScore / 6 + Number(stats.world_boss_damage || 0), 0, 8);
@@ -42,12 +42,18 @@ function buildHeroSnapshot(userId) {
   if (!hero) return null;
   const equipmentBonuses = getEquipmentOnlyBonuses(userId) || {};
   const equipment = getEquipment(userId).map(item => ({
-    slot: item.slot,
-    itemKey: item.item_key,
-    name: item.name,
-    rarity: item.rarity,
+    slot: item.slot, itemKey: item.item_key, name: item.name, rarity: item.rarity,
     upgradeLevel: Number(item.upgrade_level || 0),
   }));
+  const classEquipmentBonuses = {};
+  const classEquipment = {};
+  for (const classKey of Object.keys(serializeClassProgress(userId))) {
+    classEquipmentBonuses[classKey] = getClassEquipmentOnlyBonuses(userId, classKey, { fallback: true }) || {};
+    classEquipment[classKey] = getClassEquipment(userId, classKey, { fallback: true }).map(item => ({
+      slot: item.slot, itemKey: item.item_key, name: item.name, rarity: item.rarity,
+      upgradeLevel: Number(item.upgrade_level || 0),
+    }));
+  }
   const companion = getActiveCompanion(userId);
 
   // Базовый герой даёт небольшой общий бонус. Экипировка считается отдельно
@@ -73,6 +79,8 @@ function buildHeroSnapshot(userId) {
     },
     combat: { damagePercent, hpPercent, resistancePercent },
     equipmentBonuses,
+    classEquipmentBonuses,
+    classEquipment,
     classProgress: serializeClassProgress(userId),
     equipment,
     companion: companion ? {

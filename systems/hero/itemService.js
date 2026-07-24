@@ -1,5 +1,6 @@
 const { db } = require('../../database/db');
 const { ITEMS, RARITY_ORDER } = require('./itemData');
+const { normalizeClassKey, isValidClass } = require('./classProgressService');
 
 const STAT_KEYS=['hp','strength','defense','dexterity','intelligence','luck','expedition_success','rare_find','world_boss_damage','world_boss_resistance','boss_flat_damage'];
 function parseBonuses(value){ try{return JSON.parse(value||'{}')||{};}catch(_){return {};} }
@@ -27,16 +28,38 @@ function getInventory(userId,{type=null,limit=100}={}){
 function getInventoryItem(userId,id){return db.prepare(`SELECT hi.*,COALESCE(hi.upgrade_level,0) upgrade_level,i.name,i.item_type,i.rarity,i.description,i.slot,i.bonuses_json,i.lore,i.is_consumable FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key WHERE hi.user_id=? AND hi.id=?`).get(userId,id)||null;}
 function getInventoryItemByKey(userId,key){return db.prepare(`SELECT hi.*,COALESCE(hi.upgrade_level,0) upgrade_level,i.name,i.item_type,i.rarity,i.description,i.slot,i.bonuses_json,i.lore,i.is_consumable FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key WHERE hi.user_id=? AND hi.item_key=?`).get(userId,key)||null;}
 function getEquipment(userId){return db.prepare(`SELECT he.slot,he.inventory_id,hi.item_key,COALESCE(hi.upgrade_level,0) upgrade_level,i.name,i.item_type,i.rarity,i.description,i.bonuses_json,i.lore FROM hero_equipment he JOIN hero_inventory hi ON hi.id=he.inventory_id JOIN hero_items i ON i.item_key=hi.item_key WHERE he.user_id=?`).all(userId);}
+function getClassEquipment(userId,classKey,{fallback=true}={}){
+ const key=normalizeClassKey(classKey); if(!isValidClass(key))return [];
+ const rows=db.prepare(`SELECT hce.slot,hce.inventory_id,hi.item_key,COALESCE(hi.upgrade_level,0) upgrade_level,i.name,i.item_type,i.rarity,i.description,i.bonuses_json,i.lore
+ FROM hero_class_equipment hce JOIN hero_inventory hi ON hi.id=hce.inventory_id JOIN hero_items i ON i.item_key=hi.item_key
+ WHERE hce.user_id=? AND hce.class_key=?`).all(userId,key);
+ if(rows.length||!fallback)return rows;
+ return getEquipment(userId);
+}
+function equipItemForClass(userId,inventoryId,classKey){
+ const key=normalizeClassKey(classKey); if(!isValidClass(key))return {ok:false,reason:'invalid_class'};
+ const item=getInventoryItem(userId,inventoryId); if(!item)return {ok:false,reason:'not_found'}; if(!item.slot)return {ok:false,reason:'not_equippable'};
+ db.prepare(`INSERT INTO hero_class_equipment(user_id,class_key,slot,inventory_id) VALUES(?,?,?,?)
+ ON CONFLICT(user_id,class_key,slot) DO UPDATE SET inventory_id=excluded.inventory_id,equipped_at=CURRENT_TIMESTAMP`).run(userId,key,item.slot,item.id);
+ return {ok:true,item,slot:item.slot,classKey:key};
+}
+function unequipItemForClass(userId,slot,classKey){
+ const key=normalizeClassKey(classKey); if(!isValidClass(key))return {ok:false,reason:'invalid_class'};
+ const r=db.prepare('DELETE FROM hero_class_equipment WHERE user_id=? AND class_key=? AND slot=?').run(userId,key,slot);
+ return {ok:r.changes>0,classKey:key};
+}
 function equipItem(userId,inventoryId){
  const item=getInventoryItem(userId,inventoryId); if(!item)return {ok:false,reason:'not_found'}; if(!item.slot)return {ok:false,reason:'not_equippable'};
  db.prepare(`INSERT INTO hero_equipment(user_id,slot,inventory_id) VALUES(?,?,?) ON CONFLICT(user_id,slot) DO UPDATE SET inventory_id=excluded.inventory_id,equipped_at=CURRENT_TIMESTAMP`).run(userId,item.slot,item.id);
  return {ok:true,item,slot:item.slot};
 }
 function unequipItem(userId,slot){const r=db.prepare('DELETE FROM hero_equipment WHERE user_id=? AND slot=?').run(userId,slot);return {ok:r.changes>0};}
-function getEquipmentOnlyBonuses(userId){const total=Object.fromEntries(STAT_KEYS.map(k=>[k,0]));for(const item of getEquipment(userId)){const b=applyUpgradeToBonuses(parseBonuses(item.bonuses_json),item.upgrade_level);for(const k of STAT_KEYS)total[k]+=Number(b[k]||0);}return total;}
+function sumEquipmentBonuses(items){const total=Object.fromEntries(STAT_KEYS.map(k=>[k,0]));for(const item of items){const b=applyUpgradeToBonuses(parseBonuses(item.bonuses_json),item.upgrade_level);for(const k of STAT_KEYS)total[k]+=Number(b[k]||0);}return total;}
+function getEquipmentOnlyBonuses(userId){return sumEquipmentBonuses(getEquipment(userId));}
+function getClassEquipmentOnlyBonuses(userId,classKey,{fallback=true}={}){return sumEquipmentBonuses(getClassEquipment(userId,classKey,{fallback}));}
 function getEquipmentBonuses(userId){const total=getEquipmentOnlyBonuses(userId);try{const {getCompanionBonuses}=require('./companionService');const cb=getCompanionBonuses(userId);for(const k of STAT_KEYS)total[k]+=Number(cb[k]||0);}catch(_){}return total;}
 function getEffectiveHero(hero){if(!hero)return null;const b=getEquipmentBonuses(hero.user_id);return {...hero,equipmentBonuses:b,max_hp:hero.max_hp+b.hp,hp:Math.min(hero.hp+b.hp,hero.max_hp+b.hp),strength:hero.strength+b.strength,defense:hero.defense+b.defense,dexterity:hero.dexterity+b.dexterity,intelligence:hero.intelligence+b.intelligence,luck:hero.luck+b.luck};}
 function getCollection(userId){seedItems();const rows=db.prepare(`SELECT c.item_key,c.first_acquired_at,i.name,i.item_type,i.rarity FROM hero_item_collection c JOIN hero_items i ON i.item_key=c.item_key WHERE c.user_id=?`).all(userId);return {rows,found:rows.length,total:Object.keys(ITEMS).length};}
 function formatBonuses(value){const b=typeof value==='string'?parseBonuses(value):value||{};const labels={hp:'❤️ HP',strength:'⚔️ Сила',defense:'🛡️ Защита',dexterity:'🏃 Ловкость',intelligence:'🧠 Интеллект',luck:'🍀 Удача',expedition_success:'🗺️ Успех экспедиции',rare_find:'✨ Шанс редкой добычи',world_boss_damage:'🐉 Урон по боссу',world_boss_resistance:'🛡️ Защита от босса',boss_flat_damage:'💣 Урон бомбы',heal:'🧪 Лечение'};return Object.entries(b).filter(([,v])=>v).map(([k,v])=>`${labels[k]||k}: +${v}${['expedition_success','rare_find','world_boss_damage','world_boss_resistance'].includes(k)?'%':''}`);}
 seedItems();
-module.exports={seedItems,grantItem,getInventory,getInventoryItem,getInventoryItemByKey,getEquipment,equipItem,unequipItem,getEquipmentOnlyBonuses,getEquipmentBonuses,getEffectiveHero,getCollection,formatBonuses,parseBonuses,applyUpgradeToBonuses};
+module.exports={seedItems,grantItem,getInventory,getInventoryItem,getInventoryItemByKey,getEquipment,getClassEquipment,equipItem,equipItemForClass,unequipItem,unequipItemForClass,getEquipmentOnlyBonuses,getClassEquipmentOnlyBonuses,getEquipmentBonuses,getEffectiveHero,getCollection,formatBonuses,parseBonuses,applyUpgradeToBonuses};

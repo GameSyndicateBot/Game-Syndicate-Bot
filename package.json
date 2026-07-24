@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "16.3.2",
+  "version": "16.3.3",
   "private": true,
-  "description": "Game Syndicate V16.3.1 Class Mastery UI and balanced World Boss progression",
+  "description": "Game Syndicate V16.3.3 Class Equipment Loadouts and balanced World Boss integration",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

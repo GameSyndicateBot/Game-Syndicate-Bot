@@ -128,6 +128,15 @@ db.exec(`
         PRIMARY KEY(user_id, slot)
     );
 
+    CREATE TABLE IF NOT EXISTS hero_class_equipment (
+        user_id TEXT NOT NULL,
+        class_key TEXT NOT NULL,
+        slot TEXT NOT NULL,
+        inventory_id INTEGER,
+        equipped_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(user_id, class_key, slot)
+    );
+
 
     CREATE TABLE IF NOT EXISTS hero_item_collection (
         user_id TEXT NOT NULL,
@@ -969,6 +978,7 @@ function resetPlayer(userId) {
     db.prepare(`DELETE FROM hero_history WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM hero_reputation WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM hero_expeditions WHERE user_id = ?`).run(userId);
+    db.prepare(`DELETE FROM hero_class_equipment WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM hero_equipment WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM hero_inventory WHERE user_id = ?`).run(userId);
     db.prepare(`DELETE FROM hero_companions WHERE user_id = ?`).run(userId);
@@ -1010,6 +1020,15 @@ try {
 try {
     db.prepare("UPDATE heroes SET class_key=CASE class_key WHEN 'ranger' THEN 'archer' WHEN 'warlock' THEN 'necromancer' WHEN 'druid' THEN 'bard' ELSE class_key END WHERE class_key IN ('ranger','warlock','druid')").run();
 } catch (error) { console.error('[DB] class alias migration:', error.message); }
+
+// V16.3.3 — отдельные комплекты экипировки для каждого класса.
+try {
+    db.exec(`CREATE TABLE IF NOT EXISTS hero_class_equipment (
+      user_id TEXT NOT NULL, class_key TEXT NOT NULL, slot TEXT NOT NULL,
+      inventory_id INTEGER, equipped_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(user_id,class_key,slot)
+    )`);
+} catch (error) { console.error('[DB] hero_class_equipment migration:', error.message); }
 
 module.exports = {
     db,
