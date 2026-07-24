@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "16.5.1",
+  "version": "16.5.2",
   "private": true,
-  "description": "Game Syndicate V16.5.1 Living World Effects",
+  "description": "Game Syndicate V16.5.2 Regional Minibosses",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

@@ -1096,6 +1096,47 @@ try {
     `);
 } catch (error) { console.error('[DB] V16.5.1 world buffs migration:', error.message); }
 
+
+// V16.5.2 — региональные мини-боссы, история первых убийств и рейтинги.
+try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS miniboss_kills (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL DEFAULT 'global',
+        user_id TEXT NOT NULL,
+        region_key TEXT NOT NULL,
+        boss_key TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        damage_taken INTEGER NOT NULL DEFAULT 0,
+        remaining_hp INTEGER NOT NULL DEFAULT 0,
+        loot_json TEXT NOT NULL DEFAULT '[]',
+        dust INTEGER NOT NULL DEFAULT 0,
+        xp INTEGER NOT NULL DEFAULT 0,
+        duration_score INTEGER NOT NULL DEFAULT 0,
+        fought_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS player_miniboss_stats (
+        guild_id TEXT NOT NULL DEFAULT 'global',
+        user_id TEXT NOT NULL,
+        boss_key TEXT NOT NULL,
+        wins INTEGER NOT NULL DEFAULT 0,
+        losses INTEGER NOT NULL DEFAULT 0,
+        escapes INTEGER NOT NULL DEFAULT 0,
+        best_score INTEGER NOT NULL DEFAULT 0,
+        last_fought_at TEXT,
+        PRIMARY KEY(guild_id,user_id,boss_key)
+      );
+      CREATE TABLE IF NOT EXISTS miniboss_first_kills (
+        guild_id TEXT NOT NULL DEFAULT 'global',
+        boss_key TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        killed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(guild_id,boss_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_miniboss_kills_board ON miniboss_kills(guild_id,boss_key,outcome,fought_at);
+    `);
+} catch (error) { console.error('[DB] V16.5.2 miniboss migration:', error.message); }
+
 module.exports = {
     db,
     getOrCreatePlayer,

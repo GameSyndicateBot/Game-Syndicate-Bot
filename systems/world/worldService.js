@@ -89,6 +89,7 @@ function getRegionEffects(guildId='global', regionKey) {
     else if (buff.buff_key === 'dust') effects.dust *= Number(buff.value||1);
     else if (buff.buff_key === 'materials') effects.materials *= Number(buff.value||1);
     else if (buff.buff_key === 'rare') effects.rare += Number(buff.value||0);
+    else if (buff.buff_key === 'incident') effects.incident += Number(buff.value||0);
     else if (buff.buff_key === 'special_npc') { effects.specialNpc=true; effects.rare += 8; effects.dust *= 1.10; }
   }
   return effects;
