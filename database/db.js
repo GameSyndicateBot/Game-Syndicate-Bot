@@ -1207,6 +1207,87 @@ try {
 }
 
 
+
+// V17.0.5: одноразовое возвращение всех героев, застрявших в экспедициях.
+try {
+    db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (
+        migration_key TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );`);
+
+    const migrationKey = 'v17.0.5-return-all-stuck-expedition-heroes';
+    const applied = db.prepare(
+        'SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?'
+    ).get(migrationKey);
+
+    if (!applied) {
+        const activeRows = db.prepare(
+            "SELECT id,user_id FROM hero_expeditions WHERE status='active'"
+        ).all();
+
+        const markRecovered = db.prepare(`
+            UPDATE hero_expeditions
+            SET status='cancelled',
+                resolved_at=CURRENT_TIMESTAMP,
+                result_json=?
+            WHERE id=?
+        `);
+
+        const setHeroReady = db.prepare(`
+            UPDATE heroes
+            SET status='ready',
+                recovery_until=NULL,
+                hp=max_hp,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE user_id=?
+        `);
+
+        const transaction = db.transaction(() => {
+            for (const expedition of activeRows) {
+                markRecovered.run(
+                    JSON.stringify({
+                        outcome: 'cancelled',
+                        reason: 'admin_stuck_recovery_v17_0_5',
+                        rewards: false,
+                        returnedSafely: true
+                    }),
+                    expedition.id
+                );
+                setHeroReady.run(expedition.user_id);
+            }
+
+            // Дополнительно возвращаем героев со статусом expedition,
+            // даже если их активная запись была потеряна или повреждена.
+            const orphaned = db.prepare(`
+                UPDATE heroes
+                SET status='ready',
+                    recovery_until=NULL,
+                    hp=max_hp,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE status='expedition'
+            `).run();
+
+            db.prepare(
+                'INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)'
+            ).run(migrationKey);
+
+            return {
+                expeditions: activeRows.length,
+                orphanedHeroes: Number(orphaned.changes || 0)
+            };
+        });
+
+        const result = transaction();
+        console.log(
+            `[V17.0.5] Возвращены герои из экспедиций: ${result.expeditions}; ` +
+            `дополнительно исправлено статусов: ${result.orphanedHeroes}.`
+        );
+    }
+} catch (error) {
+    console.error('[DB] V17.0.5 expedition recovery migration:', error.message);
+}
+
+
 module.exports = {
     db,
     getOrCreatePlayer,

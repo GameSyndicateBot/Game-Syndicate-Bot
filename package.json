@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "17.0.4",
+  "version": "17.0.6",
   "private": true,
-  "description": "Game Syndicate V17.0.4 Expedition Hub safe rebuild and recovery",
+  "description": "Game Syndicate V17.0.6 Expedition helper export fix",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
