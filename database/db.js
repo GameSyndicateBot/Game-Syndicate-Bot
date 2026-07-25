@@ -1166,6 +1166,23 @@ try {
     `);
 } catch (error) { console.error('[DB] V16.5.2 miniboss migration:', error.message); }
 
+
+// V16.6.2 — expedition durations, recovery balance and one-time hero recovery.
+try { db.prepare("ALTER TABLE hero_expeditions ADD COLUMN duration_hours INTEGER NOT NULL DEFAULT 4").run(); } catch (error) {
+  if (!String(error.message).includes('duplicate column')) console.error('[DB] duration_hours migration:', error.message);
+}
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const migrationKey = 'v16.6.2-recover-506371696878551041';
+  const applied = db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey);
+  if (!applied) {
+    db.prepare("UPDATE heroes SET status='ready', recovery_until=NULL, hp=max_hp, updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run('506371696878551041');
+    db.prepare("DELETE FROM hero_expedition_cooldowns WHERE user_id=?").run('506371696878551041');
+    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+    console.log('[V16.6.2] Герой 506371696878551041 восстановлен и готов к экспедиции.');
+  }
+} catch (error) { console.error('[DB] V16.6.2 recovery migration:', error.message); }
+
 module.exports = {
     db,
     getOrCreatePlayer,

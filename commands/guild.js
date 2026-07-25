@@ -380,7 +380,7 @@ async function handleComponent(interaction) {
     return interaction.showModal(modal);
   }
 
-  if (action === 'home') return interaction.update({ content:'🏰 Вы вернулись в Гильдию. Используйте кнопки постоянного хаба ниже.', embeds:[], components:[] });
+  if (action === 'home') return interaction.update({ content:'🏰 **Гильдия героев**\nВыберите нужный раздел. Это личное меню видно только вам.', embeds:[], components:hubRows() });
   if (action === 'profile') return showProfile(interaction);
   if (action === 'inventory' && parts.length === 2) return showInventory(interaction);
   if (action === 'inventory' && parts[2] === 'select') return showInventoryItem(interaction, interaction.values?.[0]);

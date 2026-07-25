@@ -126,7 +126,7 @@ function nextBossAt(now = new Date()) {
     const candidate = new Date(Date.UTC(y, m, d, hour, 0, 0) - MSK);
     if (candidate.getTime() > now.getTime()) return candidate;
   }
-  return new Date(Date.UTC(y, m, d + 1, 15, 0, 0) - MSK);
+  return new Date(Date.UTC(y, m, d + 1, 13, 0, 0) - MSK);
 }
 function activeWorldBoss() {
   try {
@@ -162,7 +162,7 @@ function getWorldStats(guildId='global') {
   } catch (_) { return {active:0,free:0,completed:0,failed:0,dustToday:0}; }
 }
 
-function startExpedition(userId, locationKey, guildId = 'global', classKey = null, tacticKey = 'balanced') {
+function startExpedition(userId, locationKey, guildId = 'global', classKey = null, tacticKey = 'balanced', durationHours = 4) {
   const hero = getHero(userId);
   if (!hero) return { ok: false, reason: 'no_hero' };
   if (hero.status !== 'ready') return { ok: false, reason: 'busy' };
@@ -170,6 +170,7 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
   if (!isValidClass(classKey)) return { ok: false, reason: 'invalid_class' };
   ensureClassProgress(userId, classKey);
   tacticKey = normalizeTacticKey(tacticKey);
+  durationHours = [2,4,8].includes(Number(durationHours)) ? Number(durationHours) : 4;
   if (getActiveExpedition(userId)) return { ok: false, reason: 'active' };
   const cooldown = getExpeditionCooldown(userId);
   if (cooldown) return { ok:false, reason:'cooldown', cooldownUntil:cooldown.cooldown_until };
@@ -178,8 +179,8 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
   const location = offered.find(l => l.key === locationKey);
   if (!location) return { ok: false, reason: 'not_offered' };
   const testMode = String(process.env.EXPEDITION_TEST_MODE || '').toLowerCase() === 'true';
-  const durationMs = testMode ? 60 * 1000 : 4 * 60 * 60 * 1000;
-  const window = expeditionWindow(new Date(), testMode ? 1/60 : 4);
+  const durationMs = testMode ? 60 * 1000 : durationHours * 60 * 60 * 1000;
+  const window = expeditionWindow(new Date(), testMode ? 1/60 : durationHours);
   if (!testMode && !window.fits) return { ok: false, reason: 'boss_window', nextBossAt: window.nextBoss.toISOString() };
   const returnsAt = new Date(Date.now() + durationMs).toISOString();
   const alchemy = consumeContextBuffs(userId, 'expedition');
@@ -191,16 +192,16 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
     intelligence: hero.intelligence, luck: hero.luck,
   };
   const info = db.prepare(`INSERT INTO hero_expeditions
-    (user_id,location_key,status,returns_at,buffs_json,guild_id,location_snapshot_json,hero_snapshot_json,hp_before,class_key,tactic_key)
-    VALUES (?,?,'active',?,?,?,?,?,?,?,?)`).run(
+    (user_id,location_key,status,returns_at,buffs_json,guild_id,location_snapshot_json,hero_snapshot_json,hp_before,class_key,tactic_key,duration_hours)
+    VALUES (?,?,'active',?,?,?,?,?,?,?,?,?)`).run(
       userId, locationKey, returnsAt, JSON.stringify(buffPayload), guildId,
-      JSON.stringify(location), JSON.stringify(heroSnapshot), Number(hero.hp || hero.max_hp || 0), classKey, tacticKey
+      JSON.stringify(location), JSON.stringify(heroSnapshot), Number(hero.hp || hero.max_hp || 0), classKey, tacticKey, durationHours
     );
   db.prepare("UPDATE heroes SET status='expedition', updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(userId);
   const buffText = buffPayload.effects.length ? ` Активировано: ${buffPayload.effects.map(e => `${e.icon} ${e.name}`).join(', ')}.` : '';
   recordActivity(guildId,userId,location,'started',`${location.icon} ${playerName(userId)} отправился в «${location.name}»`,location.rarity,0);
   const tactic = getExpeditionTactic(tacticKey);
-  addHistory(userId, 'expedition_started', `${location.icon} Герой отправился в локацию «${location.name}». Тактика: ${tactic.icon} ${tactic.name}.${buffText}`, { expeditionId: Number(info.lastInsertRowid), locationKey, classKey, tacticKey, alchemy: buffPayload });
+  addHistory(userId, 'expedition_started', `${location.icon} Герой отправился в локацию «${location.name}». Тактика: ${tactic.icon} ${tactic.name}.${buffText}`, { expeditionId: Number(info.lastInsertRowid), locationKey, classKey, tacticKey, durationHours, alchemy: buffPayload });
   return { ok: true, expedition: db.prepare('SELECT * FROM hero_expeditions WHERE id=?').get(info.lastInsertRowid), location };
 }
 
@@ -213,6 +214,20 @@ function originBonus(originKey, location) {
   if (originKey === 'highlander' && location.tags.includes('mountain')) return 4;
   if (originKey === 'sailor' && (location.tags.includes('water') || location.tags.includes('ruins'))) return 3;
   return 0;
+}
+function durationModifiers(durationHours = 4) {
+  const hours = [2,4,8].includes(Number(durationHours)) ? Number(durationHours) : 4;
+  if (hours === 2) return { hours, reward:0.62, xp:0.68, materials:0.65, rare:-5, injury:-2 };
+  if (hours === 8) return { hours, reward:1.85, xp:1.75, materials:1.8, rare:10, injury:4 };
+  return { hours:4, reward:1, xp:1, materials:1, rare:0, injury:0 };
+}
+function rewardPreview(location, tacticKey='balanced', durationHours=4) {
+  const tactic=getExpeditionTactic(tacticKey), dm=durationModifiers(durationHours);
+  const xpMin=Math.max(5,Math.round(location.baseXp[0]*0.65*Number(tactic.xp||1)*dm.xp));
+  const xpMax=Math.max(xpMin,Math.round(location.baseXp[1]*1.35*Number(tactic.xp||1)*dm.xp));
+  const dustMin=Math.max(0,Math.round(location.dust[0]*0.45*Number(tactic.dust||1)*dm.reward));
+  const dustMax=Math.max(dustMin,Math.round(location.dust[1]*1.45*Number(tactic.dust||1)*dm.reward));
+  return { durationHours:dm.hours, heroXp:[xpMin,xpMax], classXp:[Math.max(10,Math.round(xpMin*0.75)),Math.max(10,Math.round(xpMax*0.75))], dust:[dustMin,dustMax], rareBonus:dm.rare+Number(tactic.rare||0), materialMultiplier:Math.round(Number(tactic.materials||1)*dm.materials*100)/100 };
 }
 function computeSuccessChance(hero, location, extraBonuses = {}, tacticKey = 'balanced') {
   const relevant = Number(hero[location.stat] || 0);
@@ -275,6 +290,7 @@ function resolveExpedition(userId, { force = false } = {}) {
   try { location = { ...location, ...(JSON.parse(expedition.location_snapshot_json || '{}') || {}) }; } catch (_) {}
   const rng = rngFromSeed(`resolve:${expedition.id}:${expedition.user_id}:${expedition.started_at}`);
   const tactic = getExpeditionTactic(expedition.tactic_key);
+  const duration = durationModifiers(expedition.duration_hours || 4);
   const worldEffects = getRegionEffects(expedition.guild_id || 'global', location.region);
   const chance = computeSuccessChance(hero, location, { ...alchemyBonuses, expedition_success:(Number(alchemyBonuses.expedition_success)||0)+Number(worldEffects.success||0) }, tactic.key);
   const roll = rng() * 100;
@@ -288,8 +304,8 @@ function resolveExpedition(userId, { force = false } = {}) {
   const weather = location.weather || {};
   const dustMultiplier = Number(theme.dust || 1) * Number(weather.dust || 1) * Number(worldEffects.dust || 1);
   const themeRare = Number(theme.rare || 0) + Number(weather.rare || 0) + Number(tactic.rare || 0) + Number(worldEffects.rare || 0);
-  const xpMultiplier = Number(tactic.xp || 1) * Number(worldEffects.xp || 1);
-  const tacticDustMultiplier = Number(tactic.dust || 1);
+  const xpMultiplier = Number(tactic.xp || 1) * Number(worldEffects.xp || 1) * duration.xp;
+  const tacticDustMultiplier = Number(tactic.dust || 1) * duration.reward;
   if (outcome === 'great') {
     dust = Math.round(randomInt(rng, ...location.dust) * 1.45 * dustMultiplier * tacticDustMultiplier); xp = Math.round(randomInt(rng, ...location.baseXp) * 1.35 * xpMultiplier); reputation = 18;
     const maxTier = Math.min(5, Math.max(1, location.difficulty + (rng() < 0.28 ? 1 : 0)));
@@ -306,7 +322,7 @@ function resolveExpedition(userId, { force = false } = {}) {
     dust = Math.round(randomInt(rng, ...location.dust) * 0.45 * dustMultiplier * tacticDustMultiplier); xp = Math.round(randomInt(rng, ...location.baseXp) * 0.65 * xpMultiplier); reputation = 4;
   } else {
     xp = Math.max(5, Math.round(randomInt(rng, ...location.baseXp) * 0.35 * xpMultiplier));
-    injuryHours = Math.max(2, Math.round((location.difficulty >= 4 ? 8 : 4) * Number(tactic.injury || 1)));
+    injuryHours = location.difficulty >= 4 || tactic.key === 'aggressive' ? 3 : 2;
     ensurePlayer(userId);
     const wantedLoss = randomInt(rng, 10, 25) * location.difficulty;
     const removal = removeCardDust(userId, wantedLoss);
@@ -321,15 +337,18 @@ function resolveExpedition(userId, { force = false } = {}) {
     xp += Number(miniboss.xp || 0);
     if (miniboss.outcome === 'defeat') {
       dust = Math.round(dust * 0.40);
-      injuryHours = Math.max(injuryHours, location.difficulty >= 4 ? 10 : 6);
+      injuryHours = 3;
       outcome = 'fail';
     } else if (miniboss.outcome === 'escape') {
       dust = Math.round(dust * 0.75);
       injuryHours = Math.max(injuryHours, 2);
     } else if (miniboss.outcome === 'victory' && miniboss.remainingHp <= Math.round(Number(hero.max_hp || 100) * 0.20)) {
-      injuryHours = Math.max(injuryHours, 3);
+      injuryHours = 3;
     }
   }
+
+  if (outcome === 'partial' && injuryHours === 0 && rng() < 0.22) injuryHours = 1;
+  injuryHours = Math.max(0, Math.min(3, Number(injuryHours)||0));
 
   if ((outcome === 'great' || outcome === 'success') && theme.key === 'mystery') {
     const specialRoll = rng();
@@ -353,7 +372,7 @@ function resolveExpedition(userId, { force = false } = {}) {
   db.prepare("UPDATE heroes SET status=?, recovery_until=?, hp=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
     .run(injuryHours ? 'wounded' : 'ready', recoveryUntil, hpAfter, userId);
   const resourceRewards = expeditionMaterialRewards(userId, expedition.location_key, location.difficulty, outcome, expedition.id);
-  const materialMultiplier = Number(tactic.materials || 1) * Number(worldEffects.materials || 1);
+  const materialMultiplier = Number(tactic.materials || 1) * Number(worldEffects.materials || 1) * duration.materials;
   if (materialMultiplier > 1 && Array.isArray(resourceRewards.materials)) {
     for (const material of resourceRewards.materials) {
       const extra = Math.max(0, Math.round(material.quantity * (materialMultiplier - 1)));
@@ -380,7 +399,7 @@ function resolveExpedition(userId, { force = false } = {}) {
     else incidents.push(`💀 ${b.icon} **${b.name} оказался сильнее.** Герой получил тяжёлые ранения, и экспедиция завершилась поражением.`);
   }
   const event = [buildExpeditionStory(rng, location, outcome, { item, companion, injuryHours, dustLost, chest: resourceRewards.chest }), ...incidents].join(' ');
-  const result = { outcome, miniboss: miniboss ? { key:miniboss.boss.key, name:miniboss.boss.name, icon:miniboss.boss.icon, outcome:miniboss.outcome, damageTaken:miniboss.damageTaken, remainingHp:miniboss.remainingHp, xp:miniboss.xp, dust:miniboss.dust, loot:miniboss.loot.map(x=>({key:x.key,name:x.name,icon:x.icon,quantity:x.quantity,rarity:x.rarity})), aftermath:miniboss.aftermath, firstKill:miniboss.firstKill } : null, worldEffects: { eventKey:worldEffects.event.key, eventName:worldEffects.event.name, eventIcon:worldEffects.event.icon, success:worldEffects.success, xp:worldEffects.xp, dust:worldEffects.dust, materials:worldEffects.materials, rare:worldEffects.rare, specialNpc:worldEffects.specialNpc }, tactic: { key:tactic.key, name:tactic.name, icon:tactic.icon }, incidents, chance: Math.round(chance), alchemy: expeditionBuffs.effects || [], alchemyBonuses, roll: Math.round(roll), dust, dustLost, xp, reputation, item: item ? { name: item.name, rarity: item.rarity } : null, companion, dailyTheme: theme, weather, materials: resourceRewards.materials.map(m => ({ key: m.key, name: m.name, icon: m.icon, quantity: m.quantity })), chest: resourceRewards.chest ? { key: resourceRewards.chest.key, name: resourceRewards.chest.name, icon: resourceRewards.chest.icon } : null, injuryHours, event, hpBefore: Number(expedition.hp_before || baseHero.hp || baseHero.max_hp), hpAfter, levelsGained: leveledHero?.levelsGained || 0, classKey: expeditionClassKey, classXp, classLevel: classProgress?.level || 1, classLevelsGained: classProgress?.levelsGained || 0 };
+  const result = { outcome, miniboss: miniboss ? { key:miniboss.boss.key, name:miniboss.boss.name, icon:miniboss.boss.icon, outcome:miniboss.outcome, damageTaken:miniboss.damageTaken, remainingHp:miniboss.remainingHp, xp:miniboss.xp, dust:miniboss.dust, loot:miniboss.loot.map(x=>({key:x.key,name:x.name,icon:x.icon,quantity:x.quantity,rarity:x.rarity})), aftermath:miniboss.aftermath, firstKill:miniboss.firstKill } : null, worldEffects: { eventKey:worldEffects.event.key, eventName:worldEffects.event.name, eventIcon:worldEffects.event.icon, success:worldEffects.success, xp:worldEffects.xp, dust:worldEffects.dust, materials:worldEffects.materials, rare:worldEffects.rare, specialNpc:worldEffects.specialNpc }, tactic: { key:tactic.key, name:tactic.name, icon:tactic.icon }, incidents, chance: Math.round(chance), alchemy: expeditionBuffs.effects || [], alchemyBonuses, roll: Math.round(roll), dust, dustLost, xp, reputation, item: item ? { name: item.name, rarity: item.rarity } : null, companion, dailyTheme: theme, weather, durationHours: duration.hours, materials: resourceRewards.materials.map(m => ({ key: m.key, name: m.name, icon: m.icon, quantity: m.quantity })), chest: resourceRewards.chest ? { key: resourceRewards.chest.key, name: resourceRewards.chest.name, icon: resourceRewards.chest.icon } : null, injuryHours, event, hpBefore: Number(expedition.hp_before || baseHero.hp || baseHero.max_hp), hpAfter, levelsGained: leveledHero?.levelsGained || 0, classKey: expeditionClassKey, classXp, classLevel: classProgress?.level || 1, classLevelsGained: classProgress?.levelsGained || 0 };
   db.prepare("UPDATE hero_expeditions SET status='resolved', resolved_at=CURRENT_TIMESTAMP, result_json=?, hp_after=? WHERE id=?").run(JSON.stringify(result), hpAfter, expedition.id);
   const alchemyText = result.alchemy.length ? ` Использовано: ${result.alchemy.map(e => `${e.icon} ${e.name}`).join(', ')}.` : '';
   const rewardText = [dust ? `+${dust} Dust` : null, miniboss?.dust ? `+${miniboss.dust} Dust за мини-босса` : null, dustLost ? `−${dustLost} Dust` : null, `+${xp} XP`, item ? `предмет «${item.name}»` : null, companion ? `питомец «${companion.name}»` : null, result.materials.length ? `материалы ×${result.materials.reduce((sum,m)=>sum+m.quantity,0)}` : null, result.chest ? `сундук «${result.chest.name}»` : null].filter(Boolean).join(', ');
@@ -426,4 +445,4 @@ function recoverHero(userId) {
   return true;
 }
 
-module.exports = { EXPEDITION_TACTICS, getExpeditionTactic, todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow };
+module.exports = { EXPEDITION_TACTICS, getExpeditionTactic, durationModifiers, rewardPreview, todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow };

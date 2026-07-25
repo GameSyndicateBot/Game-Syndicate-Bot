@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlags, AttachmentBuilder, Acti
 const { getHero } = require('../systems/hero/heroService');
 const { getEffectiveHero } = require('../systems/hero/itemService');
 const { LOCATIONS } = require('../systems/hero/expeditionData');
-const { getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, getWorldStats, getWorldActivity, EXPEDITION_TACTICS, getExpeditionTactic } = require('../systems/hero/expeditionService');
+const { getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, getWorldStats, getWorldActivity, EXPEDITION_TACTICS, getExpeditionTactic, rewardPreview } = require('../systems/hero/expeditionService');
 const { createExpeditionHubCard } = require('../images/hero/createExpeditionHubCard');
 const { HERO_CLASSES } = require('../systems/hero/heroData');
 const { getAllClassProgress, getClassProgress, normalizeClassKey } = require('../systems/hero/classProgressService');
@@ -54,6 +54,18 @@ function hubRows(world, locked) {
   ];
 }
 
+function locationChoiceRows(world) {
+  return [new ActionRowBuilder().addComponents(...world.locations.slice(0,3).map((location,index)=>
+    new ButtonBuilder().setCustomId(`expedition:start:${location.key}`).setLabel(location.name).setStyle(index===0?ButtonStyle.Success:index===1?ButtonStyle.Primary:ButtonStyle.Danger)
+  ))];
+}
+function durationMenu(locationKey,classKey) {
+  const now=new Date();
+  const options=[2,4,8].map(hours=>{const w=expeditionWindow(now,hours);return {label:`${hours} часа${hours===2?'':'ов'}`.replace('4 часов','4 часа'),value:String(hours),emoji:hours===2?'🕑':hours===4?'🕓':'🕗',description:w.fits?`Доступно до World Boss · награды x${hours===2?'0.6':hours===4?'1.0':'1.8'}`:`Недоступно: не успеет до World Boss`,default:false};});
+  const allowed=options.filter((_,i)=>expeditionWindow(now,[2,4,8][i]).fits);
+  if(!allowed.length)return null;
+  return new StringSelectMenuBuilder().setCustomId(`expedition:duration:${locationKey}:${classKey}`).setPlaceholder('Выбери длительность похода').addOptions(allowed);
+}
 function bossLabel(date) {
   return new Intl.DateTimeFormat('ru-RU', {
     timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -67,7 +79,7 @@ async function hubPayload(guildId = 'global') {
   const stats=getWorldStats(guildId); const activity=getWorldActivity(guildId,5);
   const buffer = await createExpeditionHubCard({ world, nextBossLabel: bossLabel(boss), locked: !window.fits, stats, activity });
   return {
-    content: `${HUB_MARKER}\nВыбери одну из трёх локаций. Поход длится **4 часа**. Личные результаты открываются только тебе. В каталоге **${world.totalCatalog || Object.keys(LOCATIONS).length} локаций** с редкостью и особыми условиями появления.`,
+    content: `${HUB_MARKER}\nВыбери одну из трёх локаций. Перед отправкой выбери длительность: **2, 4 или 8 часов**. Личные результаты открываются только тебе. В каталоге **${world.totalCatalog || Object.keys(LOCATIONS).length} локаций** с редкостью и особыми условиями появления.`,
     files: [new AttachmentBuilder(buffer, { name: 'gs-expedition-hub.png' })],
     components: hubRows(world, !window.fits),
   };
@@ -172,41 +184,65 @@ async function handleComponent(interaction) {
 Можно выбрать любой класс. После возвращения опыт получит именно он.`)], components:[new ActionRowBuilder().addComponents(menu)], flags:MessageFlags.Ephemeral });
   }
 
+  if (action === 'locations') {
+    const world=getDailyWorld(interaction.guildId || 'global');
+    return interaction.update({content:'🗺️ **Выберите другую локацию.**',embeds:[],components:locationChoiceRows(world)});
+  }
+
   if (action === 'class') {
     const locationKey=parts[2];
     const classKey=normalizeClassKey(interaction.values?.[0]);
     const location=LOCATIONS[locationKey];
-    const effective=getEffectiveHero(hero);
-    const chances=Object.values(EXPEDITION_TACTICS).map(t=>({t,chance:Math.round(computeSuccessChance(effective,location,{},t.key))}));
-    const tacticMenu = new StringSelectMenuBuilder().setCustomId(`expedition:tactic:${locationKey}:${classKey}`).setPlaceholder('Выбери тактику героя')
-      .addOptions(chances.map(({t,chance}) => ({ label:`${t.name} — ${chance}%`, value:t.key, emoji:t.icon, description:`Шанс успеха ${chance}% · ${t.description}`.slice(0,100) })));
-    const preview=chances.map(({t,chance})=>`${t.icon} **${t.name}: ${chance}%**`).join('\n');
-    const back=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('expedition:refresh').setLabel('Вернуться к локациям').setEmoji('⬅️').setStyle(ButtonStyle.Secondary));
-    return interaction.update({ embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(`🎯 ${location?.name || 'Тактика экспедиции'}`).setDescription(`Класс: **${HERO_CLASSES[classKey]?.icon || ''} ${HERO_CLASSES[classKey]?.name || classKey}**
-Опасность: ${stars(location?.difficulty || 1)}
+    const menu=durationMenu(locationKey,classKey);
+    if(!menu)return interaction.update({content:`❌ До следующего World Boss недостаточно времени даже для 2-часовой экспедиции.`,embeds:[],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('expedition:locations').setLabel('Вернуться к локациям').setEmoji('⬅️').setStyle(ButtonStyle.Secondary))]});
+    return interaction.update({embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(`⏳ ${location?.name || 'Длительность экспедиции'}`).setDescription(`Класс: **${HERO_CLASSES[classKey]?.icon || ''} ${HERO_CLASSES[classKey]?.name || classKey}**
+
+🕑 **2 часа** — безопаснее и быстрее, награды около 60–70%.
+🕓 **4 часа** — стандартный поход.
+🕗 **8 часов** — лучшие награды и редкая добыча, но выше риск.
+
+Показываются только варианты, которые завершатся до следующего World Boss.`)],components:[new ActionRowBuilder().addComponents(menu),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('expedition:locations').setLabel('Вернуться к локациям').setEmoji('⬅️').setStyle(ButtonStyle.Secondary))]});
+  }
+
+  if (action === 'duration') {
+    const locationKey=parts[2], classKey=normalizeClassKey(parts[3]), durationHours=Number(interaction.values?.[0]||4);
+    const location=LOCATIONS[locationKey], effective=getEffectiveHero(hero);
+    const chances=Object.values(EXPEDITION_TACTICS).map(t=>({t,chance:Math.round(computeSuccessChance(effective,location,{},t.key)),preview:rewardPreview(location,t.key,durationHours)}));
+    const tacticMenu=new StringSelectMenuBuilder().setCustomId(`expedition:tactic:${locationKey}:${classKey}:${durationHours}`).setPlaceholder('Выбери тактику героя').addOptions(chances.map(({t,chance,preview})=>({label:`${t.name} — ${chance}%`,value:t.key,emoji:t.icon,description:`XP ${preview.heroXp[0]}–${preview.heroXp[1]} · класс ${preview.classXp[0]}–${preview.classXp[1]} · Dust ${preview.dust[0]}–${preview.dust[1]}`.slice(0,100)})));
+    const preview=chances.map(({t,chance,preview:p})=>`${t.icon} **${t.name}: ${chance}%**
+✨ Герой: **${p.heroXp[0]}–${p.heroXp[1]} XP** · 📚 Класс: **${p.classXp[0]}–${p.classXp[1]} XP** · 💠 **${p.dust[0]}–${p.dust[1]} Dust**`).join('\n\n');
+    return interaction.update({embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(`🎯 ${location?.name} · ${durationHours} ч.`).setDescription(`Класс: **${HERO_CLASSES[classKey]?.icon||''} ${HERO_CLASSES[classKey]?.name||classKey}**
+Опасность: ${stars(location?.difficulty||1)}
 
 ${preview}
 
-Можно вернуться к хабу и выбрать другую локацию до отправки.`)], components:[new ActionRowBuilder().addComponents(tacticMenu),back] });
+Материалы, предметы, сундуки и мини-боссы зависят от исхода, сложности и выбранной тактики.`)],components:[new ActionRowBuilder().addComponents(tacticMenu),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`expedition:classback:${locationKey}`).setLabel('Назад к классам').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('expedition:locations').setLabel('К локациям').setEmoji('🗺️').setStyle(ButtonStyle.Secondary))]});
+  }
+
+  if (action === 'classback') {
+    const locationKey=parts[2], location=LOCATIONS[locationKey], progress=getAllClassProgress(interaction.user.id);
+    const menu=new StringSelectMenuBuilder().setCustomId(`expedition:class:${locationKey}`).setPlaceholder('Выбери класс').addOptions(progress.map(row=>{const c=HERO_CLASSES[row.class_key];return {label:`${c.name} • Lv.${row.level}`,value:row.class_key,emoji:c.icon,description:`Опыт ${row.xp} • этот класс получит XP`};}));
+    return interaction.update({embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(`${location?.icon||'🗺️'} Кто отправится?`).setDescription(`Локация: **${location?.name||locationKey}**`)],components:[new ActionRowBuilder().addComponents(menu),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('expedition:locations').setLabel('К локациям').setEmoji('⬅️').setStyle(ButtonStyle.Secondary))]});
   }
 
   if (action === 'tactic') {
     const locationKey=parts[2];
     const classKey=normalizeClassKey(parts[3]);
+    const durationHours=Number(parts[4]||4);
     const tacticKey=interaction.values?.[0] || 'balanced';
     const tactic=getExpeditionTactic(tacticKey);
-    const result = startExpedition(interaction.user.id, locationKey, interaction.guildId || 'global', classKey, tacticKey);
+    const result = startExpedition(interaction.user.id, locationKey, interaction.guildId || 'global', classKey, tacticKey, durationHours);
     const errors = {
       busy: '❌ Герой сейчас недоступен.', active: '❌ Герой уже находится в экспедиции.',
       boss_active: '❌ Сейчас идёт регистрация или бой с World Boss.',
-      boss_window: `❌ До World Boss осталось менее 4 часов. Герой не успеет вернуться к бою ${result.nextBossAt ? ts(result.nextBossAt) : ''}.`,
+      boss_window: `❌ Выбранная длительность не помещается до World Boss. Герой не успеет вернуться к бою ${result.nextBossAt ? ts(result.nextBossAt) : ''}.`,
       not_offered: '❌ Эта локация сегодня уже недоступна. Обнови хаб.',
       cooldown: `⏳ После отмены герой отдыхает. Новая экспедиция доступна ${result.cooldownUntil ? ts(result.cooldownUntil) : 'позже'}.`,
     };
     if (!result.ok) return interaction.reply({ content: errors[result.reason] || '❌ Не удалось начать экспедицию.', flags: MessageFlags.Ephemeral });
     return interaction.reply({
       embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`)
-        .setDescription(`**${hero.name}** отправился в **${result.location.name}** как **${HERO_CLASSES[result.expedition.class_key]?.icon || ''} ${HERO_CLASSES[result.expedition.class_key]?.name || result.expedition.class_key}**.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**\n\nВозвращение ${ts(result.expedition.returns_at)}. После этого нажми **«Забрать результат»**.`)
+        .setDescription(`**${hero.name}** отправился в **${result.location.name}** как **${HERO_CLASSES[result.expedition.class_key]?.icon || ''} ${HERO_CLASSES[result.expedition.class_key]?.name || result.expedition.class_key}**.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**\n\nДлительность: **${Number(result.expedition.duration_hours||4)} ч.**\nВозвращение ${ts(result.expedition.returns_at)}. После этого нажми **«Забрать результат»**.`)
         .addFields({ name: 'Опасность', value: stars(result.location.difficulty), inline: true }, { name: 'Шанс успеха', value: `${Math.round(computeSuccessChance(hero, result.location, {}, tactic.key))}%`, inline: true })],
       flags: MessageFlags.Ephemeral,
     });
@@ -237,12 +273,12 @@ ${preview}
   if (action === 'return') {
     const result = resolveExpedition(interaction.user.id);
     if (!result.ok) {
-      const text = result.reason === 'not_ready' ? `⏳ Герой ещё в пути. Возвращение ${ts(result.expedition.returns_at)}.` : '❌ Завершённой экспедиции пока нет.';
+      const text = result.reason === 'not_ready' ? `⏳ Герой ещё в пути. Длительность: **${Number(result.expedition.duration_hours||4)} ч.**\nВозвращение ${ts(result.expedition.returns_at)}.` : '❌ Завершённой экспедиции пока нет.';
       return interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
     }
     const r = result.result;
     await checkExpeditionAchievements(interaction);
-    const rewards = [`✨ **+${r.xp} XP героя**`, r.classXp ? `${HERO_CLASSES[r.classKey]?.icon || '📚'} **+${r.classXp} XP класса ${HERO_CLASSES[r.classKey]?.name || r.classKey}** → Lv.${r.classLevel}` : null, r.dust ? `💠 **+${r.dust} Dust**` : null, r.miniboss?.dust ? `👑 **+${r.miniboss.dust} Dust за мини-босса**` : null, `🏅 **+${r.reputation} репутации**`, r.item ? `🎁 **${r.item.name}** [${r.item.rarity}]` : null, r.miniboss?.loot?.length ? `🏺 **Трофеи:** ${r.miniboss.loot.map(x=>`${x.icon||'📦'} ${x.name} ×${x.quantity}`).join(', ')}` : null, r.companion ? `🐾 **Новый питомец: ${r.companion.name}**` : null, r.injuryHours ? `🩹 Ранение на ${r.injuryHours} ч.` : null].filter(Boolean).join('\n');
+    const rewards = [`✨ **+${r.xp} XP героя**`, r.classXp ? `${HERO_CLASSES[r.classKey]?.icon || '📚'} **+${r.classXp} XP класса ${HERO_CLASSES[r.classKey]?.name || r.classKey}** → Lv.${r.classLevel}` : null, r.dust ? `💠 **+${r.dust} Dust**` : null, r.miniboss?.dust ? `👑 **+${r.miniboss.dust} Dust за мини-босса**` : null, `🏅 **+${r.reputation} репутации**`, r.item ? `🎁 **${r.item.name}** [${r.item.rarity}]` : null, r.miniboss?.loot?.length ? `🏺 **Трофеи:** ${r.miniboss.loot.map(x=>`${x.icon||'📦'} ${x.name} ×${x.quantity}`).join(', ')}` : null, r.companion ? `🐾 **Новый питомец: ${r.companion.name}**` : null, r.injuryHours ? `🩹 **Ранение:** восстановление ${r.injuryHours} ч. · готов ${ts(new Date(Date.now()+r.injuryHours*3600000))}` : null].filter(Boolean).join('\n');
     return interaction.reply({ embeds: [new EmbedBuilder().setColor(r.outcome === 'fail' ? 0xEF4444 : r.outcome === 'partial' ? 0xF59E0B : 0x22C55E).setTitle(`${result.location.icon} ${outcomeLabel(r.outcome)}`).setDescription(`${r.event}\n\n🎯 **Тактика:** ${r.tactic?.icon || '⚖️'} ${r.tactic?.name || 'Сбалансированно'}\n\n${rewards}`)], flags: MessageFlags.Ephemeral });
   }
 
@@ -261,6 +297,7 @@ module.exports = {
       .addStringOption(o => o.setName('location').setDescription('Ключ локации из /expedition locations').setRequired(true).setAutocomplete(true))
       .addStringOption(o => o.setName('class').setDescription('Класс, который получит опыт').setRequired(true)
         .addChoices(...Object.entries(HERO_CLASSES).map(([value, c]) => ({ name: `${c.icon} ${c.name}`, value }))))
+      .addIntegerOption(o => o.setName('duration').setDescription('Длительность экспедиции').setRequired(true).addChoices({name:'2 часа',value:2},{name:'4 часа',value:4},{name:'8 часов',value:8}))
       .addStringOption(o => o.setName('tactic').setDescription('Тактика героя').setRequired(true)
         .addChoices(...Object.values(EXPEDITION_TACTICS).map(t => ({ name: `${t.icon} ${t.name}`, value:t.key })))))
     .addSubcommand(s => s.setName('status').setDescription('Проверить состояние текущей экспедиции'))
@@ -291,7 +328,7 @@ module.exports = {
       }).join('\n\n');
       const lockText = window.fits
         ? `✅ До World Boss достаточно времени. Поход на 4 часа доступен.`
-        : `⚠️ До World Boss осталось менее 4 часов. Новые экспедиции закрыты.`;
+        : `⚠️ Выбранная длительность не помещается до World Boss. Новые экспедиции закрыты.`;
       return interaction.reply({ embeds: [new EmbedBuilder().setColor(window.fits ? 0x7C3AED : 0xEF4444).setTitle('🗺️ Экспедиции на сегодня').setDescription(`${world.weather.icon} **Погода: ${world.weather.name}**
 ${world.weather.description}
 
@@ -301,7 +338,7 @@ ${lockText}`).setFooter({ text: active ? 'Твой герой уже наход�
     }
 
     if (sub === 'start') {
-      const result = startExpedition(interaction.user.id, interaction.options.getString('location'), interaction.guildId || 'dm', interaction.options.getString('class'), interaction.options.getString('tactic'));
+      const result = startExpedition(interaction.user.id, interaction.options.getString('location'), interaction.guildId || 'dm', interaction.options.getString('class'), interaction.options.getString('tactic'), interaction.options.getInteger('duration'));
       const errors = { busy:'❌ Герой сейчас недоступен.', active:'❌ Герой уже находится в экспедиции.', boss_active:'❌ Сейчас идёт регистрация или бой с мировым боссом. Дождись его окончания.', boss_window:`❌ До следующего World Boss недостаточно времени для 4-часовой экспедиции. Следующий бой ${ts(result.nextBossAt)}. Отправь героя после боя.`, not_offered:'❌ Эта локация сегодня недоступна. Посмотри `/expedition locations`.', invalid_class:'❌ Неизвестный класс.' };
       if (!result.ok) return interaction.reply({ content: errors[result.reason] || '❌ Не удалось начать экспедицию.', flags: MessageFlags.Ephemeral });
       let expeditionBuffs = {}; try { expeditionBuffs = JSON.parse(result.expedition.buffs_json || '{}') || {}; } catch {}
@@ -324,14 +361,14 @@ ${lockText}`).setFooter({ text: active ? 'Твой герой уже наход�
     if (sub === 'return') {
       const result = resolveExpedition(interaction.user.id);
       if (!result.ok) {
-        if (result.reason === 'not_ready') return interaction.reply({ content:`⏳ Экспедиция ещё не завершена. Возвращение ${ts(result.expedition.returns_at)}.`, flags:MessageFlags.Ephemeral });
+        if (result.reason === 'not_ready') return interaction.reply({ content:`⏳ Экспедиция ещё не завершена. Длительность: **${Number(result.expedition.duration_hours||4)} ч.**\nВозвращение ${ts(result.expedition.returns_at)}.`, flags:MessageFlags.Ephemeral });
         return interaction.reply({ content:'❌ У тебя нет завершённой активной экспедиции.', flags:MessageFlags.Ephemeral });
       }
       const r = result.result;
       await checkExpeditionAchievements(interaction);
       const materialText = Array.isArray(r.materials) && r.materials.length ? r.materials.map(m => `${m.icon || '📦'} **${m.name} ×${m.quantity}**`).join('\n') : null;
       const alchemyText = Array.isArray(r.alchemy) && r.alchemy.length ? `🧪 **Сработало:** ${r.alchemy.map(e => `${e.icon} ${e.name}`).join(', ')}` : null;
-      const rewards = [`✨ **+${r.xp} XP героя**`, r.classXp ? `${HERO_CLASSES[r.classKey]?.icon || '📚'} **+${r.classXp} XP класса ${HERO_CLASSES[r.classKey]?.name || r.classKey}** → Lv.${r.classLevel}` : null, r.dust ? `💠 **+${r.dust} Dust**` : null, r.miniboss?.dust ? `👑 **+${r.miniboss.dust} Dust за мини-босса**` : null, r.dustLost ? `💠 **−${r.dustLost} Dust**` : null, `🏅 **+${r.reputation} репутации**`, r.item ? `🎁 **${r.item.name}** [${r.item.rarity}]` : null, r.miniboss?.loot?.length ? `🏺 **Трофеи мини-босса:** ${r.miniboss.loot.map(x=>`${x.icon||'📦'} ${x.name} ×${x.quantity}`).join(', ')}` : null, r.companion ? `🐾 **Новый питомец: ${r.companion.name}** [${r.companion.rarity}]` : null, materialText, r.chest ? `${r.chest.icon || '📦'} **${r.chest.name}**` : null, alchemyText, r.levelsGained ? `⬆️ Новый уровень героя!` : null, r.injuryHours ? `🩹 Ранение: восстановление ${r.injuryHours} ч.` : null, r.world ? `🌍 **+${r.world.reputationGain} репутации региона**` : null, r.miniboss?.aftermath ? `🌍 ${r.miniboss.aftermath.description}` : null].filter(Boolean).join('\n');
+      const rewards = [`✨ **+${r.xp} XP героя**`, r.classXp ? `${HERO_CLASSES[r.classKey]?.icon || '📚'} **+${r.classXp} XP класса ${HERO_CLASSES[r.classKey]?.name || r.classKey}** → Lv.${r.classLevel}` : null, r.dust ? `💠 **+${r.dust} Dust**` : null, r.miniboss?.dust ? `👑 **+${r.miniboss.dust} Dust за мини-босса**` : null, r.dustLost ? `💠 **−${r.dustLost} Dust**` : null, `🏅 **+${r.reputation} репутации**`, r.item ? `🎁 **${r.item.name}** [${r.item.rarity}]` : null, r.miniboss?.loot?.length ? `🏺 **Трофеи мини-босса:** ${r.miniboss.loot.map(x=>`${x.icon||'📦'} ${x.name} ×${x.quantity}`).join(', ')}` : null, r.companion ? `🐾 **Новый питомец: ${r.companion.name}** [${r.companion.rarity}]` : null, materialText, r.chest ? `${r.chest.icon || '📦'} **${r.chest.name}**` : null, alchemyText, r.levelsGained ? `⬆️ Новый уровень героя!` : null, r.injuryHours ? `🩹 **Ранение:** восстановление ${r.injuryHours} ч. · готов ${ts(new Date(Date.now()+r.injuryHours*3600000))}` : null, r.world ? `🌍 **+${r.world.reputationGain} репутации региона**` : null, r.miniboss?.aftermath ? `🌍 ${r.miniboss.aftermath.description}` : null].filter(Boolean).join('\n');
       return interaction.reply({ embeds:[new EmbedBuilder().setColor(r.outcome==='fail'?0xEF4444:r.outcome==='partial'?0xF59E0B:r.outcome==='great'?0xEAB308:0x22C55E).setTitle(`${result.location.icon} ${outcomeLabel(r.outcome)}`).setDescription(`${r.event}\n\n🎯 **Тактика:** ${r.tactic?.icon || '⚖️'} ${r.tactic?.name || 'Сбалансированно'}\n\n${rewards}`).addFields({name:'Расчёт',value:`Шанс: ${r.chance}% · Бросок: ${r.roll}`,inline:true},{name:'Локация',value:result.location.name,inline:true}).setFooter({text:'Исход зависит от уровня, характеристик, происхождения, сложности и небольшого случайного фактора.'})] });
     }
 

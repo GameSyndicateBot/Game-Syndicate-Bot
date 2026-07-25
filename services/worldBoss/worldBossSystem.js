@@ -1,5 +1,7 @@
 'use strict';
 
+const { grantClassXp, normalizeClassKey } = require('../../systems/hero/classProgressService');
+
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, AttachmentBuilder,
   StringSelectMenuBuilder, PermissionsBitField,
@@ -805,6 +807,14 @@ async function finish(id, win) {
     const pool = clamp(Math.round(400 + difficulty * 350 + Math.max(0, ps.length - 4) * 30), 400, 1000);
     const each = Math.floor(pool / ps.length), remainder = pool - each * ps.length;
     ps.forEach((p, i) => addCardDust(p.user_id, each + (i < remainder ? 1 : 0)));
+    const classXpLines=[];
+    for (const p of ps) {
+      const classKey=normalizeClassKey(p.class_key);
+      const contribution=Math.max(0,Number(p.damage_done||0)+Number(p.healing_done||0)+Math.round(Number(p.damage_taken||0)*0.6));
+      const classXp=Math.max(40,Math.min(350,Math.round(70+contribution/18)));
+      const progress=grantClassXp(p.user_id,classKey,classXp,{completed:false});
+      classXpLines.push(`<@${p.user_id}>: **+${classXp} XP класса** → Lv.${progress?.level||1}`);
+    }
     const maxDamage = Math.max(1, ...ps.map(p => p.damage_done));
     const maxHeal = Math.max(1, ...ps.map(p => p.healing_done));
     const maxTank = Math.max(1, ...ps.map(p => p.damage_taken));
@@ -815,8 +825,12 @@ async function finish(id, win) {
     const tankTop = [...ps].sort((a,b) => b.damage_taken - a.damage_taken);
     const summonStats = stateOf(b).summonStats || {};
     finalStats = { pool, each, remainder, mvpId: mvp.user_id, mvpScore: Math.round(mvp.mvpScore), pack, damageTop: damageTop.slice(0,10), healTop: healTop.slice(0,10), tankTop: tankTop.slice(0,10), summonStats };
-    lines = [`🏆 Победа! Общая награда: **${pool} GS Dust** — поделена между всей группой.`, `⭐ MVP: <@${mvp.user_id}> • общий рейтинг **${Math.round(mvp.mvpScore)}**.`, `🎁 MVP получает **${pack.toUpperCase()} Pack**.`];
-  } else lines = ['💀 Группа потерпела поражение.'];
+    lines = [`🏆 Победа! Общая награда: **${pool} GS Dust** — поделена между всей группой.`, `⭐ MVP: <@${mvp.user_id}> • общий рейтинг **${Math.round(mvp.mvpScore)}**.`, `🎁 MVP получает **${pack.toUpperCase()} Pack**.`, `📚 **Опыт классов:**\n${classXpLines.join('\n')}`];
+  } else {
+    const classXpLines=[];
+    for (const p of ps) { const classKey=normalizeClassKey(p.class_key); const classXp=35; const progress=grantClassXp(p.user_id,classKey,classXp,{completed:false}); classXpLines.push(`<@${p.user_id}>: **+${classXp} XP класса** → Lv.${progress?.level||1}`); }
+    lines=['💀 Группа потерпела поражение.', `📚 **Опыт за участие:**\n${classXpLines.join('\n')}`];
+  }
   b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const st = stateOf(b); st.finalStats = finalStats;
   const deaths = st.deathStats || { players: ps.filter(p => p.status === 'dead').length, bossMinions: 0, playerSummons: 0 };
   const summary = [`⚔️ **Потери боя:** игроков — **${deaths.players || 0}**, миньонов босса — **${deaths.bossMinions || 0}**, призывов игроков — **${deaths.playerSummons || 0}**.`];
