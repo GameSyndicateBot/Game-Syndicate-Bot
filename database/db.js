@@ -1183,6 +1183,30 @@ try {
   }
 } catch (error) { console.error('[DB] V16.6.2 recovery migration:', error.message); }
 
+
+// V17.0.3: точечное переименование RPG-персонажа.
+try {
+    db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (
+        migration_key TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );`);
+    const migrationKey = 'v17.0.3-rename-hero-290777169431625728';
+    const applied = db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey);
+    if (!applied) {
+        db.prepare('UPDATE heroes SET name=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?')
+            .run('Ёбырь', '290777169431625728');
+        try {
+            db.prepare('UPDATE world_boss_players SET hero_name=? WHERE user_id=?')
+                .run('Ёбырь', '290777169431625728');
+        } catch (_) {}
+        db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+        console.log('[V17.0.3] Герой 290777169431625728 переименован в Ёбырь.');
+    }
+} catch (error) {
+    console.error('[DB] V17.0.3 rename migration:', error.message);
+}
+
+
 module.exports = {
     db,
     getOrCreatePlayer,

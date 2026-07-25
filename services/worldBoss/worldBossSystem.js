@@ -118,7 +118,8 @@ function buildClassPool(n) {
 function scaledHp(base, n) {
   const players = Math.max(4, Number(n || 4));
   const multiplier = Math.min(3.5, 1 + 0.22 * Math.pow(players - 4, 0.85));
-  return Math.round(base * multiplier);
+  // V17.0.3: небольшой общий запас прочности, чтобы бой не заканчивался слишком быстро.
+  return Math.round(base * multiplier * 1.08);
 }
 
 function buttons(b) {
@@ -540,7 +541,21 @@ function useUlt(b, p, c, e, state, targetId) {
     case 'guardian': e.tauntRounds = 2; e.guardRounds = Math.max(Number(e.guardRounds || 0), 2); return `🛡️ <@${u}> провоцирует босса и миньонов на 2 раунда и получает -50% входящего урона.`;
     case 'cleric': { const t = targetById(id, targetId) || p, healed = healPlayer(id, u, t, t.max_hp); return `🌟 <@${u}> полностью исцеляет <@${t.user_id}> на **${healed} HP**.`; }
     case 'priest': { const dead = targetById(id, targetId, 'dead'); if (!dead) return `✨ Нет выбранной погибшей цели.`; db.prepare("UPDATE world_boss_players SET status='alive',hp=ROUND(max_hp*0.5),energy=0,mana=50,ult_charge=0 WHERE battle_id=? AND user_id=?").run(id, dead.user_id); return `✨ <@${u}> воскрешает <@${dead.user_id}>! Игрок возвращается в бой с **${Math.round(dead.max_hp * 0.5)} HP**.`; }
-    case 'bard': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.groupDamageRounds = 2; te.groupDamage = 0.2; updateEffects(id, t.user_id, te); } return `🎼 <@${u}> усиливает всю группу на 20% на 2 раунда.`;
+    case 'bard': {
+      let totalHealed = 0;
+      const healedTargets = [];
+      for (const t of validTargets(id, 'alive')) {
+        const te = effects(t);
+        te.groupDamageRounds = 2;
+        te.groupDamage = 0.2;
+        updateEffects(id, t.user_id, te);
+        const amount = Math.max(1, Math.round(Number(t.max_hp || 0) * 0.20));
+        const healed = healPlayer(id, u, t, amount);
+        totalHealed += healed;
+        if (healed > 0) healedTargets.push(`<@${t.user_id}> +${healed}`);
+      }
+      return `🎼 <@${u}> исполняет Гимн героев: вся группа получает **+20% урона на 2 раунда** и восстанавливает **20% максимального HP**${totalHealed ? ` — всего **${totalHealed} HP** (${healedTargets.join(', ')})` : ''}.`;
+    }
     case 'assassin': { const r = hurtEnemy(b, state, rand(120, 160), 'physical', 'assassin', 1); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `☠️ <@${u}> наносит **${r.dealt}** смертельного урона.`; }
     case 'archer': { const enemies = 1 + (state.minions || []).length; const pool = 240; const share = Math.floor(pool / Math.max(1, enemies)); let total = 0; for (const m of state.minions || []) { const d = Math.min(m.hp, share); const died = m.hp > 0 && m.hp - d <= 0; m.hp -= d; total += d; if (died) { state.log.push(`💀 Миньон босса **${m.name}** уничтожен градом стрел!`); state.deathStats = state.deathStats || { players: 0, bossMinions: 0, playerSummons: 0 }; state.deathStats.bossMinions = Number(state.deathStats.bossMinions || 0) + 1; } } state.minions = (state.minions || []).filter(x => x.hp > 0); const bossDamage = Math.min(b.boss_hp, pool - share * (enemies - 1)); db.prepare('UPDATE world_boss_battles SET boss_hp=MAX(0,boss_hp-?) WHERE id=?').run(bossDamage,id); total += bossDamage; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `🏹 <@${u}> обрушивает град стрел: **${total}** общего урона, распределённого между ${enemies} противниками.`; }
     case 'mage': { const r = hurtEnemy(b, state, rand(140, 180), 'magic', 'mage'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `☄️ <@${u}> вызывает метеор: **${r.dealt}** урона.`; }
@@ -552,32 +567,84 @@ function useUlt(b, p, c, e, state, targetId) {
 }
 
 async function summonsAct(b) {
-  const state = stateOf(b), totalByOwner = {}, healByOwner = {};
+  const state = stateOf(b);
+  const damageEntries = new Map();
+  const healingEntries = new Map();
+  const ownerDamage = {};
   state.summonStats = state.summonStats || {};
+
   for (const summon of state.summons || []) {
     if (summon.rounds <= 0 || summon.hp <= 0) continue;
+
+    const owner = String(summon.owner);
+    const key = `${owner}:${summon.type}:${summon.name}`;
+    const ownerPlayer = battlePlayers(b.id).find(p => p.user_id === owner);
+
     if (summon.support && summon.type === 'angel') {
       let healed = 0;
-      for (const target of battlePlayers(b.id).filter(p => p.status === 'alive')) healed += healPlayer(b.id, summon.owner, target, rand(...(summon.heal || [12,20])));
-      healByOwner[summon.owner] = (healByOwner[summon.owner] || 0) + healed;
+      for (const target of battlePlayers(b.id).filter(p => p.status === 'alive')) {
+        healed += healPlayer(b.id, owner, target, rand(...(summon.heal || [12, 20])));
+      }
+      const current = healingEntries.get(key) || { owner, name: summon.name, icon: summon.icon || '👼', healing: 0, count: 0 };
+      current.healing += healed;
+      current.count += 1;
+      healingEntries.set(key, current);
+
+      state.summonStats[owner] = state.summonStats[owner] || { damage: 0, absorbed: 0, healing: 0 };
+      state.summonStats[owner].healing += healed;
       continue;
     }
+
+    let dealt = 0;
+    let missed = false;
     if (Math.random() * 100 >= Number(summon.miss || 0)) {
-      const owner = battlePlayers(b.id).find(p => p.user_id === summon.owner);
-      const r = hurtEnemy(b, state, rand(...summon.damage), summon.damageType || 'physical', owner?.class_key || null);
-      totalByOwner[summon.owner] = (totalByOwner[summon.owner] || 0) + r.dealt;
-      state.summonStats[summon.owner] = state.summonStats[summon.owner] || { damage: 0, absorbed: 0, healing: 0 };
-      state.summonStats[summon.owner].damage += r.dealt;
+      const r = hurtEnemy(b, state, rand(...summon.damage), summon.damageType || 'physical', ownerPlayer?.class_key || null);
+      dealt = r.dealt;
+      ownerDamage[owner] = (ownerDamage[owner] || 0) + dealt;
+
+      state.summonStats[owner] = state.summonStats[owner] || { damage: 0, absorbed: 0, healing: 0 };
+      state.summonStats[owner].damage += dealt;
+    } else {
+      missed = true;
+    }
+
+    const current = damageEntries.get(key) || {
+      owner,
+      name: summon.name,
+      icon: summon.icon || '⚙️',
+      damage: 0,
+      hits: 0,
+      misses: 0,
+      count: 0
+    };
+    current.damage += dealt;
+    current.hits += dealt > 0 ? 1 : 0;
+    current.misses += missed ? 1 : 0;
+    current.count += 1;
+    damageEntries.set(key, current);
+  }
+
+  state.summons = (state.summons || []).filter(summon => summon.rounds > 0 && summon.hp > 0);
+  saveState(b, state);
+
+  for (const [owner, damage] of Object.entries(ownerDamage)) {
+    db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?')
+      .run(damage, damage, b.id, owner);
+  }
+
+  // Каждая турель, группа скелетов, голем и ангел теперь записываются в журнал отдельно.
+  for (const entry of damageEntries.values()) {
+    const countText = entry.count > 1 ? ` ×${entry.count}` : '';
+    if (entry.damage > 0) {
+      addLog(b, `${entry.icon} **${entry.name}${countText}** игрока <@${entry.owner}> наносит **${entry.damage} урона**${entry.misses ? ` • промахов: ${entry.misses}` : ''}.`);
+    } else {
+      addLog(b, `${entry.icon} **${entry.name}${countText}** игрока <@${entry.owner}> не попадает по врагу.`);
     }
   }
-  for (const [owner, healing] of Object.entries(healByOwner)) {
-    state.summonStats[owner] = state.summonStats[owner] || { damage: 0, absorbed: 0, healing: 0 };
-    state.summonStats[owner].healing += healing;
+  for (const entry of healingEntries.values()) {
+    const countText = entry.count > 1 ? ` ×${entry.count}` : '';
+    addLog(b, `${entry.icon} **${entry.name}${countText}** игрока <@${entry.owner}> восстанавливает группе **${entry.healing} HP**.`);
   }
-  state.summons = (state.summons || []).filter(summon => summon.rounds > 0 && summon.hp > 0); saveState(b, state);
-  for (const [u, d] of Object.entries(totalByOwner)) db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(d, d, b.id, u);
-  if (Object.keys(totalByOwner).length) addLog(b, `⚙️ Призывы наносят **${Object.values(totalByOwner).reduce((a, z) => a + z, 0)}** суммарного урона.`);
-  if (Object.keys(healByOwner).length) addLog(b, `👼 Ангелы восстанавливают группе **${Object.values(healByOwner).reduce((a, z) => a + z, 0)} HP**.`);
 }
 function tickOwnerSummons(battleId, ownerId) {
   const b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(battleId); if (!b) return;

@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "17.0.2",
+  "version": "17.0.3",
   "private": true,
-  "description": "Game Syndicate V17.0.2 Expedition duration window and hub layout fix",
+  "description": "Game Syndicate V17.0.3 World Boss summon logs, Bard healing and balance",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
