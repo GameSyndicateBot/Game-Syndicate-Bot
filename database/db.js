@@ -206,6 +206,13 @@ db.exec(`
         result_json TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS hero_expedition_cooldowns (
+        user_id TEXT PRIMARY KEY,
+        cooldown_until TEXT NOT NULL,
+        reason TEXT NOT NULL DEFAULT 'cancelled',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS hero_shop_purchases (
         user_id TEXT NOT NULL,
         shop_date TEXT NOT NULL,

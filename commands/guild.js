@@ -4,7 +4,7 @@ const {
 } = require('discord.js');
 
 const { getHero, createHero } = require('../systems/hero/heroService');
-const { getEffectiveHero, getInventory, getEquipment, formatBonuses } = require('../systems/hero/itemService');
+const { getEffectiveHero, getInventory, getEquipment, getInventoryItem, equipItem, unequipItem, formatBonuses } = require('../systems/hero/itemService');
 const { listRecipes, hydrateRecipe, craft } = require('../systems/hero/craftingService');
 const { getUpgradeInfo, upgradeItem, MAX_UPGRADE } = require('../systems/hero/upgradeService');
 const { listCompanions, activateCompanion } = require('../systems/hero/companionService');
@@ -111,20 +111,53 @@ async function showProfile(interaction) {
   });
 }
 
-async function showInventory(interaction) {
+async function showInventory(interaction, notice = '') {
   const hero = getHero(interaction.user.id);
   if (!hero) return interaction.reply({ content: '❌ Сначала создай героя.', flags: MessageFlags.Ephemeral });
-  const items = getInventory(interaction.user.id, { limit: 30 });
+  const items = getInventory(interaction.user.id, { limit: 100 });
   const equipment = getEquipment(interaction.user.id);
-  const text = items.length
-    ? items.slice(0, 20).map(i => `**#${i.id} ${i.name}** ×${i.quantity} • ${i.rarity}`).join('\n')
+  const equippedIds = new Set(equipment.map(i => Number(i.inventory_id)));
+  const slotLabels = { weapon:'Оружие', armor:'Броня', helmet:'Шлем', accessory:'Аксессуар', boots:'Обувь' };
+  const equippedText = equipment.length
+    ? equipment.map(i => `${i.slot === 'weapon' ? '⚔️' : '🛡️'} **${slotLabels[i.slot] || i.slot}:** ${i.name}${Number(i.upgrade_level||0) ? ` +${i.upgrade_level}` : ''}`).join('\n')
+    : 'Экипировка пока не надета. Стартовые характеристики героя действуют без отдельного предмета.';
+  const itemText = items.length
+    ? items.slice(0, 25).map(i => {
+        const mark = equippedIds.has(Number(i.id)) ? '🟢' : i.slot ? '⚪' : '📦';
+        const bonuses = formatBonuses(i.bonuses_json);
+        return `${mark} **#${i.id} ${i.name}**${Number(i.upgrade_level||0) ? ` +${i.upgrade_level}` : ''} ×${i.quantity} · ${RARITY_LABELS[i.rarity] || i.rarity}${i.slot ? `\nСлот: **${slotLabels[i.slot] || i.slot}**` : ''}${bonuses.length ? ` · ${bonuses.join(' · ')}` : ''}`;
+      }).join('\n\n')
     : 'Инвентарь пока пуст.';
-  return interaction.reply({
-    content: `## 🎒 Инвентарь — ${hero.name}\nЭкипировано предметов: **${equipment.length}**\n\n${text}`,
-    flags: MessageFlags.Ephemeral,
-  });
+  const embed = new EmbedBuilder().setColor(0x8B5CF6).setTitle(`🎒 Инвентарь — ${hero.name}`)
+    .setDescription([notice, '**Сейчас экипировано**', equippedText, '', '**Предметы**', itemText].filter(Boolean).join('\n').slice(0,4000))
+    .setFooter({text:'Выбери предмет ниже, чтобы надеть или снять его.'});
+  const components=[];
+  const equippable=items.filter(i=>i.slot).slice(0,25);
+  if(equippable.length) components.push(new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId('guild:inventory:select').setPlaceholder('Выбрать предмет экипировки')
+      .addOptions(equippable.map(i=>({label:`#${i.id} ${i.name}${Number(i.upgrade_level||0)?` +${i.upgrade_level}`:''}`.slice(0,100),value:String(i.id),emoji:equippedIds.has(Number(i.id))?'🟢':'⚔️',description:`${slotLabels[i.slot]||i.slot} · ${equippedIds.has(Number(i.id))?'сейчас надето':'можно экипировать'}`.slice(0,100)})))
+  ));
+  components.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:home').setLabel('Вернуться в Гильдию').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
+  ));
+  const payload={embeds:[embed],components};
+  return interaction.isMessageComponent() ? interaction.update(payload) : interaction.reply({...payload,flags:MessageFlags.Ephemeral});
 }
 
+async function showInventoryItem(interaction, inventoryId, notice='') {
+  const item=getInventoryItem(interaction.user.id, Number(inventoryId));
+  if(!item) return showInventory(interaction,'❌ Предмет не найден.');
+  const equipment=getEquipment(interaction.user.id);
+  const equipped=equipment.some(i=>Number(i.inventory_id)===Number(item.id));
+  const bonuses=formatBonuses(item.bonuses_json);
+  const embed=new EmbedBuilder().setColor(equipped?0x22C55E:0x7C3AED).setTitle(`${equipped?'🟢':'⚔️'} ${item.name}`)
+    .setDescription([notice,item.description,`⭐ **Редкость:** ${RARITY_LABELS[item.rarity]||item.rarity}`,`🎒 **Слот:** ${item.slot||'не экипируется'}`,`✨ **Улучшение:** +${Number(item.upgrade_level||0)}`,bonuses.length?`📊 ${bonuses.join('\n')}`:'',equipped?'\n✅ Сейчас надето.':'\nПредмет находится в инвентаре.'].filter(Boolean).join('\n'));
+  const row=new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:inventory').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`guild:inventory:${equipped?'unequip':'equip'}:${item.id}`).setLabel(equipped?'Снять':'Экипировать').setEmoji(equipped?'📤':'⚔️').setStyle(equipped?ButtonStyle.Danger:ButtonStyle.Success)
+  );
+  return interaction.update({embeds:[embed],components:[row]});
+}
 
 function progressBar(percent, size = 10) {
   const filled = Math.max(0, Math.min(size, Math.round((Number(percent) || 0) / 100 * size)));
@@ -347,8 +380,12 @@ async function handleComponent(interaction) {
     return interaction.showModal(modal);
   }
 
+  if (action === 'home') return interaction.update({ content:'🏰 Вы вернулись в Гильдию. Используйте кнопки постоянного хаба ниже.', embeds:[], components:[] });
   if (action === 'profile') return showProfile(interaction);
-  if (action === 'inventory') return showInventory(interaction);
+  if (action === 'inventory' && parts.length === 2) return showInventory(interaction);
+  if (action === 'inventory' && parts[2] === 'select') return showInventoryItem(interaction, interaction.values?.[0]);
+  if (action === 'inventory' && parts[2] === 'equip') { const r=equipItem(interaction.user.id,Number(parts[3])); return showInventoryItem(interaction,parts[3],r.ok?'✅ Предмет экипирован.':'❌ Не удалось экипировать предмет.'); }
+  if (action === 'inventory' && parts[2] === 'unequip') { const item=getInventoryItem(interaction.user.id,Number(parts[3])); const r=item?.slot?unequipItem(interaction.user.id,item.slot):{ok:false}; return showInventory(interaction,r.ok?'✅ Предмет снят.':'❌ Не удалось снять предмет.'); }
   if (action === 'classes' && parts.length === 2) return showClasses(interaction);
   if (action === 'classes' && parts[2] === 'select') return showClassDetails(interaction, interaction.values?.[0]);
 

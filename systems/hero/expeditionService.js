@@ -171,6 +171,8 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
   ensureClassProgress(userId, classKey);
   tacticKey = normalizeTacticKey(tacticKey);
   if (getActiveExpedition(userId)) return { ok: false, reason: 'active' };
+  const cooldown = getExpeditionCooldown(userId);
+  if (cooldown) return { ok:false, reason:'cooldown', cooldownUntil:cooldown.cooldown_until };
   if (activeWorldBoss()) return { ok: false, reason: 'boss_active' };
   const offered = getDailyLocations(guildId);
   const location = offered.find(l => l.key === locationKey);
@@ -394,6 +396,27 @@ function resolveExpedition(userId, { force = false } = {}) {
   return { ok: true, expedition: { ...expedition, status: 'resolved' }, location: { key: expedition.location_key, ...location }, result };
 }
 
+function getExpeditionCooldown(userId) {
+  try {
+    const row=db.prepare('SELECT * FROM hero_expedition_cooldowns WHERE user_id=?').get(userId);
+    if(!row) return null;
+    if(Date.now() >= new Date(row.cooldown_until).getTime()) { db.prepare('DELETE FROM hero_expedition_cooldowns WHERE user_id=?').run(userId); return null; }
+    return row;
+  } catch (_) { return null; }
+}
+
+function cancelExpedition(userId) {
+  const expedition=getActiveExpedition(userId);
+  if(!expedition) return {ok:false,reason:'none'};
+  const cooldownUntil=new Date(Date.now()+2*60*60*1000).toISOString();
+  db.prepare("UPDATE hero_expeditions SET status='cancelled', resolved_at=CURRENT_TIMESTAMP, result_json=? WHERE id=?")
+    .run(JSON.stringify({outcome:'cancelled',reason:'player_cancelled',rewards:false}),expedition.id);
+  db.prepare("UPDATE heroes SET status='ready', updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(userId);
+  db.prepare(`INSERT INTO hero_expedition_cooldowns(user_id,cooldown_until,reason) VALUES(?,?,'cancelled') ON CONFLICT(user_id) DO UPDATE SET cooldown_until=excluded.cooldown_until,reason=excluded.reason,created_at=CURRENT_TIMESTAMP`).run(userId,cooldownUntil);
+  addHistory(userId,'expedition_cancelled','Экспедиция отменена игроком. Награды потеряны, следующая экспедиция доступна через 2 часа.',{expeditionId:expedition.id,cooldownUntil});
+  return {ok:true,expedition,cooldownUntil};
+}
+
 function recoverHero(userId) {
   const hero = getHero(userId);
   if (!hero || hero.status !== 'wounded') return false;
@@ -403,4 +426,4 @@ function recoverHero(userId) {
   return true;
 }
 
-module.exports = { EXPEDITION_TACTICS, getExpeditionTactic, todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow };
+module.exports = { EXPEDITION_TACTICS, getExpeditionTactic, todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow };

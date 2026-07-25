@@ -38,6 +38,13 @@ function navRow(userId, active = 'home') {
   );
 }
 
+
+function guildReturnRow(userId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`alchemist:${userId}:guild`).setLabel('Вернуться в Гильдию').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
+  );
+}
+
 function bonusText(bonuses = {}) {
   const labels = {
     heal: 'HP',
@@ -83,7 +90,7 @@ function homeView(userId) {
     ].join('\n'))
     .setFooter({ text: `Герой: ${hero.name} · уровень ${hero.level}` });
 
-  return { embeds: [embed], components: [navRow(userId, 'home')] };
+  return { embeds: [embed], components: [navRow(userId, 'home'), guildReturnRow(userId)] };
 }
 
 function recipesView(userId) {
@@ -100,7 +107,7 @@ function recipesView(userId) {
     .setDescription(lines.join('\n\n').slice(0, 4000) || 'Рецептов пока нет.')
     .setFooter({ text: `Доступно сейчас: ${ready}/${recipes.length} · выбери рецепт ниже` });
 
-  const components = [navRow(userId, 'recipes')];
+  const components = [navRow(userId, 'recipes'), guildReturnRow(userId)];
   if (recipes.length) {
     components.push(new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -168,7 +175,7 @@ function bagView(userId, notice = '') {
     .setDescription(`${notice ? `${notice}\n\n` : ''}${text}`.slice(0, 4000))
     .setFooter({ text: 'Выбери предмет ниже, чтобы применить его.' });
 
-  const components = [navRow(userId, 'bag')];
+  const components = [navRow(userId, 'bag'), guildReturnRow(userId)];
   if (items.length) {
     components.push(new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -200,7 +207,7 @@ function buffsView(userId) {
     .setTitle('✨ Активные алхимические эффекты')
     .setDescription(text.slice(0, 4000))
     .setFooter({ text: 'Эффект списывается только при фактическом старте соответствующей активности.' });
-  return { embeds: [embed], components: [navRow(userId, 'buffs')] };
+  return { embeds: [embed], components: [navRow(userId, 'buffs'), guildReturnRow(userId)] };
 }
 
 async function sendView(interaction, payload) {
@@ -214,7 +221,7 @@ module.exports = {
   async execute(interaction) {
     const hero = getHero(interaction.user.id);
     if (!hero) return interaction.reply({ content: '❌ Сначала создай героя: `/hero create`.', flags: MessageFlags.Ephemeral });
-    return sendView(interaction, homeView(interaction.user.id));
+    return interaction.reply({ ...homeView(interaction.user.id), flags: MessageFlags.Ephemeral });
   },
 
   async handleComponent(interaction) {
@@ -230,6 +237,7 @@ module.exports = {
       return interaction.update({ content: '❌ Герой не найден. Создай его через `/hero create`.', embeds: [], components: [] });
     }
 
+    if (action === 'guild') return interaction.update({ content:'🏰 Вы вернулись в Гильдию. Используйте кнопки постоянного хаба.', embeds:[], components:[] });
     if (action === 'home') return sendView(interaction, homeView(ownerId));
     if (action === 'recipes') return sendView(interaction, recipesView(ownerId));
     if (action === 'bag') return sendView(interaction, bagView(ownerId));

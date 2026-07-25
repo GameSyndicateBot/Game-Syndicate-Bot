@@ -1,7 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const { getHero } = require('../systems/hero/heroService');
+const { getEffectiveHero } = require('../systems/hero/itemService');
 const { LOCATIONS } = require('../systems/hero/expeditionData');
-const { getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, getWorldStats, getWorldActivity, EXPEDITION_TACTICS, getExpeditionTactic } = require('../systems/hero/expeditionService');
+const { getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, getWorldStats, getWorldActivity, EXPEDITION_TACTICS, getExpeditionTactic } = require('../systems/hero/expeditionService');
 const { createExpeditionHubCard } = require('../images/hero/createExpeditionHubCard');
 const { HERO_CLASSES } = require('../systems/hero/heroData');
 const { getAllClassProgress, getClassProgress, normalizeClassKey } = require('../systems/hero/classProgressService');
@@ -174,11 +175,19 @@ async function handleComponent(interaction) {
   if (action === 'class') {
     const locationKey=parts[2];
     const classKey=normalizeClassKey(interaction.values?.[0]);
+    const location=LOCATIONS[locationKey];
+    const effective=getEffectiveHero(hero);
+    const chances=Object.values(EXPEDITION_TACTICS).map(t=>({t,chance:Math.round(computeSuccessChance(effective,location,{},t.key))}));
     const tacticMenu = new StringSelectMenuBuilder().setCustomId(`expedition:tactic:${locationKey}:${classKey}`).setPlaceholder('Выбери тактику героя')
-      .addOptions(Object.values(EXPEDITION_TACTICS).map(t => ({ label:t.name, value:t.key, emoji:t.icon, description:t.description.slice(0,100) })));
-    return interaction.update({ embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle('🎯 Тактика экспедиции').setDescription(`Класс: **${HERO_CLASSES[classKey]?.icon || ''} ${HERO_CLASSES[classKey]?.name || classKey}**
+      .addOptions(chances.map(({t,chance}) => ({ label:`${t.name} — ${chance}%`, value:t.key, emoji:t.icon, description:`Шанс успеха ${chance}% · ${t.description}`.slice(0,100) })));
+    const preview=chances.map(({t,chance})=>`${t.icon} **${t.name}: ${chance}%**`).join('\n');
+    const back=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('expedition:refresh').setLabel('Вернуться к локациям').setEmoji('⬅️').setStyle(ButtonStyle.Secondary));
+    return interaction.update({ embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(`🎯 ${location?.name || 'Тактика экспедиции'}`).setDescription(`Класс: **${HERO_CLASSES[classKey]?.icon || ''} ${HERO_CLASSES[classKey]?.name || classKey}**
+Опасность: ${stars(location?.difficulty || 1)}
 
-Тактика меняет вероятности, но ничего не гарантирует. Даже осторожный герой может попасть в засаду и вернуться раненым.`)], components:[new ActionRowBuilder().addComponents(tacticMenu)] });
+${preview}
+
+Можно вернуться к хабу и выбрать другую локацию до отправки.`)], components:[new ActionRowBuilder().addComponents(tacticMenu),back] });
   }
 
   if (action === 'tactic') {
@@ -192,6 +201,7 @@ async function handleComponent(interaction) {
       boss_active: '❌ Сейчас идёт регистрация или бой с World Boss.',
       boss_window: `❌ До World Boss осталось менее 4 часов. Герой не успеет вернуться к бою ${result.nextBossAt ? ts(result.nextBossAt) : ''}.`,
       not_offered: '❌ Эта локация сегодня уже недоступна. Обнови хаб.',
+      cooldown: `⏳ После отмены герой отдыхает. Новая экспедиция доступна ${result.cooldownUntil ? ts(result.cooldownUntil) : 'позже'}.`,
     };
     if (!result.ok) return interaction.reply({ content: errors[result.reason] || '❌ Не удалось начать экспедицию.', flags: MessageFlags.Ephemeral });
     return interaction.reply({
@@ -209,6 +219,19 @@ async function handleComponent(interaction) {
     const tactic = getExpeditionTactic(active.tactic_key);
     const ready = Date.now() >= new Date(active.returns_at).getTime();
     return interaction.reply({ content: ready ? `✅ **${hero.name}** вернулся из локации **${loc?.name || active.location_key}**. Нажми **«Забрать результат»**.` : `⏳ **${hero.name}** исследует **${loc?.name || active.location_key}** и вернётся ${ts(active.returns_at)}.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**`, flags: MessageFlags.Ephemeral });
+  }
+
+  if (action === 'cancel' && parts[2] === 'confirm') {
+    return interaction.update({content:'⚠️ Отменить текущую экспедицию? Награды и использованные расходники не возвращаются. Следующая экспедиция будет доступна через 2 часа.',embeds:[],components:[new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('expedition:cancel:apply').setLabel('Да, отменить').setEmoji('🚫').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('expedition:status').setLabel('Нет').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
+    )]});
+  }
+  if (action === 'cancel' && parts[2] === 'apply') {
+    const r=cancelExpedition(interaction.user.id);
+    if(!r.ok) return interaction.update({content:'ℹ️ Активной экспедиции уже нет.',embeds:[],components:[]});
+    return interaction.update({content:`🚫 Экспедиция отменена. Награды не выданы.
+⏳ Следующая экспедиция доступна ${ts(r.cooldownUntil)}.`,embeds:[],components:[]});
   }
 
   if (action === 'return') {
