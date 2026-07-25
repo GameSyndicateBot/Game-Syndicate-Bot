@@ -304,7 +304,7 @@ function resolveExpedition(userId, { force = false } = {}) {
   const weather = location.weather || {};
   const dustMultiplier = Number(theme.dust || 1) * Number(weather.dust || 1) * Number(worldEffects.dust || 1);
   const themeRare = Number(theme.rare || 0) + Number(weather.rare || 0) + Number(tactic.rare || 0) + Number(worldEffects.rare || 0);
-  const xpMultiplier = Number(tactic.xp || 1) * Number(worldEffects.xp || 1) * duration.xp;
+  const xpMultiplier = Number(tactic.xp || 1) * Number(worldEffects.xp || 1) * duration.xp * (1 + (Number(alchemyBonuses.class_xp_bonus) || 0) / 100);
   const tacticDustMultiplier = Number(tactic.dust || 1) * duration.reward;
   if (outcome === 'great') {
     dust = Math.round(randomInt(rng, ...location.dust) * 1.45 * dustMultiplier * tacticDustMultiplier); xp = Math.round(randomInt(rng, ...location.baseXp) * 1.35 * xpMultiplier); reputation = 18;
@@ -323,6 +323,7 @@ function resolveExpedition(userId, { force = false } = {}) {
   } else {
     xp = Math.max(5, Math.round(randomInt(rng, ...location.baseXp) * 0.35 * xpMultiplier));
     injuryHours = location.difficulty >= 4 || tactic.key === 'aggressive' ? 3 : 2;
+    if ((Number(alchemyBonuses.injury_resistance) || 0) > 0 && rng() * 100 < Number(alchemyBonuses.injury_resistance)) injuryHours = Math.max(0, injuryHours - 1);
     ensurePlayer(userId);
     const wantedLoss = randomInt(rng, 10, 25) * location.difficulty;
     const removal = removeCardDust(userId, wantedLoss);
@@ -347,7 +348,7 @@ function resolveExpedition(userId, { force = false } = {}) {
     }
   }
 
-  if (outcome === 'partial' && injuryHours === 0 && rng() < 0.22) injuryHours = 1;
+  if (outcome === 'partial' && injuryHours === 0 && rng() < Math.max(0.05, 0.22 - (Number(alchemyBonuses.injury_resistance) || 0) / 100)) injuryHours = 1;
   injuryHours = Math.max(0, Math.min(3, Number(injuryHours)||0));
 
   if ((outcome === 'great' || outcome === 'success') && theme.key === 'mystery') {
