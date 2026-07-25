@@ -100,56 +100,121 @@ async function hubPayload(guildId = 'global') {
 }
 
 
+
+function expeditionHubErrorInfo(error) {
+  return {
+    code: error?.code ?? error?.rawError?.code ?? null,
+    status: error?.status ?? null,
+    message: String(error?.message || error || 'Неизвестная ошибка').slice(0, 500),
+  };
+}
+
+async function sendExpeditionHub(channel, payload) {
+  try {
+    return await channel.send(payload);
+  } catch (error) {
+    const info = expeditionHubErrorInfo(error);
+    console.error('[Expedition Hub] Отправка полной панели не удалась:', info);
+
+    // Если Discord/хостинг временно не принимает вложение, не оставляем канал пустым:
+    // создаём рабочий хаб без картинки, сохраняя кнопки и весь функционал.
+    if (Array.isArray(payload.files) && payload.files.length) {
+      const fallbackPayload = {
+        content: `${payload.content}\n\n⚠️ Изображение хаба временно не загрузилось, но кнопки и экспедиции работают.`,
+        components: payload.components,
+      };
+      try {
+        const message = await channel.send(fallbackPayload);
+        message.expeditionHubFallback = true;
+        return message;
+      } catch (fallbackError) {
+        fallbackError.fullPayloadError = info;
+        throw fallbackError;
+      }
+    }
+    throw error;
+  }
+}
+
 async function rebuildExpeditionHub(client) {
   try {
     const channel = await client.channels.fetch(EXPEDITION_CHANNEL_ID);
-    if (!channel?.isTextBased()) return { ok: false, reason: 'channel_unavailable' };
+    if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+      return { ok: false, reason: 'channel_unavailable', errorInfo: { message: 'Канал не найден или не поддерживает отправку сообщений.' } };
+    }
 
-    const recent = await channel.messages.fetch({ limit: 100 });
-    const hubs = recent.filter(m => m.author.id === client.user.id && m.content.startsWith(HUB_MARKER));
+    // Сначала создаём новый хаб. Старый удаляем только после успешной отправки.
+    // Так канал больше не останется пустым, если Canvas/вложение/Discord API даст ошибку.
+    const payload = await hubPayload(channel.guildId || 'global');
+    const created = await sendExpeditionHub(channel, payload);
+
+    const recent = await channel.messages.fetch({ limit: 100 }).catch(error => {
+      console.warn('[Expedition Hub] Новый хаб создан, но список старых сообщений получить не удалось:', error?.message || error);
+      return null;
+    });
+
     let deleted = 0;
-    for (const message of hubs.values()) {
-      try {
-        await message.delete();
-        deleted += 1;
-      } catch (error) {
-        console.warn('[Expedition Hub] Не удалось удалить старый хаб:', message.id, error?.message || error);
+    if (recent) {
+      const hubs = recent.filter(m =>
+        m.id !== created.id &&
+        m.author.id === client.user.id &&
+        m.content.startsWith(HUB_MARKER)
+      );
+      for (const message of hubs.values()) {
+        try {
+          await message.delete();
+          deleted += 1;
+        } catch (error) {
+          console.warn('[Expedition Hub] Не удалось удалить старый хаб:', message.id, error?.message || error);
+        }
       }
     }
 
-    const payload = await hubPayload(channel.guildId || 'global');
-    const created = await channel.send(payload);
     lastHubMessageId = created.id;
     lastAutoHubSignature = currentHubSignature(channel.guildId || 'global');
     console.log(`[Expedition Hub] Публичный хаб пересоздан: ${created.id}; удалено старых: ${deleted}`);
-    return { ok: true, message: created, deleted };
+    return {
+      ok: true,
+      message: created,
+      deleted,
+      fallback: Boolean(created.expeditionHubFallback),
+    };
   } catch (error) {
-    console.error('[Expedition Hub] Не удалось пересоздать публичный хаб:', error);
-    return { ok: false, reason: 'rebuild_failed', error };
+    const errorInfo = expeditionHubErrorInfo(error);
+    console.error('[Expedition Hub] Не удалось пересоздать публичный хаб:', errorInfo, error);
+    return { ok: false, reason: 'rebuild_failed', error, errorInfo };
   }
 }
-
 async function ensureExpeditionHub(client) {
   try {
     const channel = await client.channels.fetch(EXPEDITION_CHANNEL_ID);
-    if (!channel?.isTextBased()) return null;
-    const recent = await channel.messages.fetch({ limit: 50 });
-    const existing = recent.find(m => m.author.id === client.user.id && m.content.startsWith(HUB_MARKER));
+    if (!channel?.isTextBased() || typeof channel.send !== 'function') return null;
+
+    const recent = await channel.messages.fetch({ limit: 50 }).catch(error => {
+      console.warn('[Expedition Hub] Не удалось прочитать историю канала, будет создан новый хаб:', error?.message || error);
+      return null;
+    });
+    const existing = recent?.find(m => m.author.id === client.user.id && m.content.startsWith(HUB_MARKER));
     const payload = await hubPayload(channel.guildId || 'global');
+
     if (existing) {
-      await existing.edit(payload);
-      lastHubMessageId = existing.id;
-      return existing;
+      try {
+        await existing.edit(payload);
+        lastHubMessageId = existing.id;
+        return existing;
+      } catch (editError) {
+        console.warn('[Expedition Hub] Старый хаб не удалось обновить, создаём новый:', editError?.message || editError);
+      }
     }
-    const created = await channel.send(payload);
+
+    const created = await sendExpeditionHub(channel, payload);
     lastHubMessageId = created.id;
     return created;
   } catch (error) {
-    console.error('[Expedition Hub] Не удалось создать/обновить панель:', error);
+    console.error('[Expedition Hub] Не удалось создать/обновить панель:', expeditionHubErrorInfo(error), error);
     return null;
   }
 }
-
 function currentHubSignature(guildId = 'global') {
   const world = getDailyWorld(guildId);
   const window = expeditionWindow();

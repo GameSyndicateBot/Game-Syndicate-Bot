@@ -86,7 +86,11 @@ module.exports = {
         .setTitle(result.ok ? '✅ Expedition Hub пересоздан' : '❌ Не удалось пересоздать Expedition Hub')
         .setDescription(result.ok
           ? `Создано новое публичное сообщение в <#${require('./expedition').EXPEDITION_CHANNEL_ID}>.\nУдалено старых хабов: **${result.deleted}**.\nНовый ID: \`${result.message.id}\`.`
-          : 'Проверьте доступ бота к каналу, разрешения **Просматривать канал**, **Отправлять сообщения**, **Прикреплять файлы**, **Управлять сообщениями** и логи запуска.')
+          : `Причина: **${result.errorInfo?.message || result.reason || 'неизвестная ошибка'}**${result.errorInfo?.code ? `
+Код Discord: \`${result.errorInfo.code}\`` : ''}${result.errorInfo?.status ? `
+HTTP: \`${result.errorInfo.status}\`` : ''}
+
+Права, которые стоит проверить: **Просматривать канал**, **Читать историю сообщений**, **Отправлять сообщения**, **Прикреплять файлы**, **Управлять сообщениями**.`)
         .setTimestamp();
       return interaction.editReply({ embeds:[embed], components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(id('home',owner)).setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Primary))] });
     }
