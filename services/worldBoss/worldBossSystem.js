@@ -196,11 +196,18 @@ function buildEmbed(b, players) {
       { name: '⚔️ Урон', value: fs.damageTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.damage_done}**`).join('\n').slice(0,1024), inline: true },
       { name: '💚 Лечение', value: fs.healTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.healing_done}**`).join('\n').slice(0,1024), inline: true },
       { name: '🛡️ Принято урона', value: fs.tankTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.damage_taken}**`).join('\n').slice(0,1024), inline: true },
-      { name: '🤖 Вклад призывов', value: Object.entries(fs.summonStats || {}).map(([uid, st]) => `<@${uid}> — ⚔️ **${st.damage || 0}** • 🛡️ **${st.absorbed || 0}**${st.healing ? ` • 💚 **${st.healing}**` : ''}`).join('\n').slice(0,1024) || 'Призывы не участвовали.' },
+      { name: '🤖 Вклад призывов', value: (fs.summonDetails || []).map(st => {
+        const reason = Number(st.damage || 0) > 0 ? ''
+          : st.support ? ' • поддержка/лечение'
+          : Number(st.attacks || 0) === 0
+            ? (Number(st.destroyed || 0) > 0 ? ' • уничтожен до атаки' : Number(st.expired || 0) > 0 ? ' • исчез до атаки' : ' • не успел атаковать')
+            : Number(st.misses || 0) >= Number(st.attacks || 0) ? ' • все атаки мимо' : ' • урон не прошёл';
+        return `${st.icon || '•'} **${st.name}** игрока <@${st.owner}> — ⚔️ **${st.damage || 0}**${st.healing ? ` • 💚 **${st.healing}**` : ''}${st.absorbed ? ` • 🛡️ **${st.absorbed}**` : ''}${reason}`;
+      }).join('\n').slice(0,1024) || 'Призывы не участвовали.' },
       { name: '🎖️ Дополнительные MVP', value: (fs.categoryAwards || []).map(a => `${a.type === 'damage' ? '⚔️ Урон' : a.type === 'healing' ? '💚 Лечение' : '🛡️ Защита'}: <@${a.user_id}> — **${a.value}** • ${String(a.pack).toUpperCase()} Pack`).join('\n').slice(0,1024) || '—' },
     );
   }
-  if (state.log?.length) e.addFields({ name: 'Последние действия', value: state.log.slice(-7).join('\n').slice(0, 1024) });
+  if (state.log?.length) e.addFields({ name: 'Последние действия', value: state.log.slice(state.finalStats ? -5 : -7).join('\n').slice(0, 1024) });
   return e.setFooter({ text: 'Game Syndicate • World Boss' });
 }
 async function refresh(id) {
@@ -758,6 +765,26 @@ function useUlt(b, p, c, e, state, targetId) {
   }
 }
 
+
+function summonDetailKey(summon) {
+  return `${String(summon.owner)}:${String(summon.type || 'summon')}:${String(summon.name || 'Призыв')}`;
+}
+function ensureSummonDetail(state, summon) {
+  state.summonDetails = state.summonDetails || {};
+  const key = summonDetailKey(summon);
+  if (!state.summonDetails[key]) state.summonDetails[key] = {
+    owner: String(summon.owner), type: String(summon.type || 'summon'),
+    name: String(summon.name || 'Призыв'), icon: String(summon.icon || '•'),
+    damage: 0, healing: 0, absorbed: 0, attacks: 0, misses: 0,
+    destroyed: 0, expired: 0, support: Boolean(summon.support),
+  };
+  return state.summonDetails[key];
+}
+function summonDetailsForFinal(state) {
+  for (const summon of state.summons || []) ensureSummonDetail(state, summon);
+  return Object.values(state.summonDetails || {});
+}
+
 async function summonsAct(b) {
   const state = stateOf(b);
   const damageEntries = new Map();
@@ -770,6 +797,7 @@ async function summonsAct(b) {
 
     const owner = String(summon.owner);
     const key = `${owner}:${summon.type}:${summon.name}`;
+    const detail = ensureSummonDetail(state, summon);
     const ownerPlayer = battlePlayers(b.id).find(p => p.user_id === owner);
 
     if (summon.support && summon.type === 'angel') {
@@ -780,6 +808,8 @@ async function summonsAct(b) {
       const current = healingEntries.get(key) || { owner, name: summon.name, icon: summon.icon || '👼', healing: 0, count: 0 };
       current.healing += healed;
       current.count += 1;
+      detail.healing += healed;
+      detail.attacks += 1;
       healingEntries.set(key, current);
 
       state.summonStats[owner] = state.summonStats[owner] || { damage: 0, absorbed: 0, healing: 0 };
@@ -813,6 +843,9 @@ async function summonsAct(b) {
     current.hits += dealt > 0 ? 1 : 0;
     current.misses += missed ? 1 : 0;
     current.count += 1;
+    detail.damage += dealt;
+    detail.attacks += 1;
+    detail.misses += missed ? 1 : 0;
     damageEntries.set(key, current);
   }
 
@@ -844,7 +877,8 @@ function tickOwnerSummons(battleId, ownerId) {
   for (const summon of state.summons || []) {
     if (summon.owner !== String(ownerId) || summon.rounds <= 0) continue;
     summon.rounds--; changed = true;
-    if (summon.rounds <= 0) { state.log.push(`⌛ Призыв **${summon.name}** игрока <@${summon.owner}> завершает срок службы и исчезает.`); state.deathStats = state.deathStats || { players: 0, bossMinions: 0, playerSummons: 0 }; state.deathStats.playerSummons = Number(state.deathStats.playerSummons || 0) + 1; }
+    const detail = ensureSummonDetail(state, summon);
+    if (summon.rounds <= 0) { detail.expired += 1; state.log.push(`⌛ Призыв **${summon.name}** игрока <@${summon.owner}> завершает срок службы и исчезает.`); state.deathStats = state.deathStats || { players: 0, bossMinions: 0, playerSummons: 0 }; state.deathStats.playerSummons = Number(state.deathStats.playerSummons || 0) + 1; }
   }
   if (changed) { state.summons = (state.summons || []).filter(x => x.rounds > 0 && x.hp > 0); state.log = state.log.slice(-12); saveState(b, state); }
 }
@@ -870,6 +904,9 @@ function damagePlayerSummons(state, ratio = 0.55) {
     const hit = Math.min(summon.hp, Math.max(1, Math.round(rand(24, 40) * ratio)));
     const died = summon.hp > 0 && summon.hp - hit <= 0;
     summon.hp = Math.max(0, summon.hp - hit); total += hit;
+    const detail = ensureSummonDetail(state, summon);
+    detail.absorbed += hit;
+    if (died) detail.destroyed += 1;
     state.summonStats[summon.owner] = state.summonStats[summon.owner] || { damage: 0, absorbed: 0, healing: 0 };
     state.summonStats[summon.owner].absorbed += hit;
     if (died) { state.log.push(`💥 Призыв **${summon.name}** игрока <@${summon.owner}> уничтожен!`); state.deathStats.playerSummons = Number(state.deathStats.playerSummons || 0) + 1; }
@@ -889,6 +926,8 @@ function destroyRandomSummon(state) {
   const list = state.summons || []; if (!list.length) return null;
   const chosen = pick(list);
   if (chosen.type === 'golem' && Math.random() < 0.5) return `🛡️ ${chosen.name} выдерживает попытку уничтожения.`;
+  const detail = ensureSummonDetail(state, chosen);
+  detail.destroyed += 1;
   const idx = list.indexOf(chosen); if (idx >= 0) list.splice(idx, 1);
   state.deathStats = state.deathStats || { players: 0, bossMinions: 0, playerSummons: 0 }; state.deathStats.playerSummons = Number(state.deathStats.playerSummons || 0) + 1;
   return `💀 Босс уничтожает призыв **${chosen.name}** игрока <@${chosen.owner}>.`;
@@ -1139,7 +1178,9 @@ async function finish(id, win) {
     awardCategory('healing', healTop[0], healTop[0]?.healing_done);
     awardCategory('tank', tankTop[0], tankTop[0]?.damage_taken);
 
-    const summonStats = stateOf(b).summonStats || {};
+    const finalState = stateOf(b);
+    const summonStats = finalState.summonStats || {};
+    const summonDetails = summonDetailsForFinal(finalState);
     finalStats = {
       pool, each, remainder,
       mvpId: mvp.user_id,
@@ -1149,6 +1190,7 @@ async function finish(id, win) {
       healTop: healTop.slice(0,10),
       tankTop: tankTop.slice(0,10),
       summonStats,
+      summonDetails,
       categoryAwards,
       dustRewards
     };

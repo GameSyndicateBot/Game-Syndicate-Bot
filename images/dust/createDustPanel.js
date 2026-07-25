@@ -31,7 +31,7 @@ async function createDustPanel(user, data = {}) {
     drawStatBox(ctx, 580, 200, 440, 135, 'МОЖНО ПОЛУЧИТЬ', `${totalDust}`, colors.purpleLight);
     drawStatBox(ctx, 1070, 200, 440, 135, 'ПОВТОРОК', totalDuplicates, colors.green);
 
-    drawPanel(ctx, 90, 375, 1420, 390);
+    drawPanel(ctx, 90, 375, 1420, 420);
 
     ctx.fillStyle = colors.white;
     ctx.font = 'bold 38px Arial';
@@ -52,9 +52,9 @@ async function createDustPanel(user, data = {}) {
         ctx.fillText('Последние копии карточек защищены от случайного удаления', WIDTH / 2, 635);
         ctx.textAlign = 'left';
     } else {
-        let y = 490;
+        let y = 480;
         for (const item of duplicates.slice(0, 8)) {
-            drawPanel(ctx, 130, y, 1340, 42, {
+            drawPanel(ctx, 130, y, 1340, 38, {
                 radius: 14,
                 fill: 'rgba(255,255,255,0.045)',
                 stroke: 'rgba(192,132,252,0.20)',
@@ -62,21 +62,27 @@ async function createDustPanel(user, data = {}) {
             });
             ctx.fillStyle = colors.white;
             ctx.font = 'bold 22px Arial';
-            ctx.fillText(`${item.card.code} • ${truncate(item.card.name, 26)}`, 155, y + 28);
+            ctx.fillText(`${item.card.code} • ${truncate(item.card.name, 24)}`, 155, y + 26);
             ctx.fillStyle = colors.muted;
             ctx.font = 'bold 19px Arial';
-            ctx.fillText(`${String(item.rarity).toUpperCase()} • ${String(item.edition).toUpperCase()}`, 600, y + 28);
+            ctx.fillText(`${String(item.rarity).toUpperCase()} • ${String(item.edition).toUpperCase()}`, 600, y + 26);
             ctx.fillStyle = colors.gold;
             ctx.textAlign = 'right';
             ctx.font = 'bold 22px Arial';
-            ctx.fillText(`+${item.dust} Dust`, 1445, y + 28);
+            ctx.fillText(`+${item.dust} Dust`, 1445, y + 26);
             ctx.textAlign = 'left';
-            y += 50;
+            y += 46;
         }
     }
 
-    drawTag(ctx, 90, 802, 'РАСПЫЛЯЮТСЯ ТОЛЬКО ЛИШНИЕ КОПИИ', colors.green);
-    drawTag(ctx, 560, 802, 'ВЫБЕРИ КАРТОЧКУ В МЕНЮ НИЖЕ', colors.purpleLight);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 18px Arial';
+    ctx.fillStyle = colors.green;
+    ctx.fillText('РАСПЫЛЯЮТСЯ ТОЛЬКО ЛИШНИЕ КОПИИ', WIDTH / 2, 830);
+    ctx.font = '17px Arial';
+    ctx.fillStyle = colors.purpleLight;
+    ctx.fillText('Выбери карточку в меню под изображением. Последняя копия всегда защищена.', WIDTH / 2, 860);
+    ctx.textAlign = 'left';
 
     return canvas.toBuffer('image/png');
 }

@@ -89,6 +89,14 @@ function locationPanel(ctx, x, y, w, h, location, accent) {
   ctx.fill();
 }
 
+function sanitizeActivityText(value) {
+  return String(value || '')
+    .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '')
+    .replace(/[\u{1F1E6}-\u{1F1FF}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 async function createExpeditionHubCard({ world, nextBossLabel, locked, lockReason = '', availableDurations = [], stats = {}, activity = [] }) {
   const c = createCanvas(1500, 1160);
   const ctx = c.getContext('2d');
@@ -192,13 +200,13 @@ async function createExpeditionHubCard({ world, nextBossLabel, locked, lockReaso
   ctx.clip();
   if(!rows.length) ctx.fillText('Мир ждёт первых исследователей…',104,982);
   rows.forEach((a,i)=>{
-    const raw=String(a.summary||'').replace(/\s+/g,' ').trim();
+    const raw=sanitizeActivityText(a.summary);
     const text=raw.length>105?`${raw.slice(0,102)}…`:raw;
-    ctx.fillText(text,104,982+i*25);
+    ctx.fillText(`• ${text || 'Событие экспедиции'}`,104,982+i*25);
   });
   ctx.restore();
   ctx.fillStyle = '#8b5cf6'; ctx.font = 'bold 19px Arial'; ctx.textAlign = 'right';
-  ctx.fillText('GAME SYNDICATE • EXPEDITION HUB V16.2', 1392, 1110);
+  ctx.fillText('GAME SYNDICATE • EXPEDITION HUB V17.1.3', 1392, 1110);
   ctx.textAlign = 'left';
 
   return c.toBuffer('image/png');
