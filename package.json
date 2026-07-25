@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "17.1.3",
+  "version": "17.2.0",
   "private": true,
-  "description": "Game Syndicate V17.1.3 Expedition, summon statistics and Dust card visual fixes",
+  "description": "Game Syndicate V17.2.0 Quick Events V2 equal mode rotation and 14-day content anti-repeat",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

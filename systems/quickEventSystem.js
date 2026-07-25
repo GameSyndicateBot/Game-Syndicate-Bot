@@ -269,15 +269,21 @@ function musicEvent(){
   return {prompt:'Угадай название песни и исполнителя по фрагменту.',answers:[`${t.title} ${t.artist}`,`${t.artist} ${t.title}`],musicFile:path.join(root,t.file),title:t.title,artist:t.artist};
 }
 
-const TYPE_WEIGHTS = [
-  ['unscramble',14],['math',13],['typing',9],['finish',10],
-  ['odd',9],['color',8],['memory',8],['reaction',5],
-  ['rarity',4],['avatar',3],['sequence',8],['reverse',7],
-  ['emoji_riddle',6],['true_false',6],
-  ['loot_share',5],['risk',5],['dont_press',3],['royal_button',3],['dice_tournament',4],
-  ['treasure_chest',6],['lucky_roll',4],
-  ['word_hunt',8],['music_guess',4],['movie_guess',6],['game_guess',6],['bomb',5],['mafia_light',2],
+// Quick Events V2: все режимы имеют равный базовый шанс.
+// music_guess временно исключён, пока нет полноценной лицензированной медиатеки.
+const EVENT_TYPES = [
+  'unscramble','math','typing','finish',
+  'odd','color','memory','reaction',
+  'rarity','avatar','sequence','reverse',
+  'emoji_riddle','true_false',
+  'loot_share','risk','dont_press','royal_button','dice_tournament',
+  'treasure_chest','lucky_roll',
+  'word_hunt','movie_guess','game_guess','bomb','mafia_light',
 ];
+
+const MODE_HISTORY_LIMIT = 7;
+const CONTENT_REPEAT_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+const CONTENT_PICK_ATTEMPTS = 40;
 
 function initTables(){
   db.exec(`
@@ -555,20 +561,89 @@ function shuffleWord(word){let out=word;for(let i=0;i<12&&out===word;i++)out=[..
 function randomInt(a,b){return a+Math.floor(Math.random()*(b-a+1));}
 function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
 function weightedType(){
-  const recent = new Set(
-    db.prepare('SELECT type FROM quick_event_rounds ORDER BY id DESC LIMIT 7')
-      .all()
-      .map(row => row.type)
-  );
-  let filtered = TYPE_WEIGHTS.filter(([type]) => !recent.has(type));
-  if (!filtered.length) filtered = TYPE_WEIGHTS;
-  const total = filtered.reduce((sum,[,weight]) => sum + weight, 0);
-  let roll = Math.random() * total;
-  for (const [type,weight] of filtered) {
-    roll -= weight;
-    if (roll <= 0) return type;
+  // Равномерный выбор среди режимов, которых не было в последних раундах.
+  // Благодаря этому интересные режимы не становятся редкими, а одинаковые
+  // события не идут подряд.
+  const recentRows = db.prepare(
+    'SELECT type FROM quick_event_rounds ORDER BY id DESC LIMIT ?'
+  ).all(MODE_HISTORY_LIMIT);
+  const recent = new Set(recentRows.map(row => row.type));
+
+  let available = EVENT_TYPES.filter(type => !recent.has(type));
+  if (!available.length) {
+    // На случай, если число режимов когда-нибудь станет меньше лимита истории:
+    // не повторяем хотя бы самый последний режим.
+    const lastType = recentRows[0]?.type;
+    available = EVENT_TYPES.filter(type => type !== lastType);
   }
-  return filtered[0][0];
+  if (!available.length) available = [...EVENT_TYPES];
+
+  return pick(available);
+}
+
+function contentSignature(type,event){
+  const normalizedAnswers = [...(event?.answers || [])]
+    .map(normalize)
+    .filter(Boolean)
+    .sort();
+
+  return JSON.stringify({
+    type,
+    prompt: normalize(event?.prompt || ''),
+    display: normalize(event?.display || ''),
+    answers: normalizedAnswers,
+    options: (event?.options || []).map(normalize).filter(Boolean).sort(),
+    title: normalize(event?.title || ''),
+    artist: normalize(event?.artist || ''),
+    theme: normalize(event?.theme?.name || ''),
+    hiddenWords: (event?.hiddenWords || []).map(normalize).filter(Boolean).sort(),
+  });
+}
+
+function recentContentSignatures(type){
+  const since = Date.now() - CONTENT_REPEAT_WINDOW_MS;
+  const rows = db.prepare(`
+    SELECT prompt, answers_json, payload_json
+    FROM quick_event_rounds
+    WHERE type = ? AND created_at >= ?
+    ORDER BY id DESC
+  `).all(type,since);
+
+  const signatures = new Set();
+  for (const row of rows) {
+    try {
+      const payload = JSON.parse(row.payload_json || '{}');
+      const answers = JSON.parse(row.answers_json || '[]');
+      signatures.add(contentSignature(type,{
+        ...payload,
+        prompt: payload.prompt || row.prompt || '',
+        answers: payload.answers || answers,
+      }));
+    } catch (_) {}
+  }
+  return signatures;
+}
+
+async function buildEventAvoidingRecent(client,type,diff){
+  // Динамические/многопользовательские режимы не имеют повторяющегося вопроса.
+  const dynamicTypes = new Set([
+    'loot_share','risk','dont_press','royal_button','dice_tournament',
+    'treasure_chest','lucky_roll','bomb','mafia_light','reaction','avatar',
+  ]);
+  if (dynamicTypes.has(type)) return buildEvent(client,type,diff);
+
+  const recent = recentContentSignatures(type);
+  let fallback = null;
+
+  for (let attempt = 0; attempt < CONTENT_PICK_ATTEMPTS; attempt++) {
+    const event = await buildEvent(client,type,diff);
+    fallback = event;
+    if (!recent.has(contentSignature(type,event))) return event;
+  }
+
+  // Если за 14 дней использовали весь небольшой набор режима, не ломаем запуск:
+  // берём последний сгенерированный вариант и продолжаем работу.
+  return fallback || buildEvent(client,type,diff);
 }
 function difficulty(){const r=Math.random();return r<.48?'easy':r<.82?'medium':'hard';}
 function mathEvent(diff){
@@ -1540,7 +1615,7 @@ async function postQuickEvent(client){
   const type=weightedType();
   const diff=difficulty();
   const tier=pickEventTier();
-  const event=await buildEvent(client,type,diff);
+  const event=await buildEventAvoidingRecent(client,type,diff);
   event.type=type;
   event.difficulty=diff;
   event.tier=tier;
