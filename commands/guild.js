@@ -15,6 +15,10 @@ const { getAllClassProgress, getClassProgress, classXpForNextLevel, classWorldBo
 const { getActiveExpedition } = require('../systems/hero/expeditionService');
 const { createGuildHubCard } = require('../images/hero/createGuildHubCard');
 const { createHeroCard } = require('../images/hero/createHeroCard');
+const { db, getCardDust } = require('../database/db');
+const { PROFESSIONS, SPECIALIZATIONS, getProfession, getProfessionCounts, getProfessionLeaders, getAllProfessionLeaders } = require('../systems/hero/professionService');
+const { ITEMS } = require('../systems/hero/itemData');
+const { listOpenOrders, stats: getOrderStats } = require('../systems/hero/orderBoardService');
 
 const GUILD_CHANNEL_ID = '1530165282512044032';
 const EXPEDITION_CHANNEL_ID = '1529566430301782017';
@@ -26,6 +30,7 @@ function hubRows() {
       new ButtonBuilder().setCustomId('guild:create').setLabel('Создать героя').setEmoji('🧙').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('guild:profile').setLabel('Профиль').setEmoji('👤').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('guild:inventory').setLabel('Инвентарь').setEmoji('🎒').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:storage').setLabel('Хранилище').setEmoji('📦').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('guild:blacksmith').setLabel('Кузнец').setEmoji('⚒️').setStyle(ButtonStyle.Secondary),
     ),
     new ActionRowBuilder().addComponents(
@@ -34,6 +39,12 @@ function hubRows() {
       new ButtonBuilder().setCustomId('guild:artifacts').setLabel('Артефакты').setEmoji('💍').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('guild:classes').setLabel('Классы').setEmoji('📚').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('guild:codex').setLabel('Кодекс').setEmoji('📖').setStyle(ButtonStyle.Secondary),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guild:registry').setLabel('Реестр Гильдии').setEmoji('📖').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('guild:masters').setLabel('Зал мастеров').setEmoji('🏆').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('guild:profession').setLabel('Профессия').setEmoji('👷').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:orders').setLabel('Доска заказов').setEmoji('📜').setStyle(ButtonStyle.Secondary),
     ),
   ];
 }
@@ -342,6 +353,100 @@ async function showArtifacts(interaction) {
   return interaction.reply({embeds:[embed],components:[guildNavRow('artifacts')],flags:MessageFlags.Ephemeral});
 }
 
+
+function registryRows() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guild:registry:heroes').setLabel('Герои').setEmoji('👥').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:registry:classes').setLabel('Классы').setEmoji('⚔️').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:registry:professions').setLabel('Профессии').setEmoji('👷').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:masters').setLabel('Зал мастеров').setEmoji('🏆').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('guild:registry:stats').setLabel('Статистика').setEmoji('📊').setStyle(ButtonStyle.Secondary),
+    ),
+    guildNavRow('registry'),
+  ];
+}
+function discordName(interaction,userId, fallback='Неизвестный герой') {
+  return interaction.guild?.members?.cache?.get(userId)?.displayName || fallback;
+}
+async function showRegistry(interaction) {
+  const heroes=Number(db.prepare('SELECT COUNT(*) c FROM heroes').get()?.c||0);
+  const counts=getProfessionCounts();
+  const professionText=Object.entries(PROFESSIONS).map(([k,p])=>`${p.icon} ${p.name}: **${counts[k]||0}**`).join('\n');
+  const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('📖 Реестр Гильдии')
+    .setDescription(`Здесь собраны герои, классы, профессии и лучшие мастера Game Syndicate.\n\n👥 Зарегистрировано героев: **${heroes}**\n\n${professionText}`);
+  return interaction.reply({embeds:[embed],components:registryRows(),flags:MessageFlags.Ephemeral});
+}
+async function showRegistryHeroes(interaction) {
+  const rows=db.prepare(`SELECT h.user_id,h.name,h.level,h.class_key,hp.profession_key,hp.level profession_level
+    FROM heroes h LEFT JOIN hero_professions hp ON hp.user_id=h.user_id ORDER BY h.level DESC,h.xp DESC LIMIT 25`).all();
+  const text=rows.length?rows.map((h,i)=>{
+    const cls=HERO_CLASSES[h.class_key];
+    const prof=PROFESSIONS[h.profession_key];
+    return `**${i+1}. ${h.name}** • ${cls?.icon||'⚔️'} ${cls?.name||h.class_key} • ⭐ ${h.level}${prof?` • ${prof.icon} ${prof.name} ${h.profession_level}`:''}`;
+  }).join('\n'):'Героев пока нет.';
+  return interaction.update({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('👥 Герои Гильдии').setDescription(text.slice(0,4000))],components:registryRows()});
+}
+async function showRegistryClasses(interaction) {
+  const rows=db.prepare('SELECT class_key,COUNT(*) count FROM heroes GROUP BY class_key ORDER BY count DESC').all();
+  const text=Object.entries(HERO_CLASSES).map(([k,c])=>`${c.icon} **${c.name}** — ${Number(rows.find(r=>r.class_key===k)?.count||0)}`).join('\n');
+  return interaction.update({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('⚔️ Классы Гильдии').setDescription(text)],components:registryRows()});
+}
+async function showRegistryProfessions(interaction) {
+  const counts=getProfessionCounts();
+  const text=Object.entries(PROFESSIONS).map(([k,p])=>{
+    const leader=getProfessionLeaders(k,1)[0];
+    return `${p.icon} **${p.name}** — ${counts[k]||0}${leader?`\n👑 Лидер: **${leader.hero_name||'Без имени'}**, ур. ${leader.level}`:''}`;
+  }).join('\n\n');
+  return interaction.update({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('👷 Профессии Гильдии').setDescription(text)],components:registryRows()});
+}
+async function showMasters(interaction) {
+  const all=getAllProfessionLeaders(5);
+  const fields=[];
+  for(const [key,p] of Object.entries(PROFESSIONS)){
+    const rows=all[key]||[];
+    const medals=['🥇','🥈','🥉','4️⃣','5️⃣'];
+    const value=rows.length?rows.map((r,i)=>{
+      const spec=r.specialization_key?SPECIALIZATIONS[key]?.[r.specialization_key]:null;
+      return `${medals[i]||`${i+1}.`} **${r.hero_name||discordName(interaction,r.user_id)}** — ур. ${r.level}${spec?` • ${spec.icon} ${spec.name}`:''}`;
+    }).join('\n'):'Пока нет представителей.';
+    fields.push({name:`${p.icon} Лучшие ${p.name.toLowerCase()}и`,value,inline:false});
+  }
+  const embed=new EmbedBuilder().setColor(0xF59E0B).setTitle('🏆 Зал мастеров').setDescription('Рейтинг сортируется по уровню профессии, затем по опыту и числу выполненных работ. Лидер получает почётный статус 👑.').addFields(fields);
+  return interaction.reply({embeds:[embed],components:registryRows(),flags:MessageFlags.Ephemeral});
+}
+async function showRegistryStats(interaction) {
+  const heroStats=db.prepare(`SELECT COUNT(*) heroes,COALESCE(SUM(level),0) hero_levels FROM heroes`).get();
+  const profStats=db.prepare(`SELECT COUNT(*) professionals,COALESCE(SUM(work_count),0) works,COALESCE(SUM(resources_gathered),0) resources FROM hero_professions`).get();
+  const orderStats=getOrderStats();
+  const dust=Number(db.prepare('SELECT COALESCE(SUM(card_dust),0) total FROM players').get()?.total||0);
+  const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('📊 Статистика Гильдии').setDescription(
+    `👥 Героев: **${heroStats.heroes||0}**\n⭐ Суммарно уровней героев: **${heroStats.hero_levels||0}**\n👷 Выбрали профессию: **${profStats.professionals||0}**\n🔨 Выполнено работ: **${profStats.works||0}**\n📦 Собрано ресурсов: **${profStats.resources||0}**\n\n📜 Открытых заказов: **${orderStats.open_orders||0}**\n✅ Выполненных заказов: **${orderStats.completed_orders||0}**\n🔒 Зарезервировано: **${orderStats.reserved_dust||0} Dust**\n💰 Всего Dust у игроков: **${dust}**`
+  );
+  return interaction.update({embeds:[embed],components:registryRows()});
+}
+async function showProfessionHub(interaction) {
+  const row=getProfession(interaction.user.id);
+  if(!row)return interaction.reply({content:'👷 Профессия ещё не выбрана.\nИспользуй **/profession choose**, чтобы выбрать одну из пяти профессий.',flags:MessageFlags.Ephemeral});
+  const p=PROFESSIONS[row.profession_key];
+  const spec=row.specialization_key?SPECIALIZATIONS[row.profession_key]?.[row.specialization_key]:null;
+  const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${p.icon} ${p.name} • ур. ${row.level}`)
+    .setDescription(`⚡ Энергия: **${row.energy}/${row.energy_max}**\n🔨 Работ: **${row.work_count}**\n📦 Ресурсов собрано: **${row.resources_gathered||0}**\n📜 Заказов выполнено: **${row.orders_completed||0}**\n💰 Заработано: **${row.dust_earned||0} Dust**${spec?`\n🏅 Специализация: **${spec.icon} ${spec.name}**`:''}\n\nРабота: **/profession work**\nПолный прогресс: **/profession status**`);
+  return interaction.reply({embeds:[embed],components:[guildNavRow('profession')],flags:MessageFlags.Ephemeral});
+}
+async function showStorage(interaction) {
+  if(!getHero(interaction.user.id))return interaction.reply({content:'❌ Сначала создай героя.',flags:MessageFlags.Ephemeral});
+  const rows=db.prepare(`SELECT hi.item_key,hi.quantity,i.name FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key
+    WHERE hi.user_id=? AND i.item_type='material' AND hi.quantity>0 ORDER BY i.name`).all(interaction.user.id);
+  const text=rows.length?rows.map(r=>`📦 **${r.name}** ×${r.quantity}`).join('\n'):'Хранилище ресурсов пока пусто.';
+  return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('📦 Хранилище ресурсов').setDescription(`${text}\n\nРесурсы профессий автоматически складываются сюда и используются доской заказов и ремесленниками.`.slice(0,4000))],components:[guildNavRow('storage')],flags:MessageFlags.Ephemeral});
+}
+async function showOrdersHub(interaction) {
+  const rows=listOpenOrders(10);
+  const text=rows.length?rows.map(o=>`#${o.id} • **${ITEMS[o.item_key]?.name||o.item_key}** ×${o.quantity_remaining} • ${o.price_each} Dust/шт.`).join('\n'):'Открытых заказов пока нет.';
+  return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('📜 Доска заказов').setDescription(`${text}\n\nСоздать заказ: **/orders create**\nВыполнить: **/orders fulfill**\nМои заказы: **/orders mine**`)],components:[guildNavRow('orders')],flags:MessageFlags.Ephemeral});
+}
+
 async function handleComponent(interaction) {
   const parts = interaction.customId.split(':');
   const action = parts[1];
@@ -381,6 +486,15 @@ async function handleComponent(interaction) {
   }
 
   if (action === 'home') return interaction.update({ content:'🏰 **Гильдия героев**\nВыберите нужный раздел. Это личное меню видно только вам.', embeds:[], components:hubRows() });
+  if (action === 'registry' && parts.length === 2) return showRegistry(interaction);
+  if (action === 'registry' && parts[2] === 'heroes') return showRegistryHeroes(interaction);
+  if (action === 'registry' && parts[2] === 'classes') return showRegistryClasses(interaction);
+  if (action === 'registry' && parts[2] === 'professions') return showRegistryProfessions(interaction);
+  if (action === 'registry' && parts[2] === 'stats') return showRegistryStats(interaction);
+  if (action === 'masters') return showMasters(interaction);
+  if (action === 'profession') return showProfessionHub(interaction);
+  if (action === 'storage') return showStorage(interaction);
+  if (action === 'orders') return showOrdersHub(interaction);
   if (action === 'profile') return showProfile(interaction);
   if (action === 'inventory' && parts.length === 2) return showInventory(interaction);
   if (action === 'inventory' && parts[2] === 'select') return showInventoryItem(interaction, interaction.values?.[0]);

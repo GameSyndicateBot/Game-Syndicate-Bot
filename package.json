@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "16.8.0",
+  "version": "17.0.0",
   "private": true,
-  "description": "Game Syndicate V16.8.0 Profession Energy and Cooperation",
+  "description": "Game Syndicate V17.0 Guild Registry, Profession Progression and Order Board",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
