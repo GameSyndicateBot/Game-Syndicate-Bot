@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "17.0.6",
+  "version": "17.1.1",
   "private": true,
-  "description": "Game Syndicate V17.0.6 Expedition helper export fix",
+  "description": "Game Syndicate V17.1.1 World Boss Dust rewards and schedule fix",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

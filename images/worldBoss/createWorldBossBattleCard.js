@@ -119,8 +119,13 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
     const mainValue = rt === 'mana' ? Number(p.mana || 0) : Number(p.energy || 0);
     const mainLabel = rt === 'rage' ? 'ярости' : rt === 'mana' ? 'маны' : 'энергии';
     bar(ctx, x + 14, y + 75, itemW - 28, 18, mainValue, 100, '#6f72db', `${mainValue}/100 ${mainLabel}`);
-    if (rt === 'mana') text(ctx, `Ульта: ${Number(p.ult_charge || 0)}/100`, x + itemW - 14, y + 117, 14, '#d8bdff', 'normal', 'right');
-    text(ctx, ellipsize(ctx, effectLine(e), itemW - 28), x + 14, y + 117, 14, '#c8c0d2');
+    if (rt === 'mana') {
+      text(ctx, `Ульта: ${Number(p.ult_charge || 0)}/100`, x + itemW - 14, y + 117, 14, '#d8bdff', 'normal', 'right');
+    } else if (['assassin', 'archer'].includes(p.class_key)) {
+      const ready = Number(p.energy || 0) >= 100;
+      text(ctx, ready ? 'Ульта: ГОТОВА' : `Ульта: ${Number(p.energy || 0)}/100`, x + itemW - 14, y + 117, 14, ready ? '#f5d0fe' : '#d8bdff', 'bold', 'right');
+    }
+    text(ctx, ellipsize(ctx, effectLine(e), ['assassin','archer'].includes(p.class_key) ? 170 : itemW - 28), x + 14, y + 117, 14, '#c8c0d2');
   }
   if (players.length > maxShown) text(ctx, `+ ещё ${players.length - maxShown} участников`, 825, 850, 17, '#aaa', 'normal', 'center');
 

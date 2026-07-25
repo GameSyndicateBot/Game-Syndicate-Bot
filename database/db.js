@@ -1288,6 +1288,25 @@ try {
 }
 
 
+
+// V17.1.0: одноразовый сброс кулдауна экспедиции для участника 468683569359880192.
+try {
+    db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (
+        migration_key TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );`);
+    const migrationKey = 'v17.1.0-reset-expedition-cooldown-468683569359880192';
+    const applied = db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey);
+    if (!applied) {
+        db.prepare('DELETE FROM hero_expedition_cooldowns WHERE user_id=?').run('468683569359880192');
+        db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+        console.log('[V17.1.0] Сброшен кулдаун экспедиции для 468683569359880192.');
+    }
+} catch (error) {
+    console.error('[DB] V17.1.0 cooldown reset migration:', error.message);
+}
+
+
 module.exports = {
     db,
     getOrCreatePlayer,

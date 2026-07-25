@@ -17,12 +17,14 @@ const GAME_CHANNELS = require('../../config/gameChannels');
 const CHANNEL_ID = GAME_CHANNELS.worldBoss;
 const AUTO_SCHEDULE_ENABLED = String(process.env.WORLD_BOSS_AUTO_SCHEDULE ?? 'true').toLowerCase() !== 'false';
 const REGISTRATION_MS = 10 * 60 * 1000;
-const ROLL_MS = 15 * 1000;
-const CHOICE_MS = 60 * 1000;
-const TURN_MS = 60 * 1000;
+const ROLL_MS = 20 * 1000;
+const CHOICE_MS = 20 * 1000;
+const TURN_MS = 20 * 1000;
 const SLOTS = [13, 20];
 const SKILL_CD = 2;
 const ULT_CD = 5;
+const SECOND_SKILL_CD = 3;
+const SECOND_SKILL_COST = 50;
 const CRIT_CHANCE = 10;
 const CRIT_MULTIPLIER = 1.75;
 const BOSS_CRIT_CHANCE = 10;
@@ -140,12 +142,13 @@ function buttons(b) {
   if (b.status !== 'active') return [];
   const rows = [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`wb_attack_${b.id}`).setLabel('Атака').setEmoji('🗡️').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`wb_skill_${b.id}`).setLabel('Способность').setEmoji('✨').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`wb_skill_${b.id}`).setLabel('Способность I').setEmoji('✨').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`wb_skill2_${b.id}`).setLabel('Способность II').setEmoji('🌟').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`wb_ult_${b.id}`).setLabel('Ульта').setEmoji('💥').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId(`wb_status_${b.id}`).setLabel('Моя карта').setEmoji('🎴').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`wb_log_${b.id}`).setLabel('Журнал').setEmoji('📖').setStyle(ButtonStyle.Secondary),
   )];
   rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`wb_status_${b.id}`).setLabel('Моя карта').setEmoji('🎴').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`wb_log_${b.id}`).setLabel('Журнал').setEmoji('📖').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`wb_summons_${b.id}`).setLabel('Мои призывы').setEmoji('🤖').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`wb_enemies_${b.id}`).setLabel('Враги').setEmoji('👾').setStyle(ButtonStyle.Secondary),
   ));
@@ -188,11 +191,13 @@ function buildEmbed(b, players) {
     const fs = state.finalStats;
     const fmt = arr => arr.slice(0, 6).map((p, i) => `${i + 1}. <@${p.user_id}> — ${p.damage_done ?? p.healing_done ?? p.damage_taken}`).join('\n') || '—';
     e.addFields(
-      { name: '🏆 Итоги и награды', value: `Общий фонд: **${fs.pool} GS Dust**\nMVP: <@${fs.mvpId}> • **${String(fs.pack).toUpperCase()} Pack**` },
+      { name: '🏆 Итоги и награды', value: `Общий фонд: **${fs.pool} GS Dust**\nПолучили все участники: **${fs.each}–${fs.each + (fs.remainder > 0 ? 1 : 0)} GS Dust**\nMVP: <@${fs.mvpId}> • **${String(fs.pack).toUpperCase()} Pack**` },
+      { name: '💠 Распределение Dust', value: (fs.dustRewards || []).map(r => `<@${r.user_id}> — **+${r.amount}** → ${r.balanceAfter}`).join('\n').slice(0,1024) || '—' },
       { name: '⚔️ Урон', value: fs.damageTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.damage_done}**`).join('\n').slice(0,1024), inline: true },
       { name: '💚 Лечение', value: fs.healTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.healing_done}**`).join('\n').slice(0,1024), inline: true },
       { name: '🛡️ Принято урона', value: fs.tankTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.damage_taken}**`).join('\n').slice(0,1024), inline: true },
       { name: '🤖 Вклад призывов', value: Object.entries(fs.summonStats || {}).map(([uid, st]) => `<@${uid}> — ⚔️ **${st.damage || 0}** • 🛡️ **${st.absorbed || 0}**${st.healing ? ` • 💚 **${st.healing}**` : ''}`).join('\n').slice(0,1024) || 'Призывы не участвовали.' },
+      { name: '🎖️ Дополнительные MVP', value: (fs.categoryAwards || []).map(a => `${a.type === 'damage' ? '⚔️ Урон' : a.type === 'healing' ? '💚 Лечение' : '🛡️ Защита'}: <@${a.user_id}> — **${a.value}** • ${String(a.pack).toUpperCase()} Pack`).join('\n').slice(0,1024) || '—' },
     );
   }
   if (state.log?.length) e.addFields({ name: 'Последние действия', value: state.log.slice(-7).join('\n').slice(0, 1024) });
@@ -475,14 +480,82 @@ function validTargets(id, kind) { const ps = battlePlayers(id); return kind === 
 function actionTargets(id, player, action, kind) { let list = validTargets(id, kind); if (player.class_key === 'cleric' && action === 'skill') list = list.filter(x => x.user_id !== player.user_id); return list; }
 function targetKind(classKey, action) { if (action === 'skill' && ['paladin','cleric','bard'].includes(classKey)) return 'alive'; if (action === 'ult' && ['cleric'].includes(classKey)) return 'alive'; if (action === 'ult' && classKey === 'priest') return 'dead'; return null; }
 function targetMenu(id, action, targets) { return new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`wb_target_${action}_${id}`).setPlaceholder('Выберите цель').addOptions(targets.slice(0, 25).map(t => ({ label: `${CLASSES[t.class_key]?.name || 'Игрок'} • ${t.hp}/${t.max_hp} HP`, value: t.user_id, description: t.status === 'dead' ? 'Погиб' : `${resourceMeta(t.class_key).label}: ${skillResourceValue(t)}` })))); }
-function tickCooldowns(e, used) { if (used !== 'skill' && e.skillCd > 0) e.skillCd--; if (used !== 'ult' && e.ultCd > 0) e.ultCd--; if (e.skillSilencedTurns > 0) e.skillSilencedTurns--; if (e.ultSilencedTurns > 0) e.ultSilencedTurns--; }
+function tickCooldowns(e, used) { if (used !== 'skill' && e.skillCd > 0) e.skillCd--; if (used !== 'skill2' && e.skill2Cd > 0) e.skill2Cd--; if (used !== 'ult' && e.ultCd > 0) e.ultCd--; if (e.skillSilencedTurns > 0) e.skillSilencedTurns--; if (e.ultSilencedTurns > 0) e.ultSilencedTurns--; }
+
+
+function applyMidRoundDamageCurse(b, state, alivePlayers) {
+  state.playerActionsThisRound = Number(state.playerActionsThisRound || 0) + 1;
+  const midpoint = Math.max(1, Math.ceil(alivePlayers.length / 2));
+  if (state.playerActionsThisRound !== midpoint || Number(state.lastDamageCurseRound || -1) === Number(b.round_no)) return null;
+
+  const candidates = alivePlayers.filter(p => p.status === 'alive');
+  if (!candidates.length) return null;
+  const count = candidates.length >= 8 ? 2 : 1;
+  const chosen = shuffle(candidates).slice(0, count);
+  for (const target of chosen) {
+    const e = effects(target);
+    e.damageCurseTurns = 2;
+    e.damageCurseAmount = rand(16, 24);
+    updateEffects(b.id, target.user_id, e);
+  }
+  state.lastDamageCurseRound = Number(b.round_no);
+  return `🩸 **Проклятие боли!** ${chosen.map(p => `<@${p.user_id}>`).join(', ')} будут получать урон в начале своих следующих 2 ходов.`;
+}
+
+function triggerDamageCurseTick(id, player) {
+  const e = effects(player);
+  if (Number(e.damageCurseTurns || 0) <= 0) return { damage: 0, dead: false };
+  const damage = Math.min(Number(player.hp || 0), Math.max(1, Number(e.damageCurseAmount || 18)));
+  const hp = Math.max(0, Number(player.hp || 0) - damage);
+  e.damageCurseTurns = Math.max(0, Number(e.damageCurseTurns || 0) - 1);
+  updateEffects(id, player.user_id, e);
+  db.prepare("UPDATE world_boss_players SET hp=?,damage_taken=damage_taken+?,status=? WHERE battle_id=? AND user_id=?")
+    .run(hp, damage, hp <= 0 ? 'dead' : 'alive', id, player.user_id);
+  return { damage, dead: hp <= 0 };
+}
+
+async function triggerImmediateBossRage(id) {
+  let b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='active'").get(id);
+  if (!b) return false;
+  const state = stateOf(b);
+  if (Number(state.rage || 0) < 100) return false;
+  const boss = BOSSES.find(x => x.cardId === b.boss_card_id);
+  const players = battlePlayers(id).filter(x => x.status === 'alive');
+  if (!boss || !players.length) return false;
+
+  let total = 0;
+  const rageType = pickDamageType(boss.attackTypes, 'physical');
+  for (const p of players) {
+    const r = damageTarget(id, p, rand(Math.round(boss.damage[0] * 1.08), Math.round(boss.damage[1] * 1.24)), rageType);
+    total += r.hpDamage;
+  }
+  const summonDamage = damagePlayerSummons(state, 1);
+  state.rage = 0;
+  state.bossActionStats = state.bossActionStats || {};
+  state.bossActionStats.RAGE_ULT = Number(state.bossActionStats.RAGE_ULT || 0) + 1;
+  saveState(b, state);
+  b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+  addLog(b, `🔥 **${boss.name} мгновенно высвобождает накопленную ярость!** Группа получает **${total} HP** урона${summonDamage ? `, призывы — ${summonDamage}` : ''}.`);
+  return true;
+}
 
 async function perform(id, userId, action, auto = false, targetId = null) {
   if (busy) return { ok: false, reason: 'busy' }; busy = true;
   try {
     let b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='active'").get(id); if (!b) return { ok: false, reason: 'ended' };
     const { alive, p } = currentPlayer(b); if (!p || p.user_id !== String(userId)) return { ok: false, reason: 'turn' };
-    const c = CLASSES[p.class_key], e = effects(p), state = stateOf(b); let text = '';
+    const curseTick = triggerDamageCurseTick(id, p);
+    if (curseTick.damage > 0) {
+      b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+      addLog(b, `🩸 Проклятие боли наносит <@${userId}> **${curseTick.damage} HP**.`);
+      if (curseTick.dead) {
+        await nextTurn(id, alive);
+        return { ok: true, text: `🩸 Проклятие нанесло **${curseTick.damage} HP** и герой погиб до действия.` };
+      }
+    }
+    const freshPlayer = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, userId);
+    const c = CLASSES[freshPlayer.class_key], e = effects(freshPlayer), state = stateOf(b); let text = '';
+    const pNow = freshPlayer;
     const rType = resourceType(p.class_key); let energy = Number(p.energy || 0), mana = Number(p.mana || 0), ultCharge = Number(p.ult_charge || 0);
     if (action === 'attack') {
       const miss = auto ? 50 : c.miss; let hit = false;
@@ -500,6 +573,14 @@ async function perform(id, userId, action, auto = false, targetId = null) {
       const kind = targetKind(p.class_key, action); if (kind && !targetId) return { ok: false, reason: 'target', kind };
       if (rType === 'mana') { mana -= 40; ultCharge = clamp(ultCharge + 15, 0, 100); } else energy -= 40;
       text = useSkill(b, p, c, e, state, targetId); e.skillCd = SKILL_CD;
+    } else if (action === 'skill2') {
+      if (Number(e.skillSilencedTurns || 0) > 0) return { ok: false, reason: 'silenced_skill', cd: e.skillSilencedTurns };
+      if (Number(e.skill2Cd || 0) > 0) return { ok: false, reason: 'cooldown', cd: e.skill2Cd };
+      const skillPool = rType === 'mana' ? mana : energy;
+      if (skillPool < SECOND_SKILL_COST) return { ok: false, reason: rType };
+      if (rType === 'mana') { mana -= SECOND_SKILL_COST; ultCharge = clamp(ultCharge + 12, 0, 100); } else energy -= SECOND_SKILL_COST;
+      text = useSecondSkill(b, p, c, e, state);
+      e.skill2Cd = SECOND_SKILL_CD;
     } else if (action === 'ult') {
       if (Number(e.ultSilencedTurns || 0) > 0) return { ok: false, reason: 'silenced_ult', cd: e.ultSilencedTurns };
       if (Number(e.ultCd || 0) > 0) return { ok: false, reason: 'cooldown', cd: e.ultCd };
@@ -510,7 +591,21 @@ async function perform(id, userId, action, auto = false, targetId = null) {
     }
     if (e.rageTurns > 0) e.rageTurns--; if (e.bloodRageTurns > 0 && !(p.class_key === 'berserker' && action === 'ult')) e.bloodRageTurns--; if (e.damageBuffTurns > 0) e.damageBuffTurns--; tickCooldowns(e, action); updateEffects(id, userId, e);
     db.prepare('UPDATE world_boss_players SET energy=?,mana=?,ult_charge=? WHERE battle_id=? AND user_id=?').run(energy,mana,ultCharge,id,userId);
-    b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); addLog(b, (auto ? '⏱️ ' : '') + text); b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (b.boss_hp <= 0) return finish(id, true);
+    b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+    addLog(b, (auto ? '⏱️ ' : '') + text);
+    b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+    if (b.boss_hp <= 0) return finish(id, true);
+
+    const postState = stateOf(b);
+    const curseText = applyMidRoundDamageCurse(b, postState, battlePlayers(id).filter(x => x.status === 'alive'));
+    if (curseText) {
+      saveState(b, postState);
+      b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+      addLog(b, curseText);
+    }
+    await triggerImmediateBossRage(id);
+    if (!battlePlayers(id).some(x => x.status === 'alive')) return finish(id, false);
+
     const keepsTurn = p.class_key === 'berserker' && action === 'ult'; if (keepsTurn) { db.prepare('UPDATE world_boss_battles SET turn_deadline=? WHERE id=?').run(Date.now() + TURN_MS,id); await refresh(id); armTurn(id); } else await nextTurn(id, alive); return { ok: true, text };
   } finally { busy = false; }
 }
@@ -533,6 +628,103 @@ function useSkill(b, p, c, e, state, targetId) {
     default: return 'Способность использована.';
   }
 }
+
+function useSecondSkill(b, p, c, e, state) {
+  const id = b.id, u = p.user_id;
+  switch (p.class_key) {
+    case 'warrior': {
+      for (const t of validTargets(id, 'alive')) {
+        const te = effects(t);
+        te.groupDamageRounds = Math.max(Number(te.groupDamageRounds || 0), 2);
+        te.groupDamage = Math.max(Number(te.groupDamage || 0), 0.10);
+        updateEffects(id, t.user_id, te);
+      }
+      e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 1);
+      return `📣 <@${u}> использует Боевой клич: вся группа получает **+10% урона на 2 раунда**, Воин провоцирует врагов.`;
+    }
+    case 'paladin': {
+      let total = 0;
+      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, Math.max(1, Math.round(t.max_hp * 0.12)));
+      return `☀️ <@${u}> освящает поле боя и восстанавливает группе **${total} HP**.`;
+    }
+    case 'guardian': {
+      e.shield = Math.max(Number(e.shield || 0), 70);
+      e.guardRounds = Math.max(Number(e.guardRounds || 0), 2);
+      return `🪨 <@${u}> принимает Каменную стойку: **щит 70 HP** и -50% входящего урона на 2 хода.`;
+    }
+    case 'cleric': {
+      const r = hurtEnemy(b, state, rand(48, 68), 'holy', 'cleric');
+      let healed = 0;
+      for (const t of validTargets(id, 'alive')) healed += healPlayer(id, u, t, 10);
+      db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt + healed, id, u);
+      return `🌤️ <@${u}> применяет Карающий свет: **${r.dealt} урона** и **${healed} HP** лечения группе.`;
+    }
+    case 'priest': {
+      let total = 0;
+      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, rand(18, 28));
+      return `🙏 <@${u}> читает Массовую молитву и восстанавливает группе **${total} HP**.`;
+    }
+    case 'bard': {
+      const r = hurtEnemy(b, state, rand(55, 75), 'magic', 'bard');
+      state.bossWeakenRounds = 1;
+      state.bossWeaken = 0.12;
+      saveState(b, state);
+      db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u);
+      return `🎻 <@${u}> создаёт Диссонанс: **${r.dealt} магического урона**, следующая атака босса ослаблена на 12%.`;
+    }
+    case 'assassin': {
+      const r = hurtEnemy(b, state, rand(82, 112), 'physical', 'assassin', 0.45);
+      db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u);
+      return `☠️ <@${u}> применяет Ядовитый клинок и наносит **${r.dealt} урона**, частично игнорируя защиту.`;
+    }
+    case 'archer': {
+      state.bossVulnerabilityRounds = Math.max(Number(state.bossVulnerabilityRounds || 0), 2);
+      state.bossVulnerability = Math.max(Number(state.bossVulnerability || 0), 0.15);
+      saveState(b, state);
+      return `🎯 <@${u}> ставит Метку охотника: босс получает **+15% урона на 2 раунда**.`;
+    }
+    case 'mage': {
+      const r = hurtEnemy(b, state, rand(58, 78), 'magic', 'mage');
+      state.rage = Math.max(0, Number(state.rage || 0) - 25);
+      saveState(b, state);
+      db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u);
+      return `❄️ <@${u}> применяет Ледяные оковы: **${r.dealt} урона** и снижает ярость босса на **25**.`;
+    }
+    case 'berserker': {
+      const sacrifice = Math.max(1, Math.round(p.max_hp * 0.15));
+      const hp = Math.max(1, Number(p.hp || 1) - sacrifice);
+      db.prepare('UPDATE world_boss_players SET hp=?,energy=MIN(100,energy+60) WHERE battle_id=? AND user_id=?').run(hp, id, u);
+      e.doubleNext = true;
+      return `🩸 <@${u}> использует Кровавый рёв: теряет **${sacrifice} HP**, получает **+60 энергии**, следующая атака удвоена.`;
+    }
+    case 'engineer': {
+      let repaired = 0;
+      for (const summon of state.summons || []) {
+        if (summon.owner !== u) continue;
+        const before = summon.hp;
+        summon.hp = Math.min(summon.maxHp, summon.hp + 50);
+        repaired += summon.hp - before;
+      }
+      for (const t of validTargets(id, 'alive')) {
+        const te = effects(t);
+        te.shield = Number(te.shield || 0) + 10;
+        updateEffects(id, t.user_id, te);
+      }
+      saveState(b, state);
+      return `🛠️ <@${u}> запускает Ремонтного дрона: призывы восстановили **${repaired} HP**, союзники получили щиты по **10 HP**.`;
+    }
+    case 'necromancer': {
+      const r = hurtEnemy(b, state, rand(58, 82), 'magic', 'necromancer');
+      const fresh = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, u);
+      const healed = healPlayer(id, u, fresh, Math.round(r.dealt * 0.5));
+      db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt + healed, id, u);
+      return `🕯️ <@${u}> применяет Похищение жизни: **${r.dealt} урона** и восстанавливает **${healed} HP**.`;
+    }
+    default:
+      return 'Вторая способность использована.';
+  }
+}
+
 function useUlt(b, p, c, e, state, targetId) {
   const id = b.id, u = p.user_id;
   switch (p.class_key) {
@@ -662,7 +854,12 @@ async function nextTurn(id, previousAlive = null) {
   const previous = before ? currentPlayer(before).p : null;
   if (previous) tickOwnerSummons(id, previous.user_id);
   let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id), alive = battlePlayers(id).filter(x => x.status === 'alive'), ni = b.turn_index + 1;
-  if (ni >= alive.length) { await summonsAct(b); b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (b.boss_hp <= 0) return finish(id, true); await bossTurn(id); b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); alive = battlePlayers(id).filter(x => x.status === 'alive'); if (!alive.length) return finish(id, false); ni = 0; db.prepare('UPDATE world_boss_battles SET round_no=round_no+1 WHERE id=?').run(id); }
+  if (ni >= alive.length) {
+    let roundState = stateOf(b);
+    roundState.playerActionsThisRound = 0;
+    if (Number(roundState.bossVulnerabilityRounds || 0) > 0) roundState.bossVulnerabilityRounds--;
+    saveState(b, roundState);
+    await summonsAct(b); b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (b.boss_hp <= 0) return finish(id, true); await bossTurn(id); b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); alive = battlePlayers(id).filter(x => x.status === 'alive'); if (!alive.length) return finish(id, false); ni = 0; db.prepare('UPDATE world_boss_battles SET round_no=round_no+1 WHERE id=?').run(id); }
   db.prepare('UPDATE world_boss_battles SET turn_index=?,turn_deadline=? WHERE id=?').run(ni, Date.now() + TURN_MS, id); await refresh(id); armTurn(id);
 }
 function damagePlayerSummons(state, ratio = 0.55) {
@@ -715,6 +912,7 @@ async function bossTurn(id) {
   const chooseSingleTarget = () => tauntingTank || interceptingTank || (tanks.length && Math.random() < 0.68 ? pick(tanks) : pick(players));
   const target = chooseSingleTarget();
   const attackDamageType = pickDamageType(boss.attackTypes, 'physical');
+  const bossDamageMultiplier = Number(state.bossWeakenRounds || 0) > 0 ? 1 - Number(state.bossWeaken || 0) : 1;
 
   const recordAction = action => {
     state.bossActionStats[action] = Number(state.bossActionStats[action] || 0) + 1;
@@ -743,7 +941,7 @@ async function bossTurn(id) {
     let total = 0;
     const rageType = pickDamageType(boss.attackTypes, attackDamageType);
     for (const p of players) {
-      const r = damageTarget(id, p, rand(Math.round(boss.damage[0] * 0.99), Math.round(boss.damage[1] * 1.16)), rageType);
+      const r = damageTarget(id, p, Math.round(rand(Math.round(boss.damage[0] * 0.99), Math.round(boss.damage[1] * 1.16)) * bossDamageMultiplier), rageType);
       total += r.hpDamage;
     }
     const summonDamage = damagePlayerSummons(state, 1);
@@ -779,7 +977,7 @@ async function bossTurn(id) {
     if (action === 'ATTACK') {
       if (Math.random() * 100 < boss.miss) text = `💨 ${boss.name} промахивается.`;
       else {
-        let damage = rand(Math.round(boss.damage[0] * 1.1), Math.round(boss.damage[1] * 1.1));
+        let damage = Math.round(rand(Math.round(boss.damage[0] * 1.1), Math.round(boss.damage[1] * 1.1)) * bossDamageMultiplier);
         const crit = Math.random() * 100 < BOSS_CRIT_CHANCE;
         if (crit) damage = Math.round(damage * BOSS_CRIT_MULTIPLIER);
         const r = damageTarget(id, target, damage, attackDamageType);
@@ -789,13 +987,13 @@ async function bossTurn(id) {
       let total = 0;
       const aoeType = pickDamageType(boss.attackTypes, attackDamageType);
       for (const p of players) {
-        const r = damageTarget(id, p, rand(Math.round(boss.damage[0] * 0.66), Math.round(boss.damage[1] * 0.77)), aoeType);
+        const r = damageTarget(id, p, Math.round(rand(Math.round(boss.damage[0] * 0.66), Math.round(boss.damage[1] * 0.77)) * bossDamageMultiplier), aoeType);
         total += r.hpDamage;
       }
       const summonDamage = damagePlayerSummons(state, 0.65);
       text = `💥 ${boss.name} применяет массовую атаку (${damageTypeLabel(aoeType)} урон): группе нанесено **${total} HP**${summonDamage ? `, призывам — ${summonDamage}` : ''}.`;
     } else if (action === 'SPECIAL') {
-      let damage = rand(Math.round(boss.damage[1] * 1.25), Math.round(boss.damage[1] * 1.55));
+      let damage = Math.round(rand(Math.round(boss.damage[1] * 1.25), Math.round(boss.damage[1] * 1.55)) * bossDamageMultiplier);
       const crit = Math.random() * 100 < BOSS_CRIT_CHANCE;
       if (crit) damage = Math.round(damage * BOSS_CRIT_MULTIPLIER);
       const specialType = pickDamageType(boss.attackTypes, attackDamageType);
@@ -864,6 +1062,7 @@ async function bossTurn(id) {
 }
 
 function mvpPack() { const r = Math.random() * 100; if (r < 40) return 'base'; if (r < 60) return 'premium'; if (r < 75) return 'elite'; return 'boss'; }
+function specialistPack() { const r = Math.random() * 100; if (r < 70) return 'base'; if (r < 90) return 'premium'; if (r < 98) return 'elite'; return 'boss'; }
 async function finish(id, win) {
   clearTimer(id); let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (!b || !['active','registration','class_roll','class_select','initiative_roll'].includes(b.status)) return;
   const ps = battlePlayers(id); db.prepare('UPDATE world_boss_battles SET status=?,ended_at=?,turn_deadline=NULL WHERE id=?').run(win ? 'won' : 'lost', Date.now(), id);
@@ -873,7 +1072,42 @@ async function finish(id, win) {
     const difficulty = clamp((boss.baseHp - 1100) / 1000, 0, 1);
     const pool = clamp(Math.round(400 + difficulty * 350 + Math.max(0, ps.length - 4) * 30), 400, 1000);
     const each = Math.floor(pool / ps.length), remainder = pool - each * ps.length;
-    ps.forEach((p, i) => addCardDust(p.user_id, each + (i < remainder ? 1 : 0)));
+    const dustRewards = [];
+
+    const distributeDust = db.transaction(() => {
+      ps.forEach((p, i) => {
+        const reward = each + (i < remainder ? 1 : 0);
+
+        // У части участников могла отсутствовать строка в players.
+        // Обычный UPDATE тогда менял 0 строк, и Dust фактически не начислялся.
+        const existing = db.prepare('SELECT user_id FROM players WHERE user_id=?').get(p.user_id);
+        if (!existing) {
+          db.prepare(`
+            INSERT INTO players (user_id, username, card_dust)
+            VALUES (?, ?, 0)
+          `).run(
+            p.user_id,
+            p.hero_name || `Игрок ${String(p.user_id).slice(-4)}`
+          );
+        }
+
+        const before = Number(db.prepare('SELECT card_dust FROM players WHERE user_id=?').get(p.user_id)?.card_dust || 0);
+        const after = Number(addCardDust(p.user_id, reward) || 0);
+
+        if (after < before + reward) {
+          throw new Error(`Dust reward verification failed for ${p.user_id}: before=${before}, reward=${reward}, after=${after}`);
+        }
+
+        dustRewards.push({
+          user_id: p.user_id,
+          amount: reward,
+          balanceBefore: before,
+          balanceAfter: after
+        });
+      });
+    });
+
+    distributeDust();
     const classXpLines=[];
     for (const p of ps) {
       const classKey=normalizeClassKey(p.class_key);
@@ -886,13 +1120,52 @@ async function finish(id, win) {
     const maxHeal = Math.max(1, ...ps.map(p => p.healing_done));
     const maxTank = Math.max(1, ...ps.map(p => p.damage_taken));
     const ranked = ps.map(p => ({ ...p, mvpScore: (p.damage_done / maxDamage) * 45 + (p.healing_done / maxHeal) * 30 + (p.damage_taken / maxTank) * 25 })).sort((a,b) => b.mvpScore - a.mvpScore);
-    const mvp = ranked[0], pack = mvpPack(); addPack(mvp.user_id, pack, 1);
+    const mvp = ranked[0], pack = mvpPack();
+    addPack(mvp.user_id, pack, 1);
+
     const damageTop = [...ps].sort((a,b) => b.damage_done - a.damage_done);
     const healTop = [...ps].sort((a,b) => b.healing_done - a.healing_done);
     const tankTop = [...ps].sort((a,b) => b.damage_taken - a.damage_taken);
+    const categoryAwards = [];
+
+    const awardCategory = (type, player, value) => {
+      if (!player || Number(value || 0) <= 0) return;
+      const rewardPack = specialistPack();
+      addPack(player.user_id, rewardPack, 1);
+      categoryAwards.push({ type, user_id: player.user_id, value: Number(value || 0), pack: rewardPack });
+    };
+
+    awardCategory('damage', damageTop[0], damageTop[0]?.damage_done);
+    awardCategory('healing', healTop[0], healTop[0]?.healing_done);
+    awardCategory('tank', tankTop[0], tankTop[0]?.damage_taken);
+
     const summonStats = stateOf(b).summonStats || {};
-    finalStats = { pool, each, remainder, mvpId: mvp.user_id, mvpScore: Math.round(mvp.mvpScore), pack, damageTop: damageTop.slice(0,10), healTop: healTop.slice(0,10), tankTop: tankTop.slice(0,10), summonStats };
-    lines = [`🏆 Победа! Общая награда: **${pool} GS Dust** — поделена между всей группой.`, `⭐ MVP: <@${mvp.user_id}> • общий рейтинг **${Math.round(mvp.mvpScore)}**.`, `🎁 MVP получает **${pack.toUpperCase()} Pack**.`, `📚 **Опыт классов:**\n${classXpLines.join('\n')}`];
+    finalStats = {
+      pool, each, remainder,
+      mvpId: mvp.user_id,
+      mvpScore: Math.round(mvp.mvpScore),
+      pack,
+      damageTop: damageTop.slice(0,10),
+      healTop: healTop.slice(0,10),
+      tankTop: tankTop.slice(0,10),
+      summonStats,
+      categoryAwards,
+      dustRewards
+    };
+
+    const categoryLines = categoryAwards.map(a => {
+      const label = a.type === 'damage' ? '⚔️ MVP урона' : a.type === 'healing' ? '💚 MVP лечения' : '🛡️ MVP защиты';
+      return `${label}: <@${a.user_id}> — **${a.value}** • 🎁 **${a.pack.toUpperCase()} Pack**`;
+    });
+
+    lines = [
+      `🏆 Победа! Общая награда: **${pool} GS Dust** — поделена между всей группой.`,
+      `💠 Каждый участник получил **${each}–${each + (remainder > 0 ? 1 : 0)} GS Dust**.`,
+      `⭐ Общий MVP: <@${mvp.user_id}> • рейтинг **${Math.round(mvp.mvpScore)}**.`,
+      `🎁 Общий MVP получает **${pack.toUpperCase()} Pack**.`,
+      ...categoryLines,
+      `📚 **Опыт классов:**\n${classXpLines.join('\n')}`
+    ];
   } else {
     const classXpLines=[];
     for (const p of ps) { const classKey=normalizeClassKey(p.class_key); const classXp=35; const progress=grantClassXp(p.user_id,classKey,classXp,{completed:false}); classXpLines.push(`<@${p.user_id}>: **+${classXp} XP класса** → Lv.${progress?.level||1}`); }
@@ -978,7 +1251,9 @@ ${resourceMeta(p.class_key).icon} ${resourceMeta(p.class_key).label}: ${skillRes
 🛡️ Защита: физ. ${Number(c.physicalResist || 0) >= 0 ? '+' : ''}${c.physicalResist || 0}% • маг. ${Number(c.magicResist || 0) >= 0 ? '+' : ''}${c.magicResist || 0}%
 
 ✨ **${c.skill.name}** — ${c.skill.cost} ${resourceMeta(p.class_key).label.toLowerCase()} • КД ${e.skillCd || 0}
-${p.class_key === 'cleric' ? `✨ Пассивно: каждый успешный удар лечит Клирика на 20 HP.
+🌟 **${c.secondSkill?.name || 'Дополнительная способность'}** — ${SECOND_SKILL_COST} ${resourceMeta(p.class_key).label.toLowerCase()} • КД ${e.skill2Cd || 0}
+${['assassin','archer'].includes(p.class_key) ? `💥 **Индикатор ульты:** ${ultResourceValue(p) >= 100 ? 'ГОТОВА' : `${ultResourceValue(p)}/100`}
+` : ''}${p.class_key === 'cleric' ? `✨ Пассивно: каждый успешный удар лечит Клирика на 20 HP.
 ` : ''}💥 **${c.ultimate.name}** — ${resourceType(p.class_key) === 'mana' ? '100 заряда ульты' : `${c.ultimate.cost} ${resourceMeta(p.class_key).label.toLowerCase()}`} • КД ${e.ultCd || 0}${e.skillSilencedTurns ? `
 🔒 Способность заблокирована: ${e.skillSilencedTurns}` : ''}${e.ultSilencedTurns ? `
 ⛓️ Ульта заблокирована: ${e.ultSilencedTurns}` : ''}
@@ -1012,7 +1287,7 @@ ${enemyText}
 Может призывать: ${(boss?.minions || []).map(mid => MINIONS[mid]?.name).filter(Boolean).join(', ') || '—'}`, files, flags: MessageFlags.Ephemeral });
   }
   const targetSelect = interaction.customId.match(/^wb_target_(skill|ult)_\d+$/); if (interaction.isStringSelectMenu() && targetSelect) { const r = await perform(id, uid, targetSelect[1], false, interaction.values[0]); return interaction.reply({ content: resultText(r), flags: MessageFlags.Ephemeral }); }
-  const actMatch = interaction.customId.match(/^wb_(attack|skill|ult)_\d+$/); if (actMatch) {
+  const actMatch = interaction.customId.match(/^wb_(attack|skill2|skill|ult)_\d+$/); if (actMatch) {
     const action = actMatch[1], kind = targetKind(p.class_key, action);
     if (kind) { const targets = actionTargets(id, p, action, kind); if (!targets.length) return interaction.reply({ content: kind === 'dead' ? 'Нет погибших союзников.' : 'Нет доступных целей.', flags: MessageFlags.Ephemeral }); return interaction.reply({ content: 'Выбери цель:', components: [targetMenu(id, action, targets)], flags: MessageFlags.Ephemeral }); }
     const r = await perform(id, uid, action); return interaction.reply({ content: resultText(r), flags: MessageFlags.Ephemeral });
