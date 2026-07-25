@@ -152,7 +152,18 @@ async function showInventory(interaction, notice = '') {
     new ButtonBuilder().setCustomId('guild:home').setLabel('Вернуться в Гильдию').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
   ));
   const payload={embeds:[embed],components};
-  return interaction.isMessageComponent() ? interaction.update(payload) : interaction.reply({...payload,flags:MessageFlags.Ephemeral});
+
+  // Главное сообщение Гильдии является общим для всего сервера.
+  // Его нельзя заменять личным инвентарём нажавшего игрока.
+  // Обновляем только уже созданное ephemeral-меню владельца,
+  // а при нажатии на публичную панель всегда создаём новый личный ответ.
+  const isEphemeralMessage = Boolean(
+    interaction.message?.flags?.has?.(MessageFlags.Ephemeral)
+  );
+
+  return isEphemeralMessage
+    ? interaction.update(payload)
+    : interaction.reply({...payload,flags:MessageFlags.Ephemeral});
 }
 
 async function showInventoryItem(interaction, inventoryId, notice='') {
