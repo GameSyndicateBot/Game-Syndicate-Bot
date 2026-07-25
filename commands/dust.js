@@ -350,7 +350,23 @@ function buildResultButtons(userId, page) {
             .setCustomId(`dust_cancel_${userId}_${page}`)
             .setLabel('Назад к Dust')
             .setEmoji('↩️')
-            .setStyle(ButtonStyle.Primary)
+            .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId(`gs_home_${userId}`)
+            .setLabel('В GS Hub')
+            .setEmoji('🏠')
+            .setStyle(ButtonStyle.Secondary)
+    );
+}
+
+
+function buildGsHubBackRow(userId) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`gs_home_${userId}`)
+            .setLabel('Назад в GS Hub')
+            .setEmoji('🏠')
+            .setStyle(ButtonStyle.Secondary)
     );
 }
 
@@ -379,6 +395,7 @@ async function buildDustReply(user, page = 1) {
     if (selectRow) rows.push(selectRow);
     rows.push(buildListButtons(user.id, safePage));
     rows.push(buildBulkRow(user.id, safePage));
+    rows.push(buildGsHubBackRow(user.id));
 
     const protectionText = protectedCount
         ? `\n🔒 Защищено от распыления: **${protectedCount}**`
@@ -408,6 +425,7 @@ async function buildDustInfoReply(user, page = 1) {
                     .setLabel('Назад к Dust')
                     .setStyle(ButtonStyle.Primary)
             ),
+            buildGsHubBackRow(user.id),
         ],
     };
 }
@@ -449,6 +467,7 @@ ${protectedState
                 page,
                 protectedState
             ),
+            buildGsHubBackRow(user.id),
         ],
     };
 }
@@ -470,7 +489,7 @@ async function buildBulkConfirmReply(user, page) {
 
 Последняя обязательная копия каждой карточки также останется нетронутой.`,
         files: [],
-        components: [buildBulkConfirmButtons(user.id, page)],
+        components: [buildBulkConfirmButtons(user.id, page), buildGsHubBackRow(user.id)],
     };
 }
 

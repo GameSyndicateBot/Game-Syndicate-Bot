@@ -1307,6 +1307,83 @@ try {
 }
 
 
+
+// V17.1.2: полное восстановление доступа к экспедициям для 468683569359880192.
+try {
+    db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (
+        migration_key TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );`);
+
+    const migrationKey = 'v17.1.2-full-expedition-repair-468683569359880192';
+    const userId = '468683569359880192';
+    const applied = db.prepare(
+        'SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?'
+    ).get(migrationKey);
+
+    if (!applied) {
+        const repair = db.transaction(() => {
+            const active = db.prepare(`
+                SELECT id
+                FROM hero_expeditions
+                WHERE user_id=? AND status='active'
+            `).all(userId);
+
+            const closeExpedition = db.prepare(`
+                UPDATE hero_expeditions
+                SET status='cancelled',
+                    resolved_at=CURRENT_TIMESTAMP,
+                    result_json=?
+                WHERE id=?
+            `);
+
+            for (const expedition of active) {
+                closeExpedition.run(
+                    JSON.stringify({
+                        outcome: 'cancelled',
+                        reason: 'admin_full_repair_v17_1_2',
+                        rewards: false,
+                        cooldown: false,
+                        returnedSafely: true
+                    }),
+                    expedition.id
+                );
+            }
+
+            db.prepare(
+                'DELETE FROM hero_expedition_cooldowns WHERE user_id=?'
+            ).run(userId);
+
+            const heroResult = db.prepare(`
+                UPDATE heroes
+                SET status='ready',
+                    recovery_until=NULL,
+                    hp=max_hp,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE user_id=?
+            `).run(userId);
+
+            db.prepare(
+                'INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)'
+            ).run(migrationKey);
+
+            return {
+                expeditionsClosed: active.length,
+                heroesRepaired: Number(heroResult.changes || 0)
+            };
+        });
+
+        const result = repair();
+        console.log(
+            `[V17.1.2] Полное восстановление экспедиций 468683569359880192: ` +
+            `закрыто походов=${result.expeditionsClosed}, исправлено героев=${result.heroesRepaired}.`
+        );
+    }
+} catch (error) {
+    console.error('[DB] V17.1.2 full expedition repair:', error.message);
+}
+
+
 module.exports = {
     db,
     getOrCreatePlayer,

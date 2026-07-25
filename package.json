@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "17.1.1",
+  "version": "17.1.2",
   "private": true,
-  "description": "Game Syndicate V17.1.1 World Boss Dust rewards and schedule fix",
+  "description": "Game Syndicate V17.1.2 Expedition player full repair and GS Dust navigation",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
