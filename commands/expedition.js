@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlags, AttachmentBuilder, Acti
 const { getHero } = require('../systems/hero/heroService');
 const { getEffectiveHero } = require('../systems/hero/itemService');
 const { LOCATIONS } = require('../systems/hero/expeditionData');
-const { getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, getWorldStats, getWorldActivity, EXPEDITION_TACTICS, getExpeditionTactic, rewardPreview } = require('../systems/hero/expeditionService');
+const { getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, availableExpeditionDurations, activeWorldBoss, getWorldStats, getWorldActivity, EXPEDITION_TACTICS, getExpeditionTactic, rewardPreview } = require('../systems/hero/expeditionService');
 const { createExpeditionHubCard } = require('../images/hero/createExpeditionHubCard');
 const { HERO_CLASSES } = require('../systems/hero/heroData');
 const { getAllClassProgress, getClassProgress, normalizeClassKey } = require('../systems/hero/classProgressService');
@@ -74,14 +74,28 @@ function bossLabel(date) {
 
 async function hubPayload(guildId = 'global') {
   const world = getDailyWorld(guildId);
-  const window = expeditionWindow();
-  const boss = nextBossAt();
+  const now = new Date();
+  const durations = availableExpeditionDurations(now);
+  const boss = nextBossAt(now);
+  const bossActive = Boolean(activeWorldBoss());
+  const locked = bossActive || durations.length === 0;
+  const lockReason = bossActive
+    ? 'World Boss уже начался или идёт регистрация.'
+    : 'До World Boss осталось менее 2 часов — герой не успеет вернуться.';
   const stats=getWorldStats(guildId); const activity=getWorldActivity(guildId,5);
-  const buffer = await createExpeditionHubCard({ world, nextBossLabel: bossLabel(boss), locked: !window.fits, stats, activity });
+  const buffer = await createExpeditionHubCard({
+    world,
+    nextBossLabel: bossLabel(boss),
+    locked,
+    lockReason,
+    availableDurations: durations,
+    stats,
+    activity
+  });
   return {
     content: `${HUB_MARKER}\nВыбери одну из трёх локаций. Перед отправкой выбери длительность: **2, 4 или 8 часов**. Личные результаты открываются только тебе. В каталоге **${world.totalCatalog || Object.keys(LOCATIONS).length} локаций** с редкостью и особыми условиями появления.`,
     files: [new AttachmentBuilder(buffer, { name: 'gs-expedition-hub.png' })],
-    components: hubRows(world, !window.fits),
+    components: hubRows(world, locked),
   };
 }
 

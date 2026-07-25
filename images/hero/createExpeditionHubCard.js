@@ -89,7 +89,7 @@ function locationPanel(ctx, x, y, w, h, location, accent) {
   ctx.fill();
 }
 
-async function createExpeditionHubCard({ world, nextBossLabel, locked, stats = {}, activity = [] }) {
+async function createExpeditionHubCard({ world, nextBossLabel, locked, lockReason = '', availableDurations = [], stats = {}, activity = [] }) {
   const c = createCanvas(1500, 1160);
   const ctx = c.getContext('2d');
 
@@ -134,7 +134,12 @@ async function createExpeditionHubCard({ world, nextBossLabel, locked, stats = {
   ctx.fillText(locked ? 'ЭКСПЕДИЦИИ ВРЕМЕННО ЗАКРЫТЫ' : 'ТРИ МАРШРУТА ДОСТУПНЫ СЕГОДНЯ', 176, 260);
   ctx.fillStyle = '#ede9fe';
   ctx.font = '21px Arial';
-  ctx.fillText(locked ? 'До World Boss осталось менее 4 часов — герой не успеет вернуться.' : 'Поход длится 4 часа. Во время экспедиции герой не участвует в World Boss.', 112, 302);
+  const durationText = availableDurations.length
+    ? `Доступные длительности: ${availableDurations.map(h => `${h} ч`).join(', ')}. Герой должен вернуться до World Boss.`
+    : (lockReason || 'Сейчас нельзя отправиться в экспедицию.');
+  const infoSize = fitText(ctx, durationText, 1260, 21, 16);
+  ctx.font = `${infoSize}px Arial`;
+  ctx.fillText(durationText, 112, 302);
 
   const accents = ['#22c55e', '#f59e0b', '#a855f7'];
   const locations = world.locations.slice(0, 3);
@@ -180,8 +185,18 @@ async function createExpeditionHubCard({ world, nextBossLabel, locked, stats = {
   ctx.fillStyle='#ddd6fe'; ctx.font='20px Arial'; ctx.fillText(`В походе: ${stats.active||0}   Свободны: ${stats.free||0}   Сегодня завершено: ${stats.completed||0}   Провалено: ${stats.failed||0}   Dust: ${stats.dustToday||0}`,104,905);
   ctx.fillStyle='#c084fc'; ctx.font='bold 20px Arial'; ctx.fillText('ПОСЛЕДНИЕ СОБЫТИЯ',104,947);
   ctx.font='17px Arial'; ctx.fillStyle='#e9d5ff';
-  const rows=(activity||[]).slice(0,4); if(!rows.length) ctx.fillText('Мир ждёт первых исследователей…',104,982);
-  rows.forEach((a,i)=>{ const text=String(a.summary||'').slice(0,125); ctx.fillText(text,104,982+i*27); });
+  const rows=(activity||[]).slice(0,3);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(96, 958, 1280, 82);
+  ctx.clip();
+  if(!rows.length) ctx.fillText('Мир ждёт первых исследователей…',104,982);
+  rows.forEach((a,i)=>{
+    const raw=String(a.summary||'').replace(/\s+/g,' ').trim();
+    const text=raw.length>105?`${raw.slice(0,102)}…`:raw;
+    ctx.fillText(text,104,982+i*25);
+  });
+  ctx.restore();
   ctx.fillStyle = '#8b5cf6'; ctx.font = 'bold 19px Arial'; ctx.textAlign = 'right';
   ctx.fillText('GAME SYNDICATE • EXPEDITION HUB V16.2', 1392, 1110);
   ctx.textAlign = 'left';

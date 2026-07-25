@@ -122,11 +122,11 @@ function nextBossAt(now = new Date()) {
   const MSK = 3 * 60 * 60 * 1000;
   const local = new Date(now.getTime() + MSK);
   const y = local.getUTCFullYear(), m = local.getUTCMonth(), d = local.getUTCDate();
-  for (const hour of [13, 20]) {
+  for (const hour of [9, 15, 21]) {
     const candidate = new Date(Date.UTC(y, m, d, hour, 0, 0) - MSK);
     if (candidate.getTime() > now.getTime()) return candidate;
   }
-  return new Date(Date.UTC(y, m, d + 1, 13, 0, 0) - MSK);
+  return new Date(Date.UTC(y, m, d + 1, 9, 0, 0) - MSK);
 }
 function activeWorldBoss() {
   try {
@@ -137,6 +137,10 @@ function expeditionWindow(now = new Date(), durationHours = 4) {
   const nextBoss = nextBossAt(now);
   const returnsAt = new Date(now.getTime() + durationHours * 3600000);
   return { nextBoss, returnsAt, fits: returnsAt.getTime() <= nextBoss.getTime() };
+}
+function availableExpeditionDurations(now = new Date()) {
+  if (activeWorldBoss()) return [];
+  return [2, 4, 8].filter(hours => expeditionWindow(now, hours).fits);
 }
 
 function playerName(userId) {
