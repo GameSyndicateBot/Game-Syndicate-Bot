@@ -1384,6 +1384,27 @@ try {
 }
 
 
+
+
+// V18.3.9: безопасное освобождение игрока из зависшего RPG/экспедиционного состояния.
+try {
+    db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+    const migrationKey='v18.3.9-unstuck-752908251896479915';
+    const userId='752908251896479915';
+    if(!db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)){
+        const tx=db.transaction(()=>{
+            const rows=db.prepare("SELECT id FROM hero_expeditions WHERE user_id=? AND status='active'").all(userId);
+            for(const row of rows) db.prepare("UPDATE hero_expeditions SET status='cancelled',resolved_at=CURRENT_TIMESTAMP,result_json=? WHERE id=?")
+              .run(JSON.stringify({outcome:'cancelled',reason:'targeted_unstuck_v18_3_9',rewards:false,returnedSafely:true}),row.id);
+            db.prepare('DELETE FROM hero_expedition_cooldowns WHERE user_id=?').run(userId);
+            db.prepare("UPDATE heroes SET status='ready',recovery_until=NULL,hp=max_hp,updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(userId);
+            db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+            return rows.length;
+        });
+        console.log(`[V18.3.9] Игрок ${userId} освобождён из зависшего состояния; закрыто экспедиций: ${tx()}.`);
+    }
+} catch(error){ console.error('[DB] V18.3.9 unstuck migration:',error.message); }
+
 module.exports = {
     db,
     getOrCreatePlayer,

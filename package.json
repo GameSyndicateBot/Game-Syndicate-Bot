@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.3.8",
+  "version": "18.3.9",
   "private": true,
-  "description": "Game Syndicate V18.3.8 final: boss balance, profile fixes, Crafting UX, categories and unified resource storage",
+  "description": "Game Syndicate V18.3.9: collection achievements, profession processing, 500 Dust profession change and RPG unstuck recovery",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

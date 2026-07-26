@@ -1,6 +1,9 @@
 const MATERIALS = Object.freeze({
   wood: { name: 'Древесина', icon: '🪵', rarity: 'common', value: 8, description: 'Базовый материал для оружия и инструментов.' },
-  iron_ore: { name: 'Железная руда', icon: '⛓️', rarity: 'common', value: 12, description: 'Руда для кузнечного дела.' },
+  iron_ore: { name: 'Железная руда', icon: '⛓️', rarity: 'common', value: 12, description: 'Сырьё, которое горняк переплавляет в слитки.' },
+  iron_ingot: { name: 'Железный слиток', icon: '🔩', rarity: 'common', value: 28, description: 'Переплавленное железо для кузнечных рецептов и улучшений.' },
+  forest_herbs: { name: 'Лесные травы', icon: '🌿', rarity: 'common', value: 9, description: 'Основной ингредиент зелий Алхимика.' },
+  beast_hide: { name: 'Шкура зверя', icon: '🐾', rarity: 'common', value: 13, description: 'Сырьё, которое охотник выделывает в кожу.' },
   stone: { name: 'Камень', icon: '🪨', rarity: 'common', value: 7, description: 'Прочный строительный материал.' },
   herb: { name: 'Лечебная трава', icon: '🌿', rarity: 'common', value: 9, description: 'Основа будущих зелий.' },
   bone: { name: 'Кость', icon: '🦴', rarity: 'common', value: 10, description: 'Материал для талисманов и тёмного ремесла.' },

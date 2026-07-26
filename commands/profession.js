@@ -3,7 +3,7 @@ const { getHero } = require('../systems/hero/heroService');
 const { ITEMS } = require('../systems/hero/itemData');
 const {
   PROFESSIONS,SPECIALIZATIONS,ENERGY_REGEN_PER_HOUR,LEVEL_CAP,xpNeeded,energyMaxForLevel,energyCostForLevel,
-  getProfession,chooseProfession,work,chooseSpecialization,getProfessionCounts,getMilestones
+  getProfession,chooseProfession,changeProfession,processProfessionMaterial,PROFESSION_CHANGE_COST,work,chooseSpecialization,getProfessionCounts,getMilestones
 } = require('../systems/hero/professionService');
 
 function duration(ms){const m=Math.max(1,Math.ceil(ms/60000));return m>=60?`${Math.floor(m/60)} ч ${m%60} мин`:`${m} мин`;}
@@ -18,6 +18,8 @@ function specChoices(){
 module.exports={
  data:new SlashCommandBuilder().setName('profession').setDescription('Мирная профессия героя')
   .addSubcommand(s=>s.setName('choose').setDescription('Выбрать одну профессию').addStringOption(o=>o.setName('profession').setDescription('Профессия').setRequired(true).addChoices(...Object.entries(PROFESSIONS).map(([value,p])=>({name:`${p.icon} ${p.name}`,value})))))
+  .addSubcommand(s=>s.setName('change').setDescription('Сменить профессию за 500 GS Dust').addStringOption(o=>o.setName('profession').setDescription('Новая профессия').setRequired(true).addChoices(...Object.entries(PROFESSIONS).map(([value,p])=>({name:`${p.icon} ${p.name}`,value})))))
+  .addSubcommand(s=>s.setName('process').setDescription('Переработать сырьё профессии').addIntegerOption(o=>o.setName('batches').setDescription('Количество партий (2 сырья → 1 материал)').setMinValue(1).setMaxValue(100)))
   .addSubcommand(s=>s.setName('status').setDescription('Показать профессию, прогрессию и энергию'))
   .addSubcommand(s=>s.setName('work').setDescription('Выполнить работу за энергию'))
   .addSubcommand(s=>s.setName('specialization').setDescription('Выбрать специализацию на 50 уровне').addStringOption(o=>o.setName('specialization').setDescription('Специализация').setRequired(true).addChoices(...specChoices())))
@@ -30,6 +32,32 @@ module.exports={
    if(!result.ok) return interaction.reply({content:result.reason==='already'?`❌ У тебя уже выбрана профессия: **${PROFESSIONS[result.current.profession_key]?.name}**. Одновременно можно иметь только одну.`:'❌ Неизвестная профессия.',flags:MessageFlags.Ephemeral});
    const p=PROFESSIONS[result.row.profession_key];
    return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${p.icon} Профессия выбрана: ${p.name}`).setDescription(`${p.description}\n\n⚡ Энергия: **${result.row.energy}/${result.row.energy_max}**\nОдна работа расходует **${energyCostForLevel(1)}** энергии.\nВосстановление: **${ENERGY_REGEN_PER_HOUR}/час**.\n\nПрофессия одна на героя. Обменивайтесь ресурсами и выполняйте заказы.`)],flags:MessageFlags.Ephemeral});
+  }
+
+  if(sub==='change'){
+   const key=interaction.options.getString('profession');
+   const result=changeProfession(interaction.user.id,key);
+   if(!result.ok){
+    const messages={missing:'❌ Сначала выбери профессию.',same:'❌ Эта профессия уже выбрана.',invalid:'❌ Неизвестная профессия.'};
+    if(result.reason==='dust') return interaction.reply({content:`❌ Для смены профессии нужно **${PROFESSION_CHANGE_COST} GS Dust**. Твой баланс: **${result.balance}**.`,flags:MessageFlags.Ephemeral});
+    return interaction.reply({content:messages[result.reason]||'❌ Не удалось сменить профессию.',flags:MessageFlags.Ephemeral});
+   }
+   const next=PROFESSIONS[result.row.profession_key];
+   return interaction.reply({embeds:[new EmbedBuilder().setColor(0xF59E0B).setTitle(`${next.icon} Профессия изменена: ${next.name}`).setDescription(`Списано: **${result.spent} GS Dust**.
+Уровень и опыт профессии сброшены. Материалы, герой, экипировка и достижения сохранены.`)],flags:MessageFlags.Ephemeral});
+  }
+  if(sub==='process'){
+   const batches=interaction.options.getInteger('batches')||1;
+   const result=processProfessionMaterial(interaction.user.id,batches);
+   if(!result.ok){
+    if(result.reason==='unsupported') return interaction.reply({content:'❌ Переработка сейчас доступна Горняку (руда → слитки) и Охотнику (шкуры → кожа).',flags:MessageFlags.Ephemeral});
+    if(result.reason==='materials') return interaction.reply({content:`❌ Недостаточно сырья: нужно **${result.needed}**, есть **${result.owned}**.`,flags:MessageFlags.Ephemeral});
+    return interaction.reply({content:'❌ Не удалось переработать материалы.',flags:MessageFlags.Ephemeral});
+   }
+   const input=ITEMS[result.recipe.input]?.name||result.recipe.input;
+   const output=ITEMS[result.recipe.output]?.name||result.recipe.output;
+   return interaction.reply({embeds:[new EmbedBuilder().setColor(0x22C55E).setTitle('⚒️ Материал обработан').setDescription(`Использовано: **${input} ×${result.consumed}**
+Получено: **${output} ×${result.produced}**`)],flags:MessageFlags.Ephemeral});
   }
   if(sub==='server'){
    const counts=getProfessionCounts();

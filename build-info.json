@@ -1,7 +1,5 @@
 {
-  "version": "18.3.8",
-  "name": "GS CORE V18.3.8 — UNIFIED RESOURCE SYSTEM",
-  "buildId": "v18.3.8-unified-resources-20260726",
-  "build": "boss-balance-profile-crafting-v2-unified-resources",
-  "startup": "node index.js"
+  "version": "18.3.9",
+  "name": "GS CORE V18.3.9 — COLLECTIONS, PROCESSING & UNSTUCK",
+  "buildId": "v18.3.9-collections-processing-unstuck-20260726"
 }

@@ -1,5 +1,6 @@
-const { db } = require('../../database/db');
+const { db, removeCardDust } = require('../../database/db');
 const { grantItem } = require('./itemService');
+const { consumeResources, grantResource, getResourceQuantity } = require('./resourceService');
 
 const BASE_ENERGY_MAX = 100;
 const BASE_ENERGY_COST = 20;
@@ -140,6 +141,36 @@ function chooseProfession(userId,key){
   db.prepare('INSERT INTO hero_professions(user_id,profession_key,energy,energy_updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP)').run(userId,key,BASE_ENERGY_MAX);
   return {ok:true,row:getProfession(userId)};
 }
+
+const PROFESSION_CHANGE_COST = 500;
+function changeProfession(userId,key){
+  if(!PROFESSIONS[key]) return {ok:false,reason:'invalid'};
+  const current=getProfession(userId);
+  if(!current) return {ok:false,reason:'missing'};
+  if(current.profession_key===key) return {ok:false,reason:'same',current};
+  const payment=removeCardDust(userId,PROFESSION_CHANGE_COST);
+  if(!payment.ok) return {ok:false,reason:'dust',required:PROFESSION_CHANGE_COST,balance:payment.balance};
+  db.prepare(`UPDATE hero_professions SET profession_key=?,level=1,xp=0,work_count=0,energy=?,energy_updated_at=CURRENT_TIMESTAMP,specialization_key=NULL,updated_at=CURRENT_TIMESTAMP WHERE user_id=?`)
+    .run(key,BASE_ENERGY_MAX,userId);
+  return {ok:true,row:getProfession(userId),spent:PROFESSION_CHANGE_COST,balance:payment.balance};
+}
+function processProfessionMaterial(userId,batches=1){
+  const row=getProfession(userId); if(!row)return {ok:false,reason:'missing'};
+  const count=Math.max(1,Math.min(100,Math.floor(Number(batches)||1)));
+  const recipes={miner:{input:'iron_ore',output:'iron_ingot',inputQty:2,outputQty:1},hunter:{input:'beast_hide',output:'leather',inputQty:2,outputQty:1}};
+  const recipe=recipes[row.profession_key];
+  if(!recipe)return {ok:false,reason:'unsupported',profession:row.profession_key};
+  const needed=recipe.inputQty*count;
+  const owned=getResourceQuantity(userId,recipe.input);
+  if(owned<needed)return {ok:false,reason:'materials',owned,needed,recipe};
+  const tx=db.transaction(()=>{
+    const consumed=consumeResources(userId,{[recipe.input]:needed});
+    if(!consumed.ok)throw new Error('materials');
+    grantResource(userId,recipe.output,recipe.outputQty*count,'profession-processing');
+  });
+  try{tx();return {ok:true,recipe,batches:count,consumed:needed,produced:recipe.outputQty*count};}
+  catch(error){return {ok:false,reason:'transaction'};}
+}
 function levelFromXp(level,xp){
   let l=Number(level)||1,x=Number(xp)||0,gained=0;
   while(x>=xpNeeded(l)&&l<LEVEL_CAP){x-=xpNeeded(l);l++;gained++;}
@@ -252,7 +283,7 @@ function getMilestones(level){
 
 module.exports={
   PROFESSIONS,SPECIALIZATIONS,WORK_TABLES,BASE_ENERGY_MAX,BASE_ENERGY_COST,ENERGY_REGEN_PER_HOUR,LEVEL_CAP,
-  xpNeeded,energyMaxForLevel,energyCostForLevel,rareBonusForLevel,getProfession,chooseProfession,work,
+  xpNeeded,energyMaxForLevel,energyCostForLevel,rareBonusForLevel,getProfession,chooseProfession,changeProfession,processProfessionMaterial,PROFESSION_CHANGE_COST,work,
   chooseSpecialization,addProfessionXp,getProfessionCounts,listProfessionMembers,getProfessionLeaders,
   getAllProfessionLeaders,getMilestones
 };

@@ -2,8 +2,10 @@ const { db } = require('../../database/db');
 const { MATERIALS } = require('./materialData');
 const { ITEMS } = require('./itemData');
 
+const RESOURCE_ALIASES = Object.freeze({ herb: 'forest_herbs' });
 function normalizeResourceKey(value) {
-  return String(value || '').trim().toLowerCase();
+  const key = String(value || '').trim().toLowerCase();
+  return RESOURCE_ALIASES[key] || key;
 }
 
 function isResourceKey(key) {
@@ -38,6 +40,17 @@ function ensureResourceTable() {
 
 function migrateLegacyResources() {
   ensureResourceTable();
+
+  // V18.3.9: старые лечебные травы объединяются с лесными травами.
+  const legacyHerbs = db.prepare("SELECT user_id,quantity FROM hero_materials WHERE material_key='herb' AND quantity>0").all();
+  if (legacyHerbs.length) {
+    const merge = db.transaction(() => {
+      const upsert = db.prepare(`INSERT INTO hero_materials(user_id,material_key,quantity,updated_at) VALUES(?,'forest_herbs',?,CURRENT_TIMESTAMP) ON CONFLICT(user_id,material_key) DO UPDATE SET quantity=quantity+excluded.quantity,updated_at=CURRENT_TIMESTAMP`);
+      for (const row of legacyHerbs) upsert.run(row.user_id, Number(row.quantity)||0);
+      db.prepare("DELETE FROM hero_materials WHERE material_key='herb'").run();
+    });
+    merge();
+  }
 
   const legacy = db.prepare(`
     SELECT id, user_id, item_key, quantity

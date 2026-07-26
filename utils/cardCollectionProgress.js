@@ -24,13 +24,13 @@ function hasConfirmedCompleteRarity(userId, rarity) {
     return CONFIRMED_COMPLETE_RARITIES[String(userId)]?.has(normalizeRarity(rarity)) || false;
 }
 
-function requiredVariants(filterFn) {
+function requiredVariants(filterFn, { baseOnly = false } = {}) {
     const result = new Set();
     for (const card of cards) {
         if (!filterFn(card)) continue;
-        const rarities = Array.isArray(card.drop_rarities) && card.drop_rarities.length
+        const rarities = baseOnly ? [card.base_rarity] : (Array.isArray(card.drop_rarities) && card.drop_rarities.length
             ? card.drop_rarities
-            : [card.base_rarity];
+            : [card.base_rarity]);
         for (const rarity of rarities) {
             if (rarity) result.add(`${normalizeCardId(card.id)}:${normalizeRarity(rarity)}`);
         }
@@ -64,9 +64,12 @@ function getCardCollectionProgress(userId) {
 
     const byRarity = {};
     for (const rarity of ['common', 'rare', 'epic', 'legendary', 'mythic', 'exclusive', 'holographic']) {
+        // Коллекция редкости означает все карты, чья основная редкость равна этой редкости.
+        // Альтернативные варианты выпадения (drop_rarities) не должны искусственно
+        // увеличивать требуемый набор и блокировать достижение.
         byRarity[rarity] = calculate(requiredVariants(card =>
-            (card.drop_rarities || [card.base_rarity]).map(String).map(normalizeRarity).includes(rarity)
-        ));
+            normalizeRarity(card.base_rarity) === rarity
+        , { baseOnly: true }));
     }
 
     const boss = calculate(requiredVariants(card => card.collection === 'boss_pack' && card.type === 'boss'));
