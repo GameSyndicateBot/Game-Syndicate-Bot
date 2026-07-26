@@ -2,7 +2,7 @@
   "name": "game-syndicate-bot",
   "version": "18.3.8",
   "private": true,
-  "description": "Game Syndicate V18.3.8 final: boss balance, healer balance, Guardian aggro, last expedition class profile, Crafting UX and recipe categories",
+  "description": "Game Syndicate V18.3.8 final: boss balance, profile fixes, Crafting UX, categories and unified resource storage",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

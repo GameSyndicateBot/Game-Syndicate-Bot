@@ -1,7 +1,7 @@
 {
   "version": "18.3.8",
-  "name": "GS CORE V18.3.8 — FINAL PROFILE & CRAFTING CATEGORIES",
-  "buildId": "v18.3.8-final-profile-crafting-categories-20260726",
-  "build": "boss-balance-profile-last-expedition-class-crafting-v2-categories",
+  "name": "GS CORE V18.3.8 — UNIFIED RESOURCE SYSTEM",
+  "buildId": "v18.3.8-unified-resources-20260726",
+  "build": "boss-balance-profile-crafting-v2-unified-resources",
   "startup": "node index.js"
 }

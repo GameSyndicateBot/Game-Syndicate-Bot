@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { db, getCardDust, removeCardDust, addCardDust } = require('../../database/db');
 const { MATERIALS } = require('./materialData');
 const { getInventoryItem } = require('./itemService');
+const { resourceRows, consumeResources } = require('./resourceService');
 
 const MAX_UPGRADE = 10;
 const CHANCES = Object.freeze({ 1:100, 2:100, 3:100, 4:100, 5:100, 6:80, 7:65, 8:50, 9:35, 10:20 });
@@ -20,10 +21,7 @@ function getUpgradeCost(item, targetLevel) {
   if (targetLevel >= 9) materials.void_crystal = Math.max(1, Math.ceil((targetLevel - 8) * rarity / 2));
   return { dust, materials };
 }
-function materialRows(userId, requirements) {
-  const owned = new Map(db.prepare('SELECT material_key,quantity FROM hero_materials WHERE user_id=?').all(userId).map(r=>[r.material_key,r.quantity]));
-  return Object.entries(requirements).map(([key,required])=>({ key, required, owned:owned.get(key)||0, ...(MATERIALS[key]||{name:key,icon:'📦'}) }));
-}
+function materialRows(userId, requirements) { return resourceRows(userId, requirements); }
 function getUpgradeInfo(userId, inventoryId) {
   const item = getInventoryItem(userId, inventoryId);
   if (!item) return { ok:false, reason:'not_found' };
@@ -49,11 +47,8 @@ function upgradeItem(userId, inventoryId) {
   if (!payment.ok) return { ok:false, reason:'dust', required:info.cost.dust, balance:payment.balance, info };
   try {
     const result=db.transaction(()=>{
-      for(const material of info.cost.materials){
-        const changed=db.prepare(`UPDATE hero_materials SET quantity=quantity-?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND material_key=? AND quantity>=?`)
-          .run(material.required,userId,material.key,material.required);
-        if(!changed.changes) throw new Error(`Insufficient material: ${material.key}`);
-      }
+      const consumed=consumeResources(userId,Object.fromEntries(info.cost.materials.map(material=>[material.key,material.required])));
+      if(!consumed.ok) throw new Error('Insufficient materials');
       const fresh=db.prepare('SELECT upgrade_level,item_key FROM hero_inventory WHERE id=? AND user_id=?').get(inventoryId,userId);
       if(!fresh || Number(fresh.upgrade_level)!==info.level) throw new Error('Upgrade state changed');
       const roll=secureRoll(userId,inventoryId,info.targetLevel);

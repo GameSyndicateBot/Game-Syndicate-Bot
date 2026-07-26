@@ -1,6 +1,7 @@
 const { db } = require('../../database/db');
 const { ITEMS } = require('./itemData');
-const { grantItem, getInventoryItemByKey } = require('./itemService');
+const { grantItem } = require('./itemService');
+const { getResourceQuantity, resourceRows, consumeResources } = require('./resourceService');
 const { getHero } = require('./heroService');
 
 const COOK_RECIPES = Object.freeze({
@@ -24,9 +25,8 @@ const COOK_RECIPES = Object.freeze({
   },
 });
 
-function getOwned(userId, itemKey) {
-  return Number(getInventoryItemByKey(userId, itemKey)?.quantity || 0);
-}
+function getOwned(userId, itemKey) { return getResourceQuantity(userId, itemKey); }
+
 
 function hydrateCookRecipe(userId, recipeKey) {
   const recipe = COOK_RECIPES[recipeKey];
@@ -64,13 +64,8 @@ function cook(userId, recipeKey) {
 
   try {
     const produced = db.transaction(() => {
-      for (const ingredient of recipe.ingredients) {
-        const row = getInventoryItemByKey(userId, ingredient.key);
-        const result = db.prepare(`UPDATE hero_inventory SET quantity=quantity-? WHERE user_id=? AND item_key=? AND quantity>=?`)
-          .run(ingredient.required, userId, ingredient.key, ingredient.required);
-        if (!result.changes) throw new Error(`Insufficient ingredient: ${ingredient.key}`);
-        db.prepare('DELETE FROM hero_inventory WHERE user_id=? AND item_key=? AND quantity<=0').run(userId, ingredient.key);
-      }
+      const consumed = consumeResources(userId, recipe.ingredients);
+      if (!consumed.ok) throw new Error('Insufficient ingredients');
       return grantItem(userId, recipe.itemKey, 1, `cook:${recipeKey}`);
     })();
     return { ok: true, recipe, item: produced };

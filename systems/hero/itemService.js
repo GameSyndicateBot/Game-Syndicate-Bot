@@ -1,6 +1,7 @@
 const { db } = require('../../database/db');
 const { ITEMS, RARITY_ORDER } = require('./itemData');
 const { normalizeClassKey, isValidClass } = require('./classProgressService');
+const { grantResource } = require('./resourceService');
 
 const STAT_KEYS=['hp','strength','defense','dexterity','intelligence','luck','expedition_success','rare_find','world_boss_damage','world_boss_resistance','boss_flat_damage','injury_resistance','class_xp_bonus'];
 function parseBonuses(value){ try{return JSON.parse(value||'{}')||{};}catch(_){return {};} }
@@ -13,6 +14,7 @@ function seedItems(){
 }
 function grantItem(userId,itemKey,quantity=1,source='system'){
  seedItems(); const item=ITEMS[itemKey]; if(!item)return null;
+ if(item.type==='material') return grantResource(userId,itemKey,quantity,source);
  db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,?,?)
  ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+excluded.quantity, acquired_from=excluded.acquired_from`).run(userId,itemKey,Math.max(1,quantity),source);
  db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,?)`).run(userId,itemKey,source);

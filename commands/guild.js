@@ -1,3 +1,4 @@
+const { listResources } = require('../systems/hero/resourceService');
 const {
   SlashCommandBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
   StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags,
@@ -400,9 +401,12 @@ async function showUpgrade(interaction, inventoryId, notice = '') {
   if (!info.ok) return interaction.update({ content:'❌ Предмет не найден или его нельзя улучшить.', embeds:[], components:[guildNavRow('blacksmith')] });
   if (info.maxed) return interaction.update({ content:`✅ **${info.item.name}** уже улучшен до +${MAX_UPGRADE}.`, embeds:[], components:[guildNavRow('blacksmith')] });
   const materials = info.cost.materials.map(m => `${m.icon} ${m.name}: **${m.owned}/${m.required}**${m.owned>=m.required?' ✅':' ❌'}`).join('\n');
+  const missing = [];
+  if (info.dust < info.cost.dust) missing.push(`${info.cost.dust - info.dust} Dust`);
+  for (const material of info.cost.materials) if (material.owned < material.required) missing.push(`${material.name} ×${material.required - material.owned}`);
   const embed = new EmbedBuilder().setColor(info.canAfford?0x22C55E:0xF59E0B)
     .setTitle(`✨ ${info.item.name} +${info.level} → +${info.targetLevel}`)
-    .setDescription([notice,`**Шанс успеха:** ${info.chance}%`,`**Стоимость:** 💠 ${info.cost.dust} Dust`,'','**Материалы**',materials,'',info.canAfford?'✅ Всё готово к улучшению.':'🔒 Не хватает ресурсов.'].filter(Boolean).join('\n'))
+    .setDescription([notice,`**Шанс успеха:** ${info.chance}%`,`**Dust:** ${info.dust}/${info.cost.dust} ${info.dust>=info.cost.dust?'✅':'❌'}`,'','**Материалы**',materials,'',info.canAfford?'✅ Всё готово к улучшению.':`❌ Не хватает: **${missing.join(', ')}**.`].filter(Boolean).join('\n'))
     .setFooter({text:'При неудаче уровень и предмет сохраняются, ресурсы расходуются.'});
   const row=new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('guild:blacksmith:menu').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
@@ -686,9 +690,8 @@ async function showProfessionHub(interaction) {
 }
 async function showStorage(interaction) {
   if(!getHero(interaction.user.id))return interaction.reply({content:'❌ Сначала создай героя.',flags:MessageFlags.Ephemeral});
-  const rows=db.prepare(`SELECT hi.item_key,hi.quantity,i.name FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key
-    WHERE hi.user_id=? AND i.item_type='material' AND hi.quantity>0 ORDER BY i.name`).all(interaction.user.id);
-  const text=rows.length?rows.map(r=>`📦 **${r.name}** ×${r.quantity}`).join('\n'):'Хранилище ресурсов пока пусто.';
+  const rows=listResources(interaction.user.id);
+  const text=rows.length?rows.map(r=>`${r.icon || '📦'} **${r.name}** ×${r.quantity}`).join('\n'):'Хранилище ресурсов пока пусто.';
   return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('📦 Хранилище ресурсов').setDescription(`${text}\n\nРесурсы профессий автоматически складываются сюда и используются доской заказов и ремесленниками.`.slice(0,4000))],components:[guildNavRow('storage')],flags:MessageFlags.Ephemeral});
 }
 async function showOrdersHub(interaction) {

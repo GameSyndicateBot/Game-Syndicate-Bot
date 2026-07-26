@@ -1,6 +1,7 @@
 const { db, getCardDust, addCardDust, removeCardDust } = require('../../database/db');
 const { ITEMS } = require('./itemData');
 const { addProfessionXp } = require('./professionService');
+const { getResourceQuantity, consumeResources, grantResource, transferResource } = require('./resourceService');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS guild_orders (
@@ -32,19 +33,15 @@ function materialKeys(){
   return Object.entries(ITEMS).filter(([,v])=>v.type==='material').map(([k])=>k);
 }
 function getMaterial(userId,itemKey){
-  return db.prepare(`SELECT hi.*,i.name,i.item_type FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key
-    WHERE hi.user_id=? AND hi.item_key=? AND i.item_type='material'`).get(userId,itemKey)||null;
+  if(!ITEMS[itemKey] || ITEMS[itemKey].type!=='material') return null;
+  const quantity=getResourceQuantity(userId,itemKey);
+  return quantity>0 ? {user_id:String(userId),item_key:itemKey,quantity,name:ITEMS[itemKey].name,item_type:'material'} : null;
 }
 function removeMaterial(userId,itemKey,quantity){
-  const row=getMaterial(userId,itemKey);
-  if(!row || Number(row.quantity)<quantity)return false;
-  if(Number(row.quantity)===quantity) db.prepare('DELETE FROM hero_inventory WHERE id=?').run(row.id);
-  else db.prepare('UPDATE hero_inventory SET quantity=quantity-? WHERE id=?').run(quantity,row.id);
-  return true;
+  return consumeResources(userId,{[itemKey]:quantity}).ok;
 }
 function addMaterial(userId,itemKey,quantity){
-  db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,?,'order')
-    ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+excluded.quantity,acquired_from='order'`).run(userId,itemKey,quantity);
+  return grantResource(userId,itemKey,quantity,'order');
 }
 function createOrder(buyerId,itemKey,quantity,priceEach){
   quantity=Math.floor(Number(quantity)); priceEach=Math.floor(Number(priceEach));

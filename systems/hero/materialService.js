@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { db, addCardDust } = require('../../database/db');
 const { MATERIALS, CHESTS, LOCATION_MATERIALS } = require('./materialData');
+const { grantResource, listResources } = require('./resourceService');
 const { EXPEDITION_LOOT } = require('./itemData');
 const { grantItem } = require('./itemService');
 
@@ -12,17 +13,10 @@ function int(rng, min, max) { return Math.floor(rng() * (max - min + 1)) + min; 
 function pick(rng, list) { return list[Math.floor(rng() * list.length)]; }
 
 function grantMaterial(userId, materialKey, quantity) {
-  const material = MATERIALS[materialKey];
-  const amount = Math.max(0, Math.floor(Number(quantity) || 0));
-  if (!material || !amount) return null;
-  db.prepare(`INSERT INTO hero_materials (user_id, material_key, quantity) VALUES (?,?,?)
-    ON CONFLICT(user_id, material_key) DO UPDATE SET quantity=quantity+excluded.quantity, updated_at=CURRENT_TIMESTAMP`)
-    .run(userId, materialKey, amount);
-  return { key: materialKey, ...material, quantity: amount };
+  return grantResource(userId, materialKey, quantity, 'material-reward');
 }
 function getMaterials(userId) {
-  return db.prepare('SELECT material_key, quantity FROM hero_materials WHERE user_id=? AND quantity>0 ORDER BY quantity DESC, material_key').all(userId)
-    .map(row => ({ key: row.material_key, quantity: row.quantity, ...(MATERIALS[row.material_key] || { name: row.material_key, icon: '📦', rarity: 'unknown' }) }));
+  return listResources(userId);
 }
 function grantChest(userId, chestKey, quantity = 1) {
   const chest = CHESTS[chestKey];

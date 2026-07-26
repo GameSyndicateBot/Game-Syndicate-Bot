@@ -4,10 +4,10 @@ const { MATERIALS } = require('./materialData');
 const { RECIPES } = require('./craftingData');
 const { grantItem } = require('./itemService');
 const { getHero } = require('./heroService');
+const { getResourceMap, resourceRows, consumeResources } = require('./resourceService');
 
-function getOwnedMaterialMap(userId) {
-  return new Map(db.prepare('SELECT material_key, quantity FROM hero_materials WHERE user_id=?').all(userId).map(r => [r.material_key, r.quantity]));
-}
+function getOwnedMaterialMap(userId) { return getResourceMap(userId); }
+
 
 function hydrateRecipe(key, userId = null) {
   const recipe = RECIPES[key];
@@ -54,12 +54,8 @@ function craft(userId, recipeKey, quantity = 1) {
 
   try {
     const result = db.transaction(() => {
-      for (const m of recipe.materials) {
-        const needed = m.required * quantity;
-        const changed = db.prepare(`UPDATE hero_materials SET quantity=quantity-?, updated_at=CURRENT_TIMESTAMP
-          WHERE user_id=? AND material_key=? AND quantity>=?`).run(needed, userId, m.key, needed);
-        if (!changed.changes) throw new Error(`Insufficient material: ${m.key}`);
-      }
+      const consumed = consumeResources(userId, Object.fromEntries(recipe.materials.map(m => [m.key, m.required])), quantity);
+      if (!consumed.ok) throw new Error('Insufficient materials');
       const item = grantItem(userId, recipe.itemKey, quantity, `craft:${recipeKey}`);
       db.prepare(`INSERT INTO hero_crafting_history(user_id,recipe_key,item_key,quantity,dust_spent,materials_json)
         VALUES(?,?,?,?,?,?)`).run(userId, recipeKey, recipe.itemKey, quantity, totalDust,
