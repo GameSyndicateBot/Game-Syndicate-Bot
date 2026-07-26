@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.3.7",
+  "version": "18.3.8",
   "private": true,
-  "description": "Game Syndicate V18.3.7 world boss class balance, 30-second turns, Druid expedition fix and targeted recovery",
+  "description": "Game Syndicate V18.3.8 boss pressure, healer balance, Guardian aggro and guild profile class/emoji hotfix",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

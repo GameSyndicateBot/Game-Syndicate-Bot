@@ -440,7 +440,7 @@ function pickDamageType(profile, fallback = 'physical') {
 }
 function damageTarget(id, target, amount, damageType = 'physical') {
   const e = effects(target); let d = Math.max(0, Math.round(amount * playerResistanceMultiplier(target, damageType)));
-  if (e.guardRounds > 0) d = Math.round(d * 0.5); if (e.tauntRounds > 0) d = Math.round(d * 0.7); if (e.rageTurns > 0 || e.bloodRageTurns > 0) d = Math.round(d * 1.25); if (e.partyGuardRounds > 0) d = Math.round(d * 0.6);
+  if (e.guardianUltRounds > 0) d = Math.round(d * 0.6); else if (e.guardRounds > 0) d = Math.round(d * 0.5); if (e.rageTurns > 0 || e.bloodRageTurns > 0) d = Math.round(d * 1.25); if (e.partyGuardRounds > 0) d = Math.round(d * Number(e.partyGuardMultiplier || 0.8));
   let shield = Number(e.shield || 0), absorbed = 0; const hadShield = shield > 0;
   if (shield) { absorbed = Math.min(shield, d); shield -= absorbed; d -= absorbed; e.shield = shield; updateEffects(id, target.user_id, e); }
   const hp = Math.max(0, target.hp - d), diedNow = target.status === 'alive' && target.hp > 0 && hp <= 0;
@@ -483,7 +483,7 @@ function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null
   return { dealt, target: b.boss_name, minion: false };
 }
 function applyDamageBuff(p, base) { const e = effects(p); let d = base * damageMultiplier(p); if (p.class_key === 'berserker') { const missing = 1 - (p.hp / Math.max(1, p.max_hp)); d *= 1 + Math.min(0.5, missing * 0.6); } if (e.bloodRageTurns > 0) d *= 2; if (e.rageTurns > 0) d *= 1.4; if (e.damageBuffTurns > 0) d *= 1 + Number(e.damageBuff || 0); if (e.groupDamageRounds > 0) d *= 1 + Number(e.groupDamage || 0); if (e.doubleNext) { d *= 2; e.doubleNext = false; updateEffects(p.battle_id, p.user_id, e); } return Math.round(d); }
-function healPlayer(id, healerId, target, amount) { const nh = Math.min(target.max_hp, target.hp + amount), actual = nh - target.hp; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(nh, id, target.user_id); if (actual > 0) db.prepare('UPDATE world_boss_players SET healing_done=healing_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(actual, actual, id, healerId); return actual; }
+function healPlayer(id, healerId, target, amount) { const te = effects(target); const penalty = Number(te.healingPenaltyTurns || 0) > 0 ? clamp(Number(te.healingPenalty || 0.30), 0, 0.8) : 0; const adjusted = Math.max(0, Math.round(Number(amount || 0) * (1 - penalty))); const nh = Math.min(target.max_hp, target.hp + adjusted), actual = nh - target.hp; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(nh, id, target.user_id); if (actual > 0) db.prepare('UPDATE world_boss_players SET healing_done=healing_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(actual, actual, id, healerId); return actual; }
 function validTargets(id, kind) { const ps = battlePlayers(id); return kind === 'dead' ? ps.filter(x => x.status === 'dead') : ps.filter(x => x.status === 'alive'); }
 function actionTargets(id, player, action, kind) { let list = validTargets(id, kind); if (player.class_key === 'cleric' && action === 'skill') list = list.filter(x => x.user_id !== player.user_id); return list; }
 function targetKind(classKey, action) { if (action === 'skill' && ['paladin','cleric','bard'].includes(classKey)) return 'alive'; if (action === 'ult' && ['cleric'].includes(classKey)) return 'alive'; if (action === 'ult' && classKey === 'priest') return 'dead'; return null; }
@@ -631,9 +631,9 @@ function useSkill(b, p, c, e, state, targetId) {
   switch (p.class_key) {
     case 'warrior': e.interceptRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `🛡️ <@${u}> перехватывает 70% одиночного урона и провоцирует босса с миньонами на 2 раунда.`;
     case 'paladin': { const t = targetById(id, targetId) || p, te = effects(t); te.shield = Math.max(Number(te.shield || 0), 40); updateEffects(id, t.user_id, te); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `✨ <@${u}> накладывает на <@${t.user_id}> щит **40 HP** и провоцирует босса с миньонами на 2 раунда.`; }
-    case 'guardian': e.guardRounds = 3; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 3); return `🛡️ <@${u}> снижает входящий урон на 50%, перехватывает одиночные атаки и гарантированно провоцирует босса с миньонами на 3 хода босса.`;
-    case 'cleric': { const t = targetById(id, targetId) || p, sacrifice = Math.min(rand(30, 45), Math.max(0, p.hp - 1)); if (sacrifice <= 0) return `💔 <@${u}> не хватает HP для жертвы.`; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(p.hp - sacrifice, id, u); const healed = healPlayer(id, u, t, sacrifice); return `💚 <@${u}> жертвует **${sacrifice} HP** и лечит <@${t.user_id}> на **${healed} HP**.`; }
-    case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 75, maxHp: 75, heal: [12, 20], rounds: 4, support: true }); saveState(b, state); return `👼 <@${u}> призывает Ангела-хранителя на 4 хода. В конце каждого раунда ангел лечит всю живую группу.`; }
+    case 'guardian': e.guardRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); e.interceptChance = 0.35; return `🛡️ <@${u}> снижает входящий урон на 50%, провоцирует босса на 2 атаки и получает 35% шанс перехватить одиночный удар по союзнику.`;
+    case 'cleric': { const t = targetById(id, targetId) || p, sacrifice = Math.min(rand(24, 34), Math.max(0, p.hp - 1)); if (sacrifice <= 0) return `💔 <@${u}> не хватает HP для жертвы.`; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(p.hp - sacrifice, id, u); const healed = healPlayer(id, u, t, rand(58, 76)); const te = effects(t); const shield = Math.max(1, Math.round(healed * 0.15)); te.shield = Number(te.shield || 0) + shield; updateEffects(id, t.user_id, te); return `💚 <@${u}> жертвует **${sacrifice} HP**, лечит <@${t.user_id}> на **${healed} HP** и даёт щит **${shield} HP**.`; }
+    case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 75, maxHp: 75, heal: [10, 16], rounds: 4, support: true }); saveState(b, state); return `👼 <@${u}> призывает Ангела-хранителя на 4 хода. В конце каждого раунда ангел лечит всю живую группу.`; }
     case 'bard': { const t = targetById(id, targetId) || p, te = effects(t); te.damageBuffTurns = 3; te.damageBuff = 0.15; updateEffects(id, t.user_id, te); return `🎵 <@${u}> усиливает <@${t.user_id}> на 15% на 3 хода.`; }
     case 'assassin': { const r = hurtEnemy(b, state, rand(75, 95), 'physical', 'assassin', 0.5); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `🗡️ <@${u}> наносит **${r.dealt}** теневого урона.`; }
     case 'archer': { let total = 0; for (let i = 0; i < 3; i++) if (Math.random() * 100 >= c.miss) total += hurtEnemy(b, state, rand(24, 30), 'physical', 'archer').dealt; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total, total, id, u); return `🏹 <@${u}> выпускает 3 стрелы: **${total}** урона.`; }
@@ -680,13 +680,13 @@ function useSecondSkill(b, p, c, e, state) {
     case 'cleric': {
       const r = hurtEnemy(b, state, rand(48, 68), 'holy', 'cleric');
       let healed = 0;
-      for (const t of validTargets(id, 'alive')) healed += healPlayer(id, u, t, 10);
+      for (const t of validTargets(id, 'alive')) healed += healPlayer(id, u, t, 16);
       db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt + healed, id, u);
       return `🌤️ <@${u}> применяет Карающий свет: **${r.dealt} урона** и **${healed} HP** лечения группе.`;
     }
     case 'priest': {
       let total = 0;
-      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, rand(18, 28));
+      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, rand(15, 22));
       return `🙏 <@${u}> читает Массовую молитву и восстанавливает группе **${total} HP**.`;
     }
     case 'bard': {
@@ -777,7 +777,7 @@ function useUlt(b, p, c, e, state, targetId) {
   switch (p.class_key) {
     case 'warrior': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); updateEffects(id, t.user_id, te); } e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `🛡️ <@${u}> поднимает Последний рубеж: вся группа получает -40% урона на 2 хода, одиночные атаки направлены в Воина.`;
     case 'paladin': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.shield = Math.max(Number(te.shield || 0), 30); updateEffects(id, t.user_id, te); } e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `✨ <@${u}> накладывает всей группе щиты по **30 HP** и провоцирует босса с миньонами на 2 раунда.`;
-    case 'guardian': e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 4); e.guardRounds = Math.max(Number(e.guardRounds || 0), 4); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 4); return `🛡️ <@${u}> применяет абсолютную провокацию: босс и миньоны гарантированно атакуют Стража 4 хода, а входящий урон снижен на 50%.`;
+    case 'guardian': { e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.guardianUltRounds = Math.max(Number(e.guardianUltRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); for (const t of validTargets(id, 'alive')) { if (t.user_id === u) continue; const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); te.partyGuardMultiplier = 0.8; updateEffects(id, t.user_id, te); } return `🛡️ <@${u}> применяет абсолютную провокацию: следующие 2 одиночные атаки направлены в Стража, он получает -40% урона, союзники — -20% урона.`; }
     case 'cleric': { const t = targetById(id, targetId) || p, healed = healPlayer(id, u, t, t.max_hp); return `🌟 <@${u}> полностью исцеляет <@${t.user_id}> на **${healed} HP**.`; }
     case 'priest': { const dead = targetById(id, targetId, 'dead'); if (!dead) return `✨ Нет выбранной погибшей цели.`; db.prepare("UPDATE world_boss_players SET status='alive',hp=ROUND(max_hp*0.5),energy=0,mana=50,ult_charge=0 WHERE battle_id=? AND user_id=?").run(id, dead.user_id); return `✨ <@${u}> воскрешает <@${dead.user_id}>! Игрок возвращается в бой с **${Math.round(dead.max_hp * 0.5)} HP**.`; }
     case 'bard': {
@@ -994,12 +994,21 @@ async function bossTurn(id) {
   const hpRatio = b.boss_max_hp ? b.boss_hp / b.boss_max_hp : 1;
   const phase = hpRatio <= 0.25 ? 3 : hpRatio <= 0.5 ? 2 : 1;
   const tauntingTank = players.find(x => CLASSES[x.class_key]?.role === 'tank' && effects(x).tauntRounds > 0);
-  const interceptingTank = players.find(x => CLASSES[x.class_key]?.role === 'tank' && effects(x).interceptRounds > 0);
+  const interceptingTank = players.find(x => x.class_key === 'guardian' && effects(x).interceptRounds > 0);
   const tanks = players.filter(x => CLASSES[x.class_key]?.role === 'tank');
-  const chooseSingleTarget = () => tauntingTank || interceptingTank || (tanks.length && Math.random() < 0.68 ? pick(tanks) : pick(players));
+  const wounded = players.filter(x => x.hp / Math.max(1, x.max_hp) <= 0.25);
+  const chooseSingleTarget = () => {
+    if (tauntingTank) return tauntingTank;
+    if (interceptingTank && Math.random() < Number(effects(interceptingTank).interceptChance || 0.35)) return interceptingTank;
+    if (wounded.length && Math.random() < 0.65) return pick(wounded);
+    if (tanks.length && Math.random() < 0.70) return pick(tanks);
+    return pick(players);
+  };
   const target = chooseSingleTarget();
   const attackDamageType = pickDamageType(boss.attackTypes, 'physical');
-  const bossDamageMultiplier = Number(state.bossWeakenRounds || 0) > 0 ? 1 - Number(state.bossWeaken || 0) : 1;
+  const phaseDamageMultiplier = phase === 3 ? 1.40 : phase === 2 ? 1.20 : 1;
+  const bossDamageMultiplier = (Number(state.bossWeakenRounds || 0) > 0 ? 1 - Number(state.bossWeaken || 0) : 1) * phaseDamageMultiplier;
+  const effectiveBossMiss = Math.max(0, Number(boss.miss || 0) - (phase === 3 ? 5 : 0));
 
   const recordAction = action => {
     state.bossActionStats[action] = Number(state.bossActionStats[action] || 0) + 1;
@@ -1054,16 +1063,20 @@ async function bossTurn(id) {
       total += r.hpDamage;
     }
     const summonDamage = damagePlayerSummons(state, 1);
+    for (const p of battlePlayers(id).filter(x => x.status === 'alive')) { const pe = effects(p); pe.healingPenaltyTurns = Math.max(Number(pe.healingPenaltyTurns || 0), 2); pe.healingPenalty = 0.30; updateEffects(id, p.user_id, pe); }
     state.rage = 0;
-    text = `🔥 **${boss.name} впадает в ярость!** Ультимативная массовая атака (${damageTypeLabel(rageType)} урон) наносит группе **${total} HP**${summonDamage ? ` и ${summonDamage} урона призывам` : ''}.`;
+    text = `🔥 **${boss.name} впадает в ярость!** Ультимативная массовая атака (${damageTypeLabel(rageType)} урон) наносит группе **${total} HP**${summonDamage ? ` и ${summonDamage} урона призывам` : ''}. 🩸 Лечение снижено на 30% на 2 хода.`;
   } else {
     // Гарантии: в нормальном бою ключевые механики не могут не появиться из-за неудачного RNG.
     const neverSummoned = Number(state.bossActionStats.SUMMON || 0) === 0;
     const neverCursed = Number(state.bossActionStats.SKILL_CURSE || 0) + Number(state.bossActionStats.ULT_CURSE || 0) + Number(state.bossActionStats.GROUP_CURSE || 0) === 0;
     const canSummon = state.minions.length < 3 && (boss.minions || []).length > 0;
     const canGroupCurse = b.round_no - Number(state.lastGroupCurseRound || -99) >= 5;
+    const forcedAoeCadence = phase === 3 ? 2 : 3;
+    const forceAoe = b.round_no - Number(state.lastForcedAoeRound || -99) >= forcedAoeCadence;
 
-    if (canSummon && b.round_no - Number(state.lastSummonRound || -99) >= 3) action = 'SUMMON';
+    if (forceAoe) { action = 'AOE'; state.lastForcedAoeRound = b.round_no; }
+    else if (canSummon && b.round_no - Number(state.lastSummonRound || -99) >= 3) action = 'SUMMON';
     else if (b.round_no - Number(state.lastCurseRound || -99) >= 3) action = 'SKILL_CURSE';
     else if (neverSummoned && canSummon && b.round_no >= 2) action = 'SUMMON';
     else if (neverCursed && b.round_no >= 3) action = 'SKILL_CURSE';
@@ -1084,7 +1097,7 @@ async function bossTurn(id) {
     if (action === 'GROUP_CURSE' && !canGroupCurse) action = 'SKILL_CURSE';
 
     if (action === 'ATTACK') {
-      if (Math.random() * 100 < boss.miss) text = `💨 ${boss.name} промахивается.`;
+      if (Math.random() * 100 < effectiveBossMiss) text = `💨 ${boss.name} промахивается.`;
       else {
         let damage = Math.round(rand(Math.round(boss.damage[0] * 1.1), Math.round(boss.damage[1] * 1.1)) * bossDamageMultiplier);
         const crit = Math.random() * 100 < BOSS_CRIT_CHANCE;
@@ -1100,7 +1113,12 @@ async function bossTurn(id) {
         total += r.hpDamage;
       }
       const summonDamage = damagePlayerSummons(state, 0.65);
-      text = `💥 ${boss.name} применяет массовую атаку (${damageTypeLabel(aoeType)} урон): группе нанесено **${total} HP**${summonDamage ? `, призывам — ${summonDamage}` : ''}.`;
+      let healDebuffText = '';
+      if (phase === 3) {
+        for (const p of battlePlayers(id).filter(x => x.status === 'alive')) { const pe = effects(p); pe.healingPenaltyTurns = Math.max(Number(pe.healingPenaltyTurns || 0), 2); pe.healingPenalty = 0.30; updateEffects(id, p.user_id, pe); }
+        healDebuffText = ' • 🩸 лечение группы снижено на 30% на 2 хода';
+      }
+      text = `💥 ${boss.name} применяет массовую атаку (${damageTypeLabel(aoeType)} урон): группе нанесено **${total} HP**${summonDamage ? `, призывам — ${summonDamage}` : ''}${healDebuffText}.`;
     } else if (action === 'SPECIAL') {
       let damage = Math.round(rand(Math.round(boss.damage[1] * 1.25), Math.round(boss.damage[1] * 1.55)) * bossDamageMultiplier);
       const crit = Math.random() * 100 < BOSS_CRIT_CHANCE;
@@ -1131,7 +1149,7 @@ async function bossTurn(id) {
       const summonText = summon() || `👹 ${boss.name} не смог призвать миньона.`;
       const handTarget = chooseSingleTarget();
       let handText = '';
-      if (handTarget && Math.random() * 100 >= boss.miss) {
+      if (handTarget && Math.random() * 100 >= effectiveBossMiss) {
         const handType = pickDamageType(boss.attackTypes, attackDamageType);
         const r = damageTarget(id, handTarget, rand(Math.round(boss.damage[0] * 0.85), Math.round(boss.damage[1] * 0.95)), handType);
         handText = ` Затем босс бьёт <@${handTarget.user_id}> с руки на **${r.hpDamage} HP** (${damageTypeLabel(handType)}).`;
@@ -1165,7 +1183,7 @@ async function bossTurn(id) {
   saveState(b, state);
   for (const p of battlePlayers(id)) {
     const e = effects(p);
-    for (const k of ['guardRounds','tauntRounds','interceptRounds','groupDamageRounds','partyGuardRounds']) if (e[k] > 0) e[k]--;
+    for (const k of ['guardRounds','guardianUltRounds','tauntRounds','interceptRounds','groupDamageRounds','partyGuardRounds','healingPenaltyTurns']) if (e[k] > 0) e[k]--;
     updateEffects(id, p.user_id, e);
   }
 }

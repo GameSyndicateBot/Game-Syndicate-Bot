@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { HERO_CLASSES, ORIGINS, STAT_LABELS, xpForNextLevel } = require('../systems/hero/heroData');
-const { getHero, createHero, getHistory, deleteHero } = require('../systems/hero/heroService');
+const { getHero, getLatestExpeditionClassKey, createHero, getHistory, deleteHero } = require('../systems/hero/heroService');
 const { getInventory, getEquipment, getClassEquipment, getEffectiveHero, getInventoryItem, equipItem, equipItemForClass, unequipItem, unequipItemForClass, getCollection, formatBonuses, parseBonuses, applyUpgradeToBonuses } = require('../systems/hero/itemService');
 const { SLOT_LABELS, TYPE_LABELS, RARITY_LABELS } = require('../systems/hero/itemData');
 const { createHeroCard } = require('../images/hero/createHeroCard');
@@ -93,7 +93,9 @@ module.exports={
   const target=interaction.options.getUser('user')||interaction.user;
   if(target.bot)return interaction.reply({content:'❌ У ботов нет героев.',flags:MessageFlags.Ephemeral});
   const base=getHero(target.id); if(!base)return interaction.reply(target.id===interaction.user.id?missing():{content:'❌ У этого участника ещё нет героя.',flags:MessageFlags.Ephemeral});
-  const hero=getEffectiveHero(base),cls=HERO_CLASSES[hero.class_key],org=ORIGINS[hero.origin_key];
+  const hero=getEffectiveHero(base);
+  hero.display_class_key=getLatestExpeditionClassKey(target.id)||hero.class_key;
+  const cls=HERO_CLASSES[hero.display_class_key]||HERO_CLASSES[hero.class_key],org=ORIGINS[hero.origin_key];
   if(sub==='view'){await interaction.deferReply();const buffer=await createHeroCard(hero,target);return interaction.editReply({files:[new AttachmentBuilder(buffer,{name:`hero-${target.id}.png`})]});}
   if(sub==='stats'){
    const req=xpForNextLevel(hero.level);const b=hero.equipmentBonuses||{};

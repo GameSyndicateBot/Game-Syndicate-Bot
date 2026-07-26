@@ -1,7 +1,7 @@
 {
-  "version": "18.3.7",
-  "name": "GS CORE V18.3.7 — WORLD BOSS & EXPEDITION FIX",
-  "buildId": "v18.3.7-worldboss-expedition-fix-20260726",
-  "build": "archer-mark-necromancer-guardian-expedition-sync",
+  "version": "18.3.8",
+  "name": "GS CORE V18.3.8 — BOSS PRESSURE & HEALER BALANCE",
+  "buildId": "v18.3.8-boss-pressure-healer-balance-20260726",
+  "build": "boss-phases-healing-debuff-cleric-priest-guardian-balance",
   "startup": "node index.js"
 }

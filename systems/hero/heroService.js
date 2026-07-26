@@ -9,6 +9,18 @@ function getHero(userId) {
 function getHeroByNumber(heroNumber) {
   return db.prepare('SELECT * FROM heroes WHERE hero_number = ?').get(heroNumber) || null;
 }
+
+function getLatestExpeditionClassKey(userId) {
+  try {
+    const row = db.prepare(`SELECT class_key FROM hero_expeditions
+      WHERE user_id=? AND class_key IS NOT NULL AND class_key<>''
+      ORDER BY id DESC LIMIT 1`).get(userId);
+    const key = row?.class_key ? normalizeClassKey(row.class_key) : null;
+    return key && HERO_CLASSES[key] ? key : null;
+  } catch (_) {
+    return null;
+  }
+}
 function createHero({ userId, name, gender, classKey, originKey }) {
   if (getHero(userId)) return { ok: false, reason: 'exists' };
   classKey = normalizeClassKey(classKey);
@@ -97,4 +109,4 @@ function grantXp(userId, amount) {
   if (levels) addHistory(userId, 'level_up', `Герой достиг уровня ${level}.`, { level });
   return { ...getHero(userId), levelsGained: levels };
 }
-module.exports = { getHero, getHeroByNumber, createHero, deleteHero, addHistory, getHistory, getInventory, getEquipment, grantXp };
+module.exports = { getHero, getHeroByNumber, getLatestExpeditionClassKey, createHero, deleteHero, addHistory, getHistory, getInventory, getEquipment, grantXp };
