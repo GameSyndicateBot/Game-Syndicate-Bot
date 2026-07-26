@@ -19,6 +19,7 @@ const { db, getCardDust, removeCardDust } = require('../database/db');
 const { PROFESSIONS, SPECIALIZATIONS, getProfession, getProfessionCounts, getProfessionLeaders, getAllProfessionLeaders } = require('../systems/hero/professionService');
 const { ITEMS } = require('../systems/hero/itemData');
 const { listOpenOrders, stats: getOrderStats } = require('../systems/hero/orderBoardService');
+const { listCookRecipes, hydrateCookRecipe, cook } = require('../systems/hero/cookService');
 
 const GUILD_CHANNEL_ID = '1530165282512044032';
 const EXPEDITION_CHANNEL_ID = '1529566430301782017';
@@ -46,6 +47,9 @@ function hubRows() {
       new ButtonBuilder().setCustomId('guild:profession').setLabel('Профессия').setEmoji('👷').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('guild:orders').setLabel('Доска заказов').setEmoji('📜').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('guild:hospital').setLabel('Лечебница').setEmoji('🏥').setStyle(ButtonStyle.Success),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guild:cook').setLabel('Повар').setEmoji('👨‍🍳').setStyle(ButtonStyle.Success),
     ),
   ];
 }
@@ -390,16 +394,68 @@ async function showRegistry(interaction) {
   return interaction.reply({embeds:[embed],components:registryRows(),flags:MessageFlags.Ephemeral});
 }
 
+
+function cookRows(recipes) {
+  const rows = [];
+  if (recipes.length) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder().setCustomId('guild:cook:recipe').setPlaceholder('🍲 Выбрать блюдо')
+        .addOptions(recipes.map(r => ({
+          label: r.item.name,
+          value: r.key,
+          emoji: r.canCook ? '✅' : '🔒',
+          description: `Уровень ${r.level} · ${r.canCook ? 'можно приготовить' : 'не хватает ингредиентов'}`.slice(0, 100),
+        })))
+    ));
+  }
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:home').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
+  ));
+  return rows;
+}
+
+async function showCook(interaction, notice = '') {
+  const hero = getHero(interaction.user.id);
+  if (!hero) return interaction.reply({ content:'❌ Сначала создай героя.', flags:MessageFlags.Ephemeral });
+  const recipes = listCookRecipes(interaction.user.id);
+  const lines = recipes.map(r => {
+    const ingredients = r.ingredients.map(i => `${i.item.name} ${i.owned}/${i.required}`).join(' · ');
+    return `${r.canCook ? '✅' : '🔒'} **${r.item.name}** · ур. ${r.level}\n${r.item.description}\n🧺 ${ingredients}`;
+  });
+  const embed = new EmbedBuilder().setColor(0xF59E0B).setTitle('👨‍🍳 Повар Гильдии — Марко')
+    .setDescription([notice, 'Марко готовит походные блюда из ингредиентов, добытых героями в экспедициях. Приготовление не требует Dust.', '', ...lines].filter(Boolean).join('\n\n').slice(0, 4000))
+    .setFooter({ text:'Готовое блюдо появится в расходниках. Использовать: /use или через Алхимика.' });
+  const payload = { embeds:[embed], components:cookRows(recipes) };
+  return interaction.message?.flags?.has?.(MessageFlags.Ephemeral)
+    ? interaction.update(payload)
+    : interaction.reply({ ...payload, flags:MessageFlags.Ephemeral });
+}
+
+async function showCookRecipe(interaction, recipeKey, notice = '') {
+  const recipe = hydrateCookRecipe(interaction.user.id, recipeKey);
+  if (!recipe) return showCook(interaction, '❌ Рецепт не найден.');
+  const ingredientText = recipe.ingredients.map(i => `${i.owned >= i.required ? '✅' : '❌'} **${i.item.name}:** ${i.owned}/${i.required}`).join('\n');
+  const embed = new EmbedBuilder().setColor(0xF59E0B).setTitle(`🍲 ${recipe.item.name}`)
+    .setDescription([notice, recipe.item.description, '', `⭐ **Требуемый уровень:** ${recipe.level}`, '', '**Ингредиенты:**', ingredientText, '', recipe.canCook ? '✅ Всё готово. Марко может приготовить блюдо.' : '🔒 Собери недостающие ингредиенты в походах.'].filter(Boolean).join('\n'));
+  const rows = [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`guild:cook:make:${recipe.key}`).setLabel('Приготовить').setEmoji('🍳').setStyle(ButtonStyle.Success).setDisabled(!recipe.canCook),
+      new ButtonBuilder().setCustomId('guild:cook').setLabel('К блюдам').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+  return interaction.update({ embeds:[embed], components:rows });
+}
+
 function hospitalPrice(hero) {
   const maxHp = Math.max(1, Number(hero?.max_hp || 1));
   const hp = Math.max(0, Math.min(maxHp, Number(hero?.hp || 0)));
   const missingPercent = Math.max(0, Math.round((maxHp - hp) / maxHp * 100));
-  if (hp <= 0) return { price: 1500, tier: '☠️ Погиб', missingPercent };
+  if (hp <= 0) return { price: 400, tier: '☠️ Погиб', missingPercent };
   if (missingPercent <= 0 && hero?.status !== 'wounded') return { price: 0, tier: '🟢 Здоров', missingPercent: 0 };
-  if (missingPercent <= 25) return { price: 250, tier: '🟡 Лёгкое ранение', missingPercent };
-  if (missingPercent <= 50) return { price: 500, tier: '🟠 Среднее ранение', missingPercent };
-  if (missingPercent <= 75) return { price: 850, tier: '🔴 Тяжёлое ранение', missingPercent };
-  return { price: 1200, tier: '🩸 Критическое ранение', missingPercent };
+  if (missingPercent <= 25) return { price: 75, tier: '🟡 Лёгкое ранение', missingPercent };
+  if (missingPercent <= 50) return { price: 150, tier: '🟠 Среднее ранение', missingPercent };
+  if (missingPercent <= 75) return { price: 250, tier: '🔴 Тяжёлое ранение', missingPercent };
+  return { price: 400, tier: '🩸 Критическое ранение', missingPercent };
 }
 
 function hospitalRows(hero, canHeal) {
@@ -577,6 +633,16 @@ async function handleComponent(interaction) {
   if (action === 'profession') return showProfessionHub(interaction);
   if (action === 'storage') return showStorage(interaction);
   if (action === 'orders') return showOrdersHub(interaction);
+  if (action === 'cook' && parts.length === 2) return showCook(interaction);
+  if (action === 'cook' && parts[2] === 'recipe') return showCookRecipe(interaction, interaction.values?.[0]);
+  if (action === 'cook' && parts[2] === 'make') {
+    const recipeKey = parts.slice(3).join(':');
+    const result = cook(interaction.user.id, recipeKey);
+    const notice = result.ok ? `✅ Марко приготовил: **${result.recipe.item.name}**.` :
+      result.reason === 'ingredients' ? '❌ Не хватает ингредиентов.' :
+      result.reason === 'level' ? `❌ Нужен уровень героя ${result.requiredLevel}.` : '❌ Приготовить блюдо не удалось.';
+    return showCookRecipe(interaction, recipeKey, notice);
+  }
   if (action === 'hospital' && parts.length === 2) return showHospital(interaction);
   if (action === 'hospital' && parts[2] === 'heal') return healInHospital(interaction);
   if (action === 'hospital' && parts[2] === 'expedition') return interaction.reply({ content:`🗺️ Перейди в канал <#${EXPEDITION_CHANNEL_ID}> и выбери новую экспедицию.`, flags:MessageFlags.Ephemeral });

@@ -986,17 +986,39 @@ async function bossTurn(id) {
   };
 
   const summon = () => {
-    if (state.minions.length >= 3) return null;
+    const freeSlots = Math.max(0, 3 - state.minions.length);
+    if (!freeSlots) return null;
+
     const allowed = (boss.minions || []).filter(mid => MINIONS[mid]);
     if (!allowed.length) return null;
-    const existingIds = new Set(state.minions.map(m => Number(m.cardId)));
-    const candidates = allowed.filter(mid => !existingIds.has(Number(mid)));
-    const minionId = pick(candidates.length ? candidates : allowed);
-    const cfg = MINIONS[minionId];
-    state.minions.push({ cardId: minionId, ownerBossCardId: boss.cardId, name: cfg.name, hp: cfg.maxHp, maxHp: cfg.maxHp, damage: cfg.damage, miss: cfg.miss, damageType: cfg.damageType || 'physical', physicalResist: cfg.physicalResist || 0, magicResist: cfg.magicResist || 0, undead: Boolean(cfg.undead), dark: Boolean(cfg.dark) });
+
+    // Каждый призыв вызывает случайно от 1 до 3 миньонов,
+    // но общее число живых миньонов босса никогда не превышает 3.
+    const summonCount = Math.min(freeSlots, rand(1, 3));
+    const summoned = [];
+
+    for (let i = 0; i < summonCount; i++) {
+      const minionId = pick(allowed);
+      const cfg = MINIONS[minionId];
+      state.minions.push({
+        cardId: minionId,
+        ownerBossCardId: boss.cardId,
+        name: cfg.name,
+        hp: cfg.maxHp,
+        maxHp: cfg.maxHp,
+        damage: cfg.damage,
+        miss: cfg.miss,
+        damageType: cfg.damageType || 'physical',
+        physicalResist: cfg.physicalResist || 0,
+        magicResist: cfg.magicResist || 0,
+        undead: Boolean(cfg.undead),
+        dark: Boolean(cfg.dark),
+      });
+      summoned.push(`**${cfg.name}** — ❤️ ${cfg.maxHp}`);
+    }
+
     state.lastSummonRound = b.round_no;
-    state.lastSummonRound = b.round_no;
-    return `👾 **${boss.name}** призывает своего миньона: **${cfg.name}** — ❤️ ${cfg.maxHp}.`;
+    return `👾 **${boss.name}** призывает ${summonCount} ${summonCount === 1 ? 'миньона' : 'миньонов'}: ${summoned.join(', ')}.`;
   };
 
   let action = '';
