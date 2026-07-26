@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.3.4",
+  "version": "18.3.5",
   "private": true,
-  "description": "Game Syndicate V18.3.4 interaction reliability, duplicate component guard and all V18.3.3 summon changes",
+  "description": "Game Syndicate V18.3.5 storage recovery, safe achievement roles and all V18.3.2-V18.3.4 changes",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

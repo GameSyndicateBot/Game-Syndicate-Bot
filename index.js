@@ -18,7 +18,9 @@ const {
     MessageFlags
 } = require('discord.js');
 
-const { closeDatabase } = require('./database/db');
+const { closeDatabase, db } = require('./database/db');
+const { startupStorageMaintenance } = require('./utils/sqliteFullRecovery');
+startupStorageMaintenance(db);
 const { protectInteractionResponses } = require('./utils/discordPayloadSafety');
 
 const client = new Client({

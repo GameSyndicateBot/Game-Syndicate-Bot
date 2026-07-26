@@ -146,6 +146,17 @@ async function settleVoiceSession(member, guild, { close = false } = {}) {
 
         updatePlayer(result.player);
         return seconds;
+    } catch (error) {
+        const { isSqliteFull, recoverFromSqliteFull } = require('../utils/sqliteFullRecovery');
+        if (isSqliteFull(error)) {
+            recoverFromSqliteFull(db, `voice:${member.id}`);
+            console.warn(
+                `[Voice Tracking] Запись участника ${member.id} временно пропущена: ` +
+                `на диске недостаточно места. Бот продолжает работу.`
+            );
+            return 0;
+        }
+        throw error;
     } finally {
         processingUsers.delete(member.id);
     }

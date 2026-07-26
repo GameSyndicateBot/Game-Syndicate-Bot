@@ -1,6 +1,6 @@
 {
-  "version": "18.1.0",
-  "name": "GS CORE V16.5.2 — REGIONAL MINIBOSSES",
-  "buildId": "v16.5.2-regional-minibosses-20260724",
-  "build": "hero-hospital-class-card-integration-20260726"
+  "version": "18.3.5",
+  "name": "GS CORE V18.3.5 — STORAGE RECOVERY",
+  "buildId": "v18.3.5-storage-recovery-20260726",
+  "build": "sqlite-full-safe-achievement-role-fix"
 }
