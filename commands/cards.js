@@ -325,51 +325,26 @@ data: new SlashCommandBuilder()
             return true;
         }
 
-        if (action === 'filter') {
-            const filter = parts[3];
-            const page = Number(parts[4] ?? 1);
+        if (['filter', 'page', 'open', 'refresh', 'back'].includes(action)) {
+            // Rendering album/card images can exceed Discord's 3-second acknowledgement window.
+            // Acknowledge immediately, then replace the original message when rendering is done.
+            await interaction.deferUpdate();
 
-            const reply = await buildCardsReply(interaction.user, filter, page);
+            let reply;
+            if (action === 'open') {
+                const filter = parts[3];
+                const page = Number(parts[4] ?? 1);
+                const cardId = interaction.values[0];
+                reply = await buildSingleCardReply(interaction.user, cardId, filter, page);
+            } else if (action === 'refresh') {
+                reply = await buildCardsReply(interaction.user, 'all', 1);
+            } else {
+                const filter = parts[3];
+                const page = Number(parts[4] ?? 1);
+                reply = await buildCardsReply(interaction.user, filter, page);
+            }
 
-            await interaction.update(reply);
-            return true;
-        }
-
-        if (action === 'page') {
-            const filter = parts[3];
-            const page = Number(parts[4] ?? 1);
-
-            const reply = await buildCardsReply(interaction.user, filter, page);
-
-            await interaction.update(reply);
-            return true;
-        }
-
-        if (action === 'open') {
-            const filter = parts[3];
-            const page = Number(parts[4] ?? 1);
-            const cardId = interaction.values[0];
-
-            const reply = await buildSingleCardReply(interaction.user, cardId, filter, page);
-
-            await interaction.update(reply);
-            return true;
-        }
-
-        if (action === 'refresh') {
-            const reply = await buildCardsReply(interaction.user, 'all', 1);
-
-            await interaction.update(reply);
-            return true;
-        }
-
-        if (action === 'back') {
-            const filter = parts[3];
-            const page = Number(parts[4] ?? 1);
-
-            const reply = await buildCardsReply(interaction.user, filter, page);
-
-            await interaction.update(reply);
+            await interaction.editReply(reply);
             return true;
         }
 

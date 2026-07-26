@@ -19,6 +19,7 @@ const {
 } = require('discord.js');
 
 const { closeDatabase } = require('./database/db');
+const { protectInteractionResponses } = require('./utils/discordPayloadSafety');
 
 const client = new Client({
     intents: [
@@ -107,6 +108,7 @@ client.once('clientReady', () => {
 });
 
 client.on('interactionCreate', async interaction => {
+    protectInteractionResponses(interaction);
     try {
         // Все визуальные панели используют серверный ник участника.
         const { attachServerDisplayName } = require('./utils/displayName');
