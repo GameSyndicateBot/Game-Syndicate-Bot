@@ -47,7 +47,12 @@ function cropDraw(ctx, img, x, y, w, h) {
 }
 function cardFile(cardId, type) {
   const no = String(Number(cardId) % 2000).padStart(3, '0');
-  return path.join(CARD_DIR, `${no}_${type}.jpg`);
+  const base = path.join(CARD_DIR, `${no}_${type}`);
+  for (const ext of ['.jpg', '.png', '.jpeg', '.webp']) {
+    const file = `${base}${ext}`;
+    if (fs.existsSync(file)) return file;
+  }
+  return `${base}.jpg`;
 }
 async function safeImage(file) { try { if (fs.existsSync(file)) return await loadImage(file); } catch {} return null; }
 function text(ctx, value, x, y, size = 24, color = '#fff', weight = 'normal', align = 'left') {

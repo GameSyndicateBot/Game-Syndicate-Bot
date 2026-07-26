@@ -3,7 +3,7 @@ const {
   StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags,
 } = require('discord.js');
 
-const { getHero, createHero } = require('../systems/hero/heroService');
+const { getHero, createHero, addHistory } = require('../systems/hero/heroService');
 const { getEffectiveHero, getInventory, getEquipment, getInventoryItem, equipItem, unequipItem, formatBonuses } = require('../systems/hero/itemService');
 const { listRecipes, hydrateRecipe, craft } = require('../systems/hero/craftingService');
 const { getUpgradeInfo, upgradeItem, MAX_UPGRADE } = require('../systems/hero/upgradeService');
@@ -15,7 +15,7 @@ const { getAllClassProgress, getClassProgress, classXpForNextLevel, classWorldBo
 const { getActiveExpedition } = require('../systems/hero/expeditionService');
 const { createGuildHubCard } = require('../images/hero/createGuildHubCard');
 const { createHeroCard } = require('../images/hero/createHeroCard');
-const { db, getCardDust } = require('../database/db');
+const { db, getCardDust, removeCardDust } = require('../database/db');
 const { PROFESSIONS, SPECIALIZATIONS, getProfession, getProfessionCounts, getProfessionLeaders, getAllProfessionLeaders } = require('../systems/hero/professionService');
 const { ITEMS } = require('../systems/hero/itemData');
 const { listOpenOrders, stats: getOrderStats } = require('../systems/hero/orderBoardService');
@@ -45,6 +45,7 @@ function hubRows() {
       new ButtonBuilder().setCustomId('guild:masters').setLabel('Зал мастеров').setEmoji('🏆').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('guild:profession').setLabel('Профессия').setEmoji('👷').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('guild:orders').setLabel('Доска заказов').setEmoji('📜').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:hospital').setLabel('Лечебница').setEmoji('🏥').setStyle(ButtonStyle.Success),
     ),
   ];
 }
@@ -388,6 +389,76 @@ async function showRegistry(interaction) {
     .setDescription(`Здесь собраны герои, классы, профессии и лучшие мастера Game Syndicate.\n\n👥 Зарегистрировано героев: **${heroes}**\n\n${professionText}`);
   return interaction.reply({embeds:[embed],components:registryRows(),flags:MessageFlags.Ephemeral});
 }
+
+function hospitalPrice(hero) {
+  const maxHp = Math.max(1, Number(hero?.max_hp || 1));
+  const hp = Math.max(0, Math.min(maxHp, Number(hero?.hp || 0)));
+  const missingPercent = Math.max(0, Math.round((maxHp - hp) / maxHp * 100));
+  if (hp <= 0) return { price: 1500, tier: '☠️ Погиб', missingPercent };
+  if (missingPercent <= 0 && hero?.status !== 'wounded') return { price: 0, tier: '🟢 Здоров', missingPercent: 0 };
+  if (missingPercent <= 25) return { price: 250, tier: '🟡 Лёгкое ранение', missingPercent };
+  if (missingPercent <= 50) return { price: 500, tier: '🟠 Среднее ранение', missingPercent };
+  if (missingPercent <= 75) return { price: 850, tier: '🔴 Тяжёлое ранение', missingPercent };
+  return { price: 1200, tier: '🩸 Критическое ранение', missingPercent };
+}
+
+function hospitalRows(hero, canHeal) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guild:hospital:heal').setLabel('Полностью вылечить').setEmoji('❤️').setStyle(ButtonStyle.Success).setDisabled(!canHeal),
+      new ButtonBuilder().setCustomId('guild:hospital:expedition').setLabel('В экспедиции').setEmoji('🗺️').setStyle(ButtonStyle.Primary).setDisabled(hero?.status !== 'ready'),
+      new ButtonBuilder().setCustomId('guild:home').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+async function showHospital(interaction, notice = '') {
+  const hero = getHero(interaction.user.id);
+  if (!hero) return interaction.reply({ content: '❌ Сначала создай героя.', flags: MessageFlags.Ephemeral });
+  const activeExpedition = getActiveExpedition(interaction.user.id);
+  const balance = getCardDust(interaction.user.id);
+  const treatment = hospitalPrice(hero);
+  const canHeal = !activeExpedition && hero.status !== 'expedition' && treatment.price > 0;
+  const statusText = activeExpedition || hero.status === 'expedition'
+    ? '🗺️ Герой сейчас находится в экспедиции.'
+    : hero.status === 'wounded'
+      ? '🩹 Герой ранен и временно не может отправиться в новую экспедицию.'
+      : treatment.price > 0 ? '🩹 Герою требуется лечение.' : '✅ Герой полностью здоров и готов к приключениям.';
+  const embed = new EmbedBuilder().setColor(canHeal ? 0xD4A017 : 0x22C55E).setTitle(`🏥 Лечебница — ${hero.name}`)
+    .setDescription([
+      notice,
+      statusText,
+      '',
+      `❤️ **HP:** ${hero.hp}/${hero.max_hp}`,
+      `🩺 **Состояние:** ${treatment.tier}`,
+      treatment.missingPercent ? `📉 **Потеряно здоровья:** ${treatment.missingPercent}%` : null,
+      treatment.price ? `💠 **Полное лечение:** ${treatment.price} Dust` : '💠 **Лечение не требуется.**',
+      `💰 **Баланс:** ${balance} Dust`,
+      '',
+      activeExpedition ? 'Лечение недоступно до возвращения героя.' : treatment.price > balance ? `❌ Не хватает **${treatment.price - balance} Dust**.` : treatment.price ? 'После оплаты герой сразу получит полное HP и статус **«Готов»**.' : 'Можно сразу отправляться в экспедицию.',
+    ].filter(Boolean).join('\n'))
+    .setFooter({ text: 'Лечебница снимает ранение и отменяет оставшееся время восстановления.' });
+  return interaction.reply({ embeds:[embed], components:hospitalRows(hero, canHeal && balance >= treatment.price), flags:MessageFlags.Ephemeral });
+}
+
+async function healInHospital(interaction) {
+  const hero = getHero(interaction.user.id);
+  if (!hero) return interaction.reply({ content:'❌ Герой не найден.', flags:MessageFlags.Ephemeral });
+  if (getActiveExpedition(interaction.user.id) || hero.status === 'expedition') {
+    return interaction.reply({ content:'❌ Нельзя лечить героя, пока он находится в экспедиции.', flags:MessageFlags.Ephemeral });
+  }
+  const treatment = hospitalPrice(hero);
+  if (!treatment.price) return interaction.reply({ content:'✅ Герой уже полностью здоров.', flags:MessageFlags.Ephemeral });
+  const payment = removeCardDust(interaction.user.id, treatment.price);
+  if (!payment.ok) return interaction.reply({ content:`❌ Для лечения требуется **${treatment.price} Dust**. На балансе: **${payment.balance} Dust**.`, flags:MessageFlags.Ephemeral });
+  db.prepare("UPDATE heroes SET hp=max_hp,status='ready',recovery_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(interaction.user.id);
+  addHistory(interaction.user.id, 'hospital_treatment', `Герой полностью вылечен в лечебнице за ${treatment.price} Dust.`, { price:treatment.price, hpBefore:hero.hp, hpAfter:hero.max_hp });
+  const updated = getHero(interaction.user.id);
+  const embed = new EmbedBuilder().setColor(0x22C55E).setTitle('✅ Лечение завершено')
+    .setDescription(`❤️ **${updated.name}: ${updated.hp}/${updated.max_hp} HP**\n💠 Потрачено: **${treatment.price} Dust**\n\nГерой полностью восстановлен и уже может отправляться в новую экспедицию.`);
+  return interaction.reply({ embeds:[embed], components:hospitalRows(updated, false), flags:MessageFlags.Ephemeral });
+}
+
 async function showRegistryHeroes(interaction) {
   const rows=db.prepare(`SELECT h.user_id,h.name,h.level,h.class_key,hp.profession_key,hp.level profession_level
     FROM heroes h LEFT JOIN hero_professions hp ON hp.user_id=h.user_id ORDER BY h.level DESC,h.xp DESC LIMIT 25`).all();
@@ -506,6 +577,9 @@ async function handleComponent(interaction) {
   if (action === 'profession') return showProfessionHub(interaction);
   if (action === 'storage') return showStorage(interaction);
   if (action === 'orders') return showOrdersHub(interaction);
+  if (action === 'hospital' && parts.length === 2) return showHospital(interaction);
+  if (action === 'hospital' && parts[2] === 'heal') return healInHospital(interaction);
+  if (action === 'hospital' && parts[2] === 'expedition') return interaction.reply({ content:`🗺️ Перейди в канал <#${EXPEDITION_CHANNEL_ID}> и выбери новую экспедицию.`, flags:MessageFlags.Ephemeral });
   if (action === 'profile') return showProfile(interaction);
   if (action === 'inventory' && parts.length === 2) return showInventory(interaction);
   if (action === 'inventory' && parts[2] === 'select') return showInventoryItem(interaction, interaction.values?.[0]);

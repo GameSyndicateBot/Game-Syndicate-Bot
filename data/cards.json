@@ -1540,9 +1540,9 @@
       "class"
     ],
     "images": {
-      "class": "assets/cards/boss_pack/079_class.png"
+      "class": "assets/cards/boss_pack/079_class.jpg"
     },
-    "image": "assets/cards/boss_pack/079_class.png"
+    "image": "assets/cards/boss_pack/079_class.jpg"
   },
   {
     "id": 2080,
@@ -1558,8 +1558,8 @@
       "class"
     ],
     "images": {
-      "class": "assets/cards/boss_pack/080_class.png"
+      "class": "assets/cards/boss_pack/080_class.jpg"
     },
-    "image": "assets/cards/boss_pack/080_class.png"
+    "image": "assets/cards/boss_pack/080_class.jpg"
   }
 ]
