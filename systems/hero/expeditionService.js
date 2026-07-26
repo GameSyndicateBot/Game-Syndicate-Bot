@@ -450,4 +450,43 @@ function recoverHero(userId) {
   return true;
 }
 
+
+function applyTargetedExpeditionRepairs() {
+  try {
+    // One-time live-data repair requested on 2026-07-26:
+    // release a hero stuck in an active expedition.
+    const stuckUserId = '308557208147329025';
+    const stuck = db.prepare("SELECT id FROM hero_expeditions WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1").get(stuckUserId);
+    if (stuck) {
+      db.prepare("UPDATE hero_expeditions SET status='cancelled', resolved_at=CURRENT_TIMESTAMP, result_json=? WHERE id=?")
+        .run(JSON.stringify({ outcome:'cancelled', reason:'admin_recovery_20260726', rewards:false }), stuck.id);
+      db.prepare("UPDATE heroes SET status='ready', recovery_until=NULL, hp=max_hp, updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(stuckUserId);
+      console.log(`[Expedition Repair] Освобождён застрявший герой ${stuckUserId}, expedition #${stuck.id}.`);
+    } else {
+      db.prepare("UPDATE heroes SET status='ready', recovery_until=NULL, hp=max_hp, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND status='expedition'").run(stuckUserId);
+    }
+
+    // Druid used to be incorrectly normalized to Bard. Keep the selected class and
+    // synchronize the affected player's Druid mastery with the higher stored value.
+    const levelUserId = '302797251271458817';
+    const druid = db.prepare("SELECT level,xp,expeditions_completed FROM hero_class_progress WHERE user_id=? AND class_key='druid'").get(levelUserId);
+    const bard = db.prepare("SELECT level,xp,expeditions_completed FROM hero_class_progress WHERE user_id=? AND class_key='bard'").get(levelUserId);
+    if (bard && (!druid || Number(bard.level || 1) > Number(druid.level || 1))) {
+      db.prepare(`INSERT INTO hero_class_progress(user_id,class_key,level,xp,expeditions_completed)
+        VALUES(?,?,?,?,?)
+        ON CONFLICT(user_id,class_key) DO UPDATE SET
+          level=MAX(hero_class_progress.level,excluded.level),
+          xp=CASE WHEN excluded.level>=hero_class_progress.level THEN excluded.xp ELSE hero_class_progress.xp END,
+          expeditions_completed=MAX(hero_class_progress.expeditions_completed,excluded.expeditions_completed),
+          updated_at=CURRENT_TIMESTAMP`)
+        .run(levelUserId,'druid',Number(bard.level||1),Number(bard.xp||0),Number(bard.expeditions_completed||0));
+      console.log(`[Expedition Repair] Синхронизирован уровень Друида для ${levelUserId}: Lv.${bard.level}.`);
+    }
+  } catch (error) {
+    console.error('[Expedition Repair] Ошибка безопасного восстановления:', error.message);
+  }
+}
+
+applyTargetedExpeditionRepairs();
+
 module.exports = { EXPEDITION_TACTICS, getExpeditionTactic, durationModifiers, rewardPreview, todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, availableExpeditionDurations, activeWorldBoss};

@@ -4,7 +4,7 @@ const { db } = require('../../database/db');
 const { HERO_CLASSES } = require('./heroData');
 
 const MAX_CLASS_LEVEL = 50;
-const CLASS_ALIASES = Object.freeze({ ranger: 'archer', warlock: 'necromancer', druid: 'bard' });
+const CLASS_ALIASES = Object.freeze({ ranger: 'archer', warlock: 'necromancer' });
 
 const CLASS_BONUS_PROFILES = Object.freeze({
   warrior:      { damage: 3.5, hp: 8.0, resistance: 6.0, title: 'Стойкость авангарда' },

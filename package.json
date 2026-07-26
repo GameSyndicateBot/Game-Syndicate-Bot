@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.3.6",
+  "version": "18.3.7",
   "private": true,
-  "description": "Game Syndicate V18.3.6 prestart storage recovery, safe SQLite voice tracking and all V18.3.2-V18.3.5 changes",
+  "description": "Game Syndicate V18.3.7 world boss class balance, 30-second turns, Druid expedition fix and targeted recovery",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

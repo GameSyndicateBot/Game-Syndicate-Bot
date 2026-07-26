@@ -1,7 +1,7 @@
 {
-  "version": "18.3.6",
-  "name": "GS CORE V18.3.6 — PRESTART STORAGE FIX",
-  "buildId": "v18.3.6-prestart-storage-fix-20260726",
-  "build": "sqlite-full-safe-achievement-role-fix",
+  "version": "18.3.7",
+  "name": "GS CORE V18.3.7 — WORLD BOSS & EXPEDITION FIX",
+  "buildId": "v18.3.7-worldboss-expedition-fix-20260726",
+  "build": "archer-mark-necromancer-guardian-expedition-sync",
   "startup": "node index.js"
 }
