@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.3.0",
+  "version": "18.3.2",
   "private": true,
   "description": "Game Syndicate V18.3.0 stronger random minions, affordable hospital and Guild Cook NPC",
   "main": "index.js",

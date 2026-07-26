@@ -316,7 +316,7 @@ async function showBlacksmithRecipe(interaction, recipeKey, notice = '') {
       recipeMaterials(recipe),
     ].filter(Boolean).join('\n'));
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('guild:blacksmith').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('guild:blacksmith:menu').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`guild:blacksmith:craft:${recipeKey}`).setLabel('Создать').setEmoji('🔨').setStyle(ButtonStyle.Success).setDisabled(!recipe.canCraft)
   );
   return interaction.update({ embeds:[embed], components:[guildNavRow('blacksmith'),row] });
@@ -332,7 +332,7 @@ async function showUpgrade(interaction, inventoryId, notice = '') {
     .setDescription([notice,`**Шанс успеха:** ${info.chance}%`,`**Стоимость:** 💠 ${info.cost.dust} Dust`,'','**Материалы**',materials,'',info.canAfford?'✅ Всё готово к улучшению.':'🔒 Не хватает ресурсов.'].filter(Boolean).join('\n'))
     .setFooter({text:'При неудаче уровень и предмет сохраняются, ресурсы расходуются.'});
   const row=new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('guild:blacksmith').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('guild:blacksmith:menu').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`guild:blacksmith:apply:${inventoryId}`).setLabel('Улучшить').setEmoji('⚒️').setStyle(ButtonStyle.Success).setDisabled(!info.canAfford)
   );
   return interaction.update({embeds:[embed],components:[guildNavRow('blacksmith'),row]});
@@ -654,7 +654,7 @@ async function handleComponent(interaction) {
   if (action === 'classes' && parts.length === 2) return showClasses(interaction);
   if (action === 'classes' && parts[2] === 'select') return showClassDetails(interaction, interaction.values?.[0]);
 
-  if (action === 'blacksmith' && parts.length === 2) return showBlacksmith(interaction);
+  if (action === 'blacksmith' && (parts.length === 2 || parts[2] === 'menu')) return showBlacksmith(interaction);
   if (action === 'blacksmith' && parts[2] === 'recipe') return showBlacksmithRecipe(interaction, interaction.values?.[0]);
   if (action === 'blacksmith' && parts[2] === 'craft') {
     const recipeKey = parts.slice(3).join(':');
