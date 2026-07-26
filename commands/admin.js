@@ -122,14 +122,66 @@ module.exports = {
         const target = interaction.options.getUser('user', true);
 
         if (group === 'rpg' && subcommand === 'unstuck') {
-            const active = db.prepare("SELECT id FROM hero_expeditions WHERE user_id=? AND status='active'").all(target.id);
+            const active = db.prepare(`
+                SELECT id, location_key, started_at, ends_at
+                FROM hero_expeditions
+                WHERE user_id = ? AND status = 'active'
+                ORDER BY id DESC
+            `).all(target.id);
+
+            // Никогда не вытаскиваем игрока из реально существующей активной экспедиции.
+            // Даже владелец бота получает отказ, чтобы случайно не потерять прогресс/награду.
+            if (active.length > 0) {
+                return interaction.reply({
+                    content: `⚠️ **${target.username}** сейчас числится в активной экспедиции. Автоматическое освобождение отменено, чтобы не потерять прогресс или награду.`,
+                    flags: MessageFlags.Ephemeral,
+                });
+            }
+
+            const hero = db.prepare(`
+                SELECT status, recovery_until
+                FROM heroes
+                WHERE user_id = ?
+            `).get(target.id);
+
+            if (!hero) {
+                return interaction.reply({
+                    content: `ℹ️ У **${target.username}** нет RPG-героя. Освобождать нечего.`,
+                    flags: MessageFlags.Ephemeral,
+                });
+            }
+
+            const now = Date.now();
+            const recoveryExpired = hero.status === 'wounded'
+                && hero.recovery_until
+                && Number.isFinite(Date.parse(hero.recovery_until))
+                && Date.parse(hero.recovery_until) <= now;
+            const orphanExpeditionState = hero.status === 'expedition';
+
+            if (!orphanExpeditionState && !recoveryExpired) {
+                return interaction.reply({
+                    content: `ℹ️ У **${target.username}** не найдено зависшего RPG-состояния. Текущий статус: **${hero.status || 'ready'}**. Никакие данные не изменены.`,
+                    flags: MessageFlags.Ephemeral,
+                });
+            }
+
             const tx = db.transaction(() => {
-                for (const row of active) db.prepare("UPDATE hero_expeditions SET status='cancelled',resolved_at=CURRENT_TIMESTAMP,result_json=? WHERE id=?").run(JSON.stringify({outcome:'cancelled',reason:'admin_unstuck',rewards:false,returnedSafely:true}),row.id);
                 db.prepare("DELETE FROM hero_expedition_cooldowns WHERE user_id=?").run(target.id);
-                db.prepare("UPDATE heroes SET status='ready',recovery_until=NULL,hp=max_hp,updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(target.id);
+                db.prepare(`
+                    UPDATE heroes
+                    SET status = 'ready',
+                        recovery_until = NULL,
+                        hp = CASE WHEN ? THEN max_hp ELSE hp END,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                `).run(recoveryExpired ? 1 : 0, target.id);
             });
             tx();
-            return interaction.reply({content:`✅ **${target.username}** освобождён из зависшего RPG-состояния. Закрыто активных экспедиций: **${active.length}**. Прогресс, предметы и материалы сохранены.`,flags:MessageFlags.Ephemeral});
+
+            return interaction.reply({
+                content: `✅ У **${target.username}** очищено только подтверждённое зависшее RPG-состояние. Активных экспедиций не было; прогресс, предметы, материалы и награды сохранены.`,
+                flags: MessageFlags.Ephemeral,
+            });
         }
 
         if (group !== 'dust') {

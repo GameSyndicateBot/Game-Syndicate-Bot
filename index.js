@@ -94,12 +94,38 @@ client.once('clientReady', () => {
         }
     }, 60 * 1000);
 
+    // Автоматически исправляем безопасные зависшие RPG-состояния:
+    // дубли активных сессий, статус expedition без активной экспедиции и
+    // просроченное восстановление после ранения.
+    try {
+        const { repairRpgStates } = require('./services/rpgStateRecovery');
+        const repaired = repairRpgStates();
+        console.log(
+            `[RPG State Recovery] duplicate=${repaired.duplicateExpeditionsCancelled}, ` +
+            `orphan=${repaired.orphanHeroesReleased}, ` +
+            `recovered=${repaired.expiredRecoveriesReleased}`
+        );
+    } catch (error) {
+        console.error('[RPG State Recovery] Ошибка запуска:', error);
+    }
+
     // Пересчитываем пропущенные серии реакций и выдаём достижения
     // по уже накопленной статистике и коллекциям карточек.
     setTimeout(async () => {
         try {
             const { repairAchievementData } = require('./services/achievementDataRepair');
             repairAchievementData();
+
+            // Сначала снимаем ошибочно выданные достижения за неполные
+            // карточные коллекции и откатываем их XP/AP/Dust. Только после
+            // строгой проверки запускаем обычную выдачу пропущенных наград.
+            const { auditCollectionAchievements } = require('./services/collectionAchievementAudit');
+            const audit = auditCollectionAchievements();
+            console.log(
+                `[Collection Achievements Audit] checked=${audit.checked}, ` +
+                `revoked=${audit.revoked}, users=${audit.users}, ` +
+                `dustRemoved=${audit.dustRemoved}`
+            );
 
             const { backfillAchievements } = require('./services/achievementBackfill');
             await backfillAchievements(client);

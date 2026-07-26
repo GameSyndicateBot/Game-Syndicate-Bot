@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.3.9",
+  "version": "18.3.10",
   "private": true,
-  "description": "Game Syndicate V18.3.9: collection achievements, profession processing, 500 Dust profession change and RPG unstuck recovery",
+  "description": "Game Syndicate V18.3.10: strict card collection achievements and automatic reward rollback",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
