@@ -11,6 +11,7 @@ const {
 const { addXP } = require('../utils/levelSystem');
 const { checkAchievements } = require('../utils/checkAchievements');
 const { discordIdList } = require('../utils/env');
+const { isSqliteFull, recoverFromSqliteFull, hasMinimumFreeSpace } = require('../utils/sqliteFullRecovery');
 
 const EXCLUDED_VOICE_CHANNEL_IDS = new Set(
     discordIdList('EXCLUDED_VOICE_CHANNEL_IDS', [
@@ -76,6 +77,11 @@ async function settleVoiceSession(member, guild, { close = false } = {}) {
     processingUsers.add(member.id);
 
     try {
+        if (!hasMinimumFreeSpace('/app/shared', Number(process.env.VOICE_MIN_FREE_MB) || 16)) {
+            console.warn(`[Voice Tracking] Мало свободного места; запись ${member.id} временно пропущена.`);
+            return 0;
+        }
+
         const session = getVoiceSession(member.id);
         if (!session) return 0;
 
@@ -147,7 +153,6 @@ async function settleVoiceSession(member, guild, { close = false } = {}) {
         updatePlayer(result.player);
         return seconds;
     } catch (error) {
-        const { isSqliteFull, recoverFromSqliteFull } = require('../utils/sqliteFullRecovery');
         if (isSqliteFull(error)) {
             recoverFromSqliteFull(db, `voice:${member.id}`);
             console.warn(
@@ -187,7 +192,21 @@ async function checkpointCurrentMemberVoice(member) {
 }
 
 async function flushActiveVoiceSessions(client) {
-    const sessions = db.prepare(`SELECT * FROM voice_sessions`).all();
+    if (!hasMinimumFreeSpace('/app/shared', Number(process.env.VOICE_MIN_FREE_MB) || 16)) {
+        console.warn('[Voice Tracking] Тик пропущен: в хранилище критически мало места.');
+        return;
+    }
+
+    let sessions;
+    try {
+        sessions = db.prepare(`SELECT * FROM voice_sessions`).all();
+    } catch (error) {
+        if (isSqliteFull(error)) {
+            recoverFromSqliteFull(db, 'voice:flush-list');
+            return;
+        }
+        throw error;
+    }
 
     for (const session of sessions) {
         const guild = client.guilds.cache.get(session.guild_id);

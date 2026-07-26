@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.3.5",
+  "version": "18.3.6",
   "private": true,
-  "description": "Game Syndicate V18.3.5 storage recovery, safe achievement roles and all V18.3.2-V18.3.4 changes",
+  "description": "Game Syndicate V18.3.6 prestart storage recovery, safe SQLite voice tracking and all V18.3.2-V18.3.5 changes",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

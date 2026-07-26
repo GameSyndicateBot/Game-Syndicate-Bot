@@ -19,6 +19,11 @@ echo '🧹 Устаревшие файлы очищены'
 node /app/scripts/verify-build.js
 
 mkdir -p /app/data /app/shared/backups
+
+# Освобождаем постоянное хранилище ДО копирования файлов и открытия SQLite.
+# Это важно при SQLITE_FULL: старые бэкапы и WAL больше не блокируют запуск обновления.
+node /app/scripts/prestart-storage-recovery.js || true
+
 cp -f /opt/gs-data/achievements.json /app/data/achievements.json
 cp -f /opt/gs-data/cards.json /app/data/cards.json
 chmod -R 777 /app/shared /app/data

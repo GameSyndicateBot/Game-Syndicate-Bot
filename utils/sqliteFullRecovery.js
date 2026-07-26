@@ -51,6 +51,18 @@ function logDiskSpace(targetPath = '/app/shared') {
     }
 }
 
+
+function hasMinimumFreeSpace(targetPath = '/app/shared', minimumMb = 16) {
+    try {
+        if (typeof fs.statfsSync !== 'function') return true;
+        const stats = fs.statfsSync(targetPath);
+        const freeBytes = Number(stats.bavail) * Number(stats.bsize);
+        return freeBytes >= Number(minimumMb) * 1024 * 1024;
+    } catch (_) {
+        return true;
+    }
+}
+
 function recoverFromSqliteFull(db, context = 'unknown') {
     const now = Date.now();
     if (recoveryInProgress || now - lastRecoveryAt < 30_000) return false;
@@ -105,4 +117,5 @@ module.exports = {
     isSqliteFull,
     recoverFromSqliteFull,
     startupStorageMaintenance,
+    hasMinimumFreeSpace,
 };

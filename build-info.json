@@ -1,6 +1,7 @@
 {
-  "version": "18.3.5",
-  "name": "GS CORE V18.3.5 — STORAGE RECOVERY",
-  "buildId": "v18.3.5-storage-recovery-20260726",
-  "build": "sqlite-full-safe-achievement-role-fix"
+  "version": "18.3.6",
+  "name": "GS CORE V18.3.6 — PRESTART STORAGE FIX",
+  "buildId": "v18.3.6-prestart-storage-fix-20260726",
+  "build": "sqlite-full-safe-achievement-role-fix",
+  "startup": "node index.js"
 }
