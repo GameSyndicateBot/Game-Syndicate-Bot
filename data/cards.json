@@ -1417,5 +1417,149 @@
       "final_card": "assets/cards/boss_pack/072_final_card.jpg"
     },
     "image": "assets/cards/boss_pack/072_final_card.jpg"
+  },
+  {
+    "id": 2073,
+    "code": "B-073",
+    "name": "Пиромант",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта класса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/073_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/073_class.jpg"
+  },
+  {
+    "id": 2074,
+    "code": "B-074",
+    "name": "Дуэлянт",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта класса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/074_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/074_class.jpg"
+  },
+  {
+    "id": 2075,
+    "code": "B-075",
+    "name": "Жнец",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта класса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/075_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/075_class.jpg"
+  },
+  {
+    "id": 2076,
+    "code": "B-076",
+    "name": "Повелитель Разума",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта класса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/076_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/076_class.jpg"
+  },
+  {
+    "id": 2077,
+    "code": "B-077",
+    "name": "Друид",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта класса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/077_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/077_class.jpg"
+  },
+  {
+    "id": 2078,
+    "code": "B-078",
+    "name": "Шаман",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта класса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/078_class.jpg"
+    },
+    "image": "assets/cards/boss_pack/078_class.jpg"
+  },
+  {
+    "id": 2079,
+    "code": "B-079",
+    "name": "Хрономант",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта класса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/079_class.png"
+    },
+    "image": "assets/cards/boss_pack/079_class.png"
+  },
+  {
+    "id": 2080,
+    "code": "B-080",
+    "name": "Иллюзионист",
+    "type": "class",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "class",
+    "description": "Специальная карта класса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "class"
+    ],
+    "images": {
+      "class": "assets/cards/boss_pack/080_class.png"
+    },
+    "image": "assets/cards/boss_pack/080_class.png"
   }
 ]
