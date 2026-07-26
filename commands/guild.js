@@ -3,7 +3,7 @@ const {
   StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags,
 } = require('discord.js');
 
-const { getHero, createHero, addHistory } = require('../systems/hero/heroService');
+const { getHero, getLatestExpeditionClassKey, createHero, addHistory } = require('../systems/hero/heroService');
 const { getEffectiveHero, getInventory, getEquipment, getInventoryItem, equipItem, unequipItem, formatBonuses } = require('../systems/hero/itemService');
 const { listRecipes, hydrateRecipe, craft } = require('../systems/hero/craftingService');
 const { getUpgradeInfo, upgradeItem, MAX_UPGRADE } = require('../systems/hero/upgradeService');
@@ -20,6 +20,7 @@ const { PROFESSIONS, SPECIALIZATIONS, getProfession, getProfessionCounts, getPro
 const { ITEMS } = require('../systems/hero/itemData');
 const { listOpenOrders, stats: getOrderStats } = require('../systems/hero/orderBoardService');
 const { listCookRecipes, hydrateCookRecipe, cook } = require('../systems/hero/cookService');
+const { sourceFor, missingRecipeSummary, missingCookSummary, recipeState, cookState } = require('../systems/hero/craftingUx');
 
 const GUILD_CHANNEL_ID = '1530165282512044032';
 const EXPEDITION_CHANNEL_ID = '1529566430301782017';
@@ -119,6 +120,7 @@ async function showProfile(interaction) {
   const base = getHero(interaction.user.id);
   if (!base) return interaction.reply({ content: '❌ Сначала создай героя кнопкой **«Создать героя»**.', flags: MessageFlags.Ephemeral });
   const hero = getEffectiveHero(base);
+  hero.display_class_key = getLatestExpeditionClassKey(interaction.user.id) || hero.class_key;
   const buffer = await createHeroCard(hero, interaction.user);
   return interaction.reply({
     content: `👤 **Профиль героя ${hero.name}**`,
@@ -264,32 +266,87 @@ function recipeMaterials(recipe) {
   return recipe.materials.map(m => `${m.icon} ${m.name}: **${m.owned}/${m.required}**${m.owned >= m.required ? ' ✅' : ' ❌'}`).join('\n');
 }
 
-async function showBlacksmith(interaction, notice = '') {
+const BLACKSMITH_CATEGORIES = Object.freeze({
+  all: { label: 'Все рецепты', emoji: '📚' },
+  weapon: { label: 'Оружие', emoji: '⚔️' },
+  armor: { label: 'Броня', emoji: '🛡️' },
+  jewelry: { label: 'Украшения', emoji: '💍' },
+  consumable: { label: 'Расходники', emoji: '📦' },
+  available: { label: 'Доступные', emoji: '⭐' },
+  locked: { label: 'Заблокированные', emoji: '🔒' },
+});
+
+function blacksmithCategoryFor(recipe) {
+  const type = recipe?.item?.type;
+  if (type === 'weapon') return 'weapon';
+  if (['armor', 'helmet', 'gloves', 'boots', 'backpack'].includes(type)) return 'armor';
+  if (['ring', 'amulet'].includes(type)) return 'jewelry';
+  if (type === 'consumable') return 'consumable';
+  return 'all';
+}
+
+function filterBlacksmithRecipes(recipes, category = 'all') {
+  if (category === 'available') return recipes.filter(recipe => recipe.canCraft);
+  if (category === 'locked') return recipes.filter(recipe => !recipe.canCraft);
+  if (category === 'all') return recipes;
+  return recipes.filter(recipe => blacksmithCategoryFor(recipe) === category);
+}
+
+function blacksmithCategoryRow(selected = 'all') {
+  const options = Object.entries(BLACKSMITH_CATEGORIES).map(([value, data]) => ({
+    label: data.label,
+    value,
+    emoji: data.emoji,
+    default: value === selected,
+  }));
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('guild:blacksmith:category')
+      .setPlaceholder('Выбрать категорию рецептов')
+      .addOptions(options)
+  );
+}
+
+async function showBlacksmith(interaction, notice = '', category = 'all') {
   const hero = getHero(interaction.user.id);
   if (!hero) return interaction.reply({ content: '❌ Сначала создай героя.', flags: MessageFlags.Ephemeral });
-  const recipes = listRecipes(interaction.user.id).filter(r => r.npc !== 'Алхимик Лира');
+  if (!BLACKSMITH_CATEGORIES[category]) category = 'all';
+  const allRecipes = listRecipes(interaction.user.id).filter(r => r.npc !== 'Алхимик Лира');
+  const recipes = filterBlacksmithRecipes(allRecipes, category);
   const items = getInventory(interaction.user.id, { limit: 100 }).filter(i => i.slot && Number(i.upgrade_level || 0) < MAX_UPGRADE);
-  const readyRecipes = recipes.filter(r => r.canCraft).length;
+  const readyRecipes = allRecipes.filter(r => r.canCraft).length;
+  const unlockedRecipes = allRecipes.filter(r => r.heroLevel >= r.level).length;
+  const categoryInfo = BLACKSMITH_CATEGORIES[category];
   const embed = new EmbedBuilder().setColor(0xF59E0B).setTitle('⚒️ Кузница Гильдии')
     .setDescription([
       notice,
-      '*Здесь можно создавать экипировку и усиливать найденные предметы до +10.*',
+      '*Кузнец создаёт оружие, броню и украшения из материалов, найденных в экспедициях.*',
       '',
-      `🔨 **Рецептов:** ${recipes.length} · доступно сейчас: **${readyRecipes}**`,
+      '📌 **Как открыть рецепт:** достигни указанного уровня героя. Рецепт откроется автоматически.',
+      '📦 **Как создать предмет:** после открытия собери Dust и все перечисленные материалы.',
+      '✨ **Как улучшать:** выбери уже найденный или созданный предмет в меню улучшения.',
+      '',
+      `🔨 **Рецептов:** ${allRecipes.length} · открыто по уровню: **${unlockedRecipes}** · готово к созданию: **${readyRecipes}**`,
+      `🗂️ **Категория:** ${categoryInfo.emoji} ${categoryInfo.label} · показано **${recipes.length}**`,
       `✨ **Предметов для улучшения:** **${items.length}**`,
       '',
-      'Выбери рецепт или предмет в меню ниже.',
+      'Состояния: ✅ можно создать · 🟡 уровень открыт, не хватает ресурсов · 🔒 ещё не достигнут уровень.',
     ].filter(Boolean).join('\n'))
-    .setFooter({ text: `Герой: ${hero.name} · ресурсы при неудачном улучшении расходуются, предмет не ломается` });
+    .setFooter({ text: `Герой: ${hero.name} · уровень ${hero.level} · рецепты проверяются по реальному уровню героя` });
 
-  const components = [guildNavRow('blacksmith')];
+  const components = [guildNavRow('blacksmith'), blacksmithCategoryRow(category)];
   if (recipes.length) components.push(new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder().setCustomId('guild:blacksmith:recipe').setPlaceholder('🔨 Выбрать рецепт')
-      .addOptions(recipes.slice(0,25).map(r => ({
-        label:r.item.name.slice(0,100), value:r.key, emoji:r.canCraft?'✅':'🔒',
-        description:`ур. ${r.level} · ${r.dust} Dust · ${r.canCraft?'можно создать':'не хватает ресурсов'}`.slice(0,100)
-      })))
+    new StringSelectMenuBuilder().setCustomId(`guild:blacksmith:recipe:${category}`).setPlaceholder('🔨 Выбрать рецепт и посмотреть условия')
+      .addOptions(recipes.slice(0,25).map(r => {
+        const state = recipeState(r);
+        const missing = missingRecipeSummary(r);
+        return {
+          label:r.item.name.slice(0,100), value:r.key, emoji:state.icon,
+          description:`${state.label}${missing.length ? ` · нужно: ${missing.join(', ')}` : ''}`.slice(0,100)
+        };
+      }))
   ));
+  else embed.addFields({ name:'В этой категории пока пусто', value:'Выбери другую категорию или продолжай развивать героя и собирать ресурсы.' });
   if (items.length) components.push(new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder().setCustomId('guild:blacksmith:upgrade').setPlaceholder('✨ Выбрать предмет для улучшения')
       .addOptions(items.slice(0,25).map(i => ({
@@ -297,27 +354,43 @@ async function showBlacksmith(interaction, notice = '') {
         description:`${RARITY_LABELS[i.rarity] || i.rarity} · следующий уровень +${Number(i.upgrade_level || 0)+1}`.slice(0,100)
       })))
   ));
-  return interaction.reply({ embeds:[embed], components, flags:MessageFlags.Ephemeral });
+  const payload = { embeds:[embed], components };
+  const isEphemeralMessage = Boolean(interaction.message?.flags?.has?.(MessageFlags.Ephemeral));
+  return isEphemeralMessage ? interaction.update(payload) : interaction.reply({ ...payload, flags:MessageFlags.Ephemeral });
 }
 
-async function showBlacksmithRecipe(interaction, recipeKey, notice = '') {
+async function showBlacksmithRecipe(interaction, recipeKey, notice = '', category = 'all') {
   const recipe = hydrateRecipe(recipeKey, interaction.user.id);
   if (!recipe || recipe.npc === 'Алхимик Лира') return interaction.update({ content:'❌ Рецепт не найден.', embeds:[], components:[guildNavRow('blacksmith')] });
+  const state = recipeState(recipe);
+  const missing = missingRecipeSummary(recipe);
+  const sources = recipe.materials.map(m => `${m.icon} **${m.name}:** ${sourceFor(m.key)}`).join('\n');
+  const resultText = recipe.canCraft
+    ? '✅ Всё готово — предмет можно создать прямо сейчас.'
+    : recipe.heroLevel < recipe.level
+      ? `🔒 Рецепт автоматически откроется на **${recipe.level} уровне**. Сейчас уровень **${recipe.heroLevel}**.`
+      : `🟡 Уровень уже открыт. Осталось собрать: **${missing.join(', ')}**.`;
   const embed = new EmbedBuilder().setColor(recipe.canCraft?0x22C55E:0xF59E0B).setTitle(`🔨 ${recipe.item.name}`)
     .setDescription([
       notice,
       recipe.item.description,
       '',
+      `📍 **Статус:** ${state.icon} ${state.label}`,
       `⭐ **Редкость:** ${RARITY_LABELS[recipe.item.rarity] || recipe.item.rarity}`,
-      `🧙 **Уровень:** ${recipe.level} · у тебя ${recipe.heroLevel}`,
-      `💠 **Стоимость:** ${recipe.dust} Dust · у тебя ${recipe.dustBalance}`,
+      `🧙 **Уровень героя:** ${recipe.heroLevel}/${recipe.level} ${recipe.heroLevel >= recipe.level ? '✅' : '❌'}`,
+      `💠 **Dust:** ${recipe.dustBalance}/${recipe.dust} ${recipe.dustBalance >= recipe.dust ? '✅' : '❌'}`,
       '',
       '**Материалы**',
       recipeMaterials(recipe),
+      '',
+      '**Где добыть**',
+      sources,
+      '',
+      resultText,
     ].filter(Boolean).join('\n'));
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('guild:blacksmith:menu').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`guild:blacksmith:craft:${recipeKey}`).setLabel('Создать').setEmoji('🔨').setStyle(ButtonStyle.Success).setDisabled(!recipe.canCraft)
+    new ButtonBuilder().setCustomId(`guild:blacksmith:menu:${category}`).setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`guild:blacksmith:craft:${category}:${recipeKey}`).setLabel('Создать').setEmoji('🔨').setStyle(ButtonStyle.Success).setDisabled(!recipe.canCraft)
   );
   return interaction.update({ embeds:[embed], components:[guildNavRow('blacksmith'),row] });
 }
@@ -399,13 +472,17 @@ function cookRows(recipes) {
   const rows = [];
   if (recipes.length) {
     rows.push(new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder().setCustomId('guild:cook:recipe').setPlaceholder('🍲 Выбрать блюдо')
-        .addOptions(recipes.map(r => ({
-          label: r.item.name,
-          value: r.key,
-          emoji: r.canCook ? '✅' : '🔒',
-          description: `Уровень ${r.level} · ${r.canCook ? 'можно приготовить' : 'не хватает ингредиентов'}`.slice(0, 100),
-        })))
+      new StringSelectMenuBuilder().setCustomId('guild:cook:recipe').setPlaceholder('🍲 Выбрать блюдо и посмотреть условия')
+        .addOptions(recipes.map(r => {
+          const state = cookState(r);
+          const missing = missingCookSummary(r);
+          return {
+            label: r.item.name,
+            value: r.key,
+            emoji: state.icon,
+            description: `${state.label}${missing.length ? ` · нужно: ${missing.join(', ')}` : ''}`.slice(0, 100),
+          };
+        }))
     ));
   }
   rows.push(new ActionRowBuilder().addComponents(
@@ -419,12 +496,24 @@ async function showCook(interaction, notice = '') {
   if (!hero) return interaction.reply({ content:'❌ Сначала создай героя.', flags:MessageFlags.Ephemeral });
   const recipes = listCookRecipes(interaction.user.id);
   const lines = recipes.map(r => {
-    const ingredients = r.ingredients.map(i => `${i.item.name} ${i.owned}/${i.required}`).join(' · ');
-    return `${r.canCook ? '✅' : '🔒'} **${r.item.name}** · ур. ${r.level}\n${r.item.description}\n🧺 ${ingredients}`;
+    const state = cookState(r);
+    const missing = missingCookSummary(r);
+    return `${state.icon} **${r.item.name}** — ${state.label}
+${r.item.description}
+${missing.length ? `Нужно: ${missing.join(', ')}` : 'Все условия выполнены.'}`;
   });
   const embed = new EmbedBuilder().setColor(0xF59E0B).setTitle('👨‍🍳 Повар Гильдии — Марко')
-    .setDescription([notice, 'Марко готовит походные блюда из ингредиентов, добытых героями в экспедициях. Приготовление не требует Dust.', '', ...lines].filter(Boolean).join('\n\n').slice(0, 4000))
-    .setFooter({ text:'Готовое блюдо появится в расходниках. Использовать: /use или через Алхимика.' });
+    .setDescription([
+      notice,
+      'Марко готовит походные блюда из ингредиентов, добытых в экспедициях. **Dust не требуется.**',
+      '',
+      '📌 **Когда блюдо доступно:** достигни указанного уровня героя — рецепт откроется автоматически.',
+      '🧺 **Что нужно после открытия:** собери все ингредиенты в походах или через мирные профессии.',
+      '🎒 Готовое блюдо попадает в расходники и применяется перед нужной активностью.',
+      '',
+      ...lines,
+    ].filter(Boolean).join('\n\n').slice(0, 4000))
+    .setFooter({ text:`Герой: ${hero.name} · уровень ${hero.level} · использовать блюдо можно через Алхимика` });
   const payload = { embeds:[embed], components:cookRows(recipes) };
   return interaction.message?.flags?.has?.(MessageFlags.Ephemeral)
     ? interaction.update(payload)
@@ -434,9 +523,32 @@ async function showCook(interaction, notice = '') {
 async function showCookRecipe(interaction, recipeKey, notice = '') {
   const recipe = hydrateCookRecipe(interaction.user.id, recipeKey);
   if (!recipe) return showCook(interaction, '❌ Рецепт не найден.');
+  const state = cookState(recipe);
+  const missing = missingCookSummary(recipe);
   const ingredientText = recipe.ingredients.map(i => `${i.owned >= i.required ? '✅' : '❌'} **${i.item.name}:** ${i.owned}/${i.required}`).join('\n');
-  const embed = new EmbedBuilder().setColor(0xF59E0B).setTitle(`🍲 ${recipe.item.name}`)
-    .setDescription([notice, recipe.item.description, '', `⭐ **Требуемый уровень:** ${recipe.level}`, '', '**Ингредиенты:**', ingredientText, '', recipe.canCook ? '✅ Всё готово. Марко может приготовить блюдо.' : '🔒 Собери недостающие ингредиенты в походах.'].filter(Boolean).join('\n'));
+  const sources = recipe.ingredients.map(i => `• **${i.item.name}:** ${sourceFor(i.key)}`).join('\n');
+  const resultText = recipe.canCook
+    ? '✅ Всё готово. Марко может приготовить блюдо.'
+    : recipe.heroLevel < recipe.level
+      ? `🔒 Блюдо автоматически откроется на **${recipe.level} уровне**. Сейчас уровень **${recipe.heroLevel}**.`
+      : `🟡 Уровень открыт. Осталось собрать: **${missing.join(', ')}**.`;
+  const embed = new EmbedBuilder().setColor(recipe.canCook ? 0x22C55E : 0xF59E0B).setTitle(`🍲 ${recipe.item.name}`)
+    .setDescription([
+      notice,
+      recipe.item.description,
+      '',
+      `📍 **Статус:** ${state.icon} ${state.label}`,
+      `🧙 **Уровень героя:** ${recipe.heroLevel}/${recipe.level} ${recipe.heroLevel >= recipe.level ? '✅' : '❌'}`,
+      '💠 **Dust:** не требуется',
+      '',
+      '**Ингредиенты**', ingredientText,
+      '',
+      '**Где добыть**', sources,
+      '',
+      resultText,
+      '',
+      '🎒 После приготовления блюдо появится в расходниках. Применяй его через меню Алхимика.',
+    ].filter(Boolean).join('\n'));
   const rows = [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`guild:cook:make:${recipe.key}`).setLabel('Приготовить').setEmoji('🍳').setStyle(ButtonStyle.Success).setDisabled(!recipe.canCook),
@@ -654,16 +766,19 @@ async function handleComponent(interaction) {
   if (action === 'classes' && parts.length === 2) return showClasses(interaction);
   if (action === 'classes' && parts[2] === 'select') return showClassDetails(interaction, interaction.values?.[0]);
 
-  if (action === 'blacksmith' && (parts.length === 2 || parts[2] === 'menu')) return showBlacksmith(interaction);
-  if (action === 'blacksmith' && parts[2] === 'recipe') return showBlacksmithRecipe(interaction, interaction.values?.[0]);
+  if (action === 'blacksmith' && parts.length === 2) return showBlacksmith(interaction);
+  if (action === 'blacksmith' && parts[2] === 'menu') return showBlacksmith(interaction, '', parts[3] || 'all');
+  if (action === 'blacksmith' && parts[2] === 'category') return showBlacksmith(interaction, '', interaction.values?.[0] || 'all');
+  if (action === 'blacksmith' && parts[2] === 'recipe') return showBlacksmithRecipe(interaction, interaction.values?.[0], '', parts[3] || 'all');
   if (action === 'blacksmith' && parts[2] === 'craft') {
-    const recipeKey = parts.slice(3).join(':');
+    const category = BLACKSMITH_CATEGORIES[parts[3]] ? parts[3] : 'all';
+    const recipeKey = parts.slice(BLACKSMITH_CATEGORIES[parts[3]] ? 4 : 3).join(':');
     const result = craft(interaction.user.id, recipeKey, 1);
     const notice = result.ok ? `✅ Создано: **${result.recipe.item.name}**. Потрачено ${result.spent} Dust.` :
       result.reason === 'materials' ? '❌ Не хватает материалов.' :
       result.reason === 'dust' ? '❌ Не хватает Dust.' :
       result.reason === 'level' ? '❌ Недостаточный уровень героя.' : '❌ Создание не удалось.';
-    return showBlacksmithRecipe(interaction, recipeKey, notice);
+    return showBlacksmithRecipe(interaction, recipeKey, notice, category);
   }
   if (action === 'blacksmith' && parts[2] === 'upgrade') return showUpgrade(interaction, interaction.values?.[0]);
   if (action === 'blacksmith' && parts[2] === 'apply') {

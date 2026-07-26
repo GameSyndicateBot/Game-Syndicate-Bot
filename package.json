@@ -2,7 +2,7 @@
   "name": "game-syndicate-bot",
   "version": "18.3.8",
   "private": true,
-  "description": "Game Syndicate V18.3.8 boss pressure, healer balance, Guardian aggro and guild profile class/emoji hotfix",
+  "description": "Game Syndicate V18.3.8 final: boss balance, healer balance, Guardian aggro, last expedition class profile, Crafting UX and recipe categories",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

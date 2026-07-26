@@ -13,6 +13,7 @@ const { listRecipes, hydrateRecipe, craft } = require('../systems/hero/craftingS
 const { getConsumables, getActiveBuffs, useConsumable } = require('../systems/hero/alchemyService');
 const { ALCHEMY_EFFECTS } = require('../systems/hero/alchemyData');
 const { RARITY_LABELS } = require('../systems/hero/itemData');
+const { sourceFor, missingRecipeSummary, recipeState } = require('../systems/hero/craftingUx');
 
 const COLOR = 0x7C3AED;
 const NPC = 'Алхимик Лира';
@@ -81,6 +82,7 @@ function homeView(userId) {
       '*«Хороший эликсир спасает поход. Плохой — делает его интереснее.»*',
       '',
       'Лира превращает материалы из экспедиций в зелья, эликсиры, свитки и боевые реагенты.',
+      'Новые рецепты открываются автоматически с уровнем героя. В разделе «Рецепты» видно точное условие, недостающие ресурсы и места добычи.',
       '',
       `📖 **Рецепты:** ${recipes.length} · можно создать сейчас: **${ready}**`,
       `🎒 **Расходники в сумке:** **${itemCount}**`,
@@ -96,29 +98,43 @@ function homeView(userId) {
 function recipesView(userId) {
   const recipes = listRecipes(userId).filter(r => r.npc === NPC);
   const ready = recipes.filter(r => r.canCraft).length;
+  const unlocked = recipes.filter(r => r.heroLevel >= r.level).length;
   const lines = recipes.map(r => {
-    const state = r.canCraft ? '✅' : r.heroLevel < r.level ? '🔒' : '❌';
-    return `${state} **${r.item.name}** · ур. ${r.level} · 💠 ${r.dust}\n${r.item.description}`;
+    const state = recipeState(r);
+    const missing = missingRecipeSummary(r);
+    return `${state.icon} **${r.item.name}** — ${state.label}
+${r.item.description}
+${missing.length ? `Нужно: ${missing.join(', ')}` : 'Все условия выполнены.'}`;
   });
 
   const embed = new EmbedBuilder()
     .setColor(COLOR)
     .setTitle('📖 Рецепты Лиры')
-    .setDescription(lines.join('\n\n').slice(0, 4000) || 'Рецептов пока нет.')
-    .setFooter({ text: `Доступно сейчас: ${ready}/${recipes.length} · выбери рецепт ниже` });
+    .setDescription([
+      '📌 Рецепты открываются автоматически при достижении указанного уровня героя.',
+      '🧪 После открытия собери Dust и материалы из экспедиций, сундуков и событий.',
+      '✅ можно создать · 🟡 уровень открыт, не хватает ресурсов · 🔒 нужен более высокий уровень.',
+      '',
+      ...lines,
+    ].join('\n\n').slice(0, 4000) || 'Рецептов пока нет.')
+    .setFooter({ text: `Открыто по уровню: ${unlocked}/${recipes.length} · готово: ${ready}/${recipes.length}` });
 
   const components = [navRow(userId, 'recipes'), guildReturnRow(userId)];
   if (recipes.length) {
     components.push(new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(cid(userId, 'recipe'))
-        .setPlaceholder('Выбрать рецепт')
-        .addOptions(recipes.slice(0, 25).map(r => ({
-          label: r.item.name.slice(0, 100),
-          description: `${r.canCraft ? 'Можно создать' : `Нужен ур. ${r.level} и ресурсы`} · ${r.dust} Dust`.slice(0, 100),
-          value: r.key,
-          emoji: r.canCraft ? '✅' : '🔒',
-        }))),
+        .setPlaceholder('Выбрать рецепт и посмотреть условия')
+        .addOptions(recipes.slice(0, 25).map(r => {
+          const state = recipeState(r);
+          const missing = missingRecipeSummary(r);
+          return {
+            label: r.item.name.slice(0, 100),
+            description: `${state.label}${missing.length ? ` · нужно: ${missing.join(', ')}` : ''}`.slice(0, 100),
+            value: r.key,
+            emoji: state.icon,
+          };
+        })),
     ));
   }
   return { embeds: [embed], components };
@@ -135,26 +151,43 @@ function recipeView(userId, key, notice = '') {
   const recipe = hydrateRecipe(key, userId);
   if (!recipe || recipe.npc !== NPC) return recipesView(userId);
   const effect = ALCHEMY_EFFECTS[recipe.itemKey];
-  const missingLevel = recipe.heroLevel < recipe.level;
+  const state = recipeState(recipe);
+  const missing = missingRecipeSummary(recipe);
+  const sources = recipe.materials.map(m => `${m.icon} **${m.name}:** ${sourceFor(m.key)}`).join('\n');
+  const resultText = recipe.canCraft
+    ? '✅ Все условия выполнены — предмет можно создать.'
+    : recipe.heroLevel < recipe.level
+      ? `🔒 Рецепт автоматически откроется на **${recipe.level} уровне**. Сейчас уровень **${recipe.heroLevel}**.`
+      : `🟡 Уровень открыт. Осталось собрать: **${missing.join(', ')}**.`;
 
   const embed = new EmbedBuilder()
     .setColor(recipe.canCraft ? 0x22C55E : COLOR)
     .setTitle(`${effect?.icon || '🧪'} ${recipe.item.name}`)
     .setDescription([
-      notice ? `${notice}\n` : '',
+      notice ? `${notice}
+` : '',
       recipe.item.description,
       recipe.item.lore ? `*${recipe.item.lore}*` : '',
       '',
+      `📍 **Статус:** ${state.icon} ${state.label}`,
       `⭐ **Редкость:** ${RARITY_LABELS[recipe.item.rarity] || recipe.item.rarity}`,
-      `🧙 **Требуемый уровень:** ${recipe.level} ${missingLevel ? `(у тебя ${recipe.heroLevel}) ❌` : '✅'}`,
-      `💠 **Стоимость:** ${recipe.dust} Dust · у тебя ${recipe.dustBalance} Dust ${recipe.dustBalance >= recipe.dust ? '✅' : '❌'}`,
+      `🧙 **Уровень героя:** ${recipe.heroLevel}/${recipe.level} ${recipe.heroLevel >= recipe.level ? '✅' : '❌'}`,
+      `💠 **Dust:** ${recipe.dustBalance}/${recipe.dust} ${recipe.dustBalance >= recipe.dust ? '✅' : '❌'}`,
       effect ? `⚗️ **Эффект:** ${effect.description}` : '',
       bonusText(effect?.bonuses || recipe.item.bonuses) ? `📊 **Бонус:** ${bonusText(effect?.bonuses || recipe.item.bonuses)}` : '',
       '',
       '**Материалы**',
       materialText(recipe),
-    ].filter(Boolean).join('\n'))
-    .setFooter({ text: recipe.canCraft ? 'Все ресурсы собраны — предмет можно создать.' : 'Недостающие ресурсы добываются в экспедициях и сундуках.' });
+      '',
+      '**Где добыть**',
+      sources,
+      '',
+      resultText,
+      '',
+      effect?.context === 'world_boss' ? '👹 Предмет применяется перед следующим World Boss и расходуется при активации эффекта.' :
+        effect?.context === 'expedition' ? '🗺️ Предмет применяется перед следующей экспедицией и расходуется при старте похода.' :
+        effect?.kind === 'instant' ? '❤️ Предмет используется сразу из сумки Алхимика.' : '',
+    ].filter(Boolean).join('\n'));
 
   const back = new ButtonBuilder().setCustomId(cid(userId, 'recipes')).setLabel('К рецептам').setEmoji('⬅️').setStyle(ButtonStyle.Secondary);
   const create = new ButtonBuilder().setCustomId(cid(userId, 'craft', `${key}:1`)).setLabel('Создать 1').setEmoji('⚒️').setStyle(ButtonStyle.Success).setDisabled(!canCraftQuantity(recipe, 1));
