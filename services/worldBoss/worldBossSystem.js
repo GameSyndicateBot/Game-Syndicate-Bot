@@ -16,7 +16,7 @@ const GAME_CHANNELS = require('../../config/gameChannels');
 
 const CHANNEL_ID = GAME_CHANNELS.worldBoss;
 const AUTO_SCHEDULE_ENABLED = String(process.env.WORLD_BOSS_AUTO_SCHEDULE ?? 'true').toLowerCase() !== 'false';
-const REGISTRATION_MS = 10 * 60 * 1000;
+const REGISTRATION_MS = 5 * 60 * 1000;
 const ROLL_MS = 30 * 1000;
 const CHOICE_MS = 30 * 1000;
 const TURN_MS = 30 * 1000;
@@ -97,10 +97,45 @@ function setTimer(id, fn, ms) { clearTimer(id); const t = setTimeout(fn, Math.ma
 function addLog(b, text) { const s = stateOf(b); s.log = [...(s.log || []), text].slice(-40); saveState(b, s); return s; }
 
 function rolePlan(n) {
-  if (n <= 4) return { tank: 1, healer: 1, dps: 2, support: 0 };
-  if (n <= 7) { const dps = Math.max(2, Math.ceil(n / 3)); return { tank: 1, healer: 1, dps, support: n - 2 - dps }; }
-  const tank = 2, healer = 2, dps = Math.max(3, Math.ceil(n * 0.4));
-  return { tank, healer, dps, support: Math.max(0, n - tank - healer - dps) };
+  const count = Math.max(1, Number(n || 1));
+  if (count <= 5) return { tankMin: 1, tankMax: 1, healerMin: 1, healerMax: 1 };
+  if (count <= 9) return { tankMin: 1, tankMax: 1, healerMin: 2, healerMax: 2 };
+  return { tankMin: 2, tankMax: 2, healerMin: 2, healerMax: 3 };
+}
+function selectedRoleCounts(battleId) {
+  const rows = db.prepare('SELECT class_key FROM world_boss_players WHERE battle_id=? AND class_key IS NOT NULL').all(battleId);
+  return rows.reduce((out, row) => {
+    const role = CLASSES[row.class_key]?.role;
+    if (role) out[role] = Number(out[role] || 0) + 1;
+    return out;
+  }, { tank: 0, healer: 0, dps: 0, support: 0 });
+}
+function allowedClassSlots(battleId, state) {
+  const available = state.availableClasses || [];
+  const total = (state.classOrder || []).length;
+  const remaining = Math.max(0, total - Number(state.classChoiceIndex || 0));
+  const plan = rolePlan(total);
+  const counts = selectedRoleCounts(battleId);
+  const tankNeed = Math.max(0, plan.tankMin - counts.tank);
+  const healerNeed = Math.max(0, plan.healerMin - counts.healer);
+  const totalNeed = tankNeed + healerNeed;
+  const forcedRoles = remaining <= totalNeed
+    ? new Set([...(tankNeed ? ['tank'] : []), ...(healerNeed ? ['healer'] : [])])
+    : null;
+  return available.map((key, index) => ({ key, index })).filter(({ key }) => {
+    const role = CLASSES[key]?.role;
+    if (!role) return false;
+    if (forcedRoles) return forcedRoles.has(role);
+    if (role === 'tank' && counts.tank >= plan.tankMax) return false;
+    if (role === 'healer' && counts.healer >= plan.healerMax) return false;
+    return true;
+  });
+}
+function roleRequirementText(battleId, state) {
+  const total = (state.classOrder || []).length;
+  const plan = rolePlan(total);
+  const counts = selectedRoleCounts(battleId);
+  return `Танки: **${counts.tank}/${plan.tankMin}** • Хилы: **${counts.healer}/${plan.healerMin}${plan.healerMax > plan.healerMin ? `–${plan.healerMax}` : ''}**`;
 }
 function buildClassPool(n) {
   // В меню всегда присутствуют все 12 классов хотя бы по одному разу.
@@ -277,7 +312,7 @@ async function startRegistration(client, { manual = false } = {}) {
     const info = db.prepare(`INSERT INTO world_boss_battles(channel_id,boss_card_id,boss_name,boss_hp,boss_max_hp,status,registration_ends_at,state_json,created_at) VALUES(?,?,?,?,?,'registration',?,?,?)`).run(CHANNEL_ID, boss.cardId, boss.name, boss.baseHp, boss.baseHp, now + REGISTRATION_MS, JSON.stringify(st), now);
     const id = Number(info.lastInsertRowid); createdBattleId = id;
     const b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
-    const msg = await ch.send({ content: '## 🌍 GS WORLD BOSS', embeds: [buildEmbed(b, [])], components: buttons(b) });
+    const msg = await ch.send({ content: '@everyone\n## 🌍 GS WORLD BOSS\n⏳ Регистрация открыта на **5 минут**.', allowedMentions: { parse: ['everyone'] }, embeds: [buildEmbed(b, [])], components: buttons(b) });
     db.prepare('UPDATE world_boss_battles SET message_id=? WHERE id=?').run(msg.id, id);
     await refresh(id);
     setTimer(id, () => beginBattle(id).catch(console.error), REGISTRATION_MS); return { ok: true, id };
@@ -381,8 +416,11 @@ function armStageTimer(id) {
 }
 async function autoChooseClass(id) {
   const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='class_select'").get(id); if (!b) return;
-  const s = stateOf(b), user = s.classOrder?.[s.classChoiceIndex], available = s.availableClasses || []; if (!user || !available.length) return; const slotIndex = rand(0, available.length - 1);
-  await assignChosenClass(id, user, `${slotIndex}:${available[slotIndex]}`, true);
+  const s = stateOf(b), user = s.classOrder?.[s.classChoiceIndex];
+  const slots = allowedClassSlots(id, s);
+  if (!user || !slots.length) return;
+  const picked = pick(slots);
+  await assignChosenClass(id, user, `${picked.index}:${picked.key}`, true);
 }
 async function assignChosenClass(id, user, key, auto = false) {
   let b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='class_select'").get(id); if (!b) return { ok: false };
@@ -394,6 +432,8 @@ async function assignChosenClass(id, user, key, auto = false) {
   if (!Number.isInteger(pos) || pos < 0 || s.availableClasses?.[pos] !== classKey) pos = (s.availableClasses || []).indexOf(classKey);
   if (pos < 0) return { ok: false, reason: 'taken' };
   classKey = s.availableClasses[pos]; const c = CLASSES[classKey]; if (!c) return { ok: false, reason: 'class' };
+  const allowed = allowedClassSlots(id, s);
+  if (!allowed.some(slot => slot.index === pos && slot.key === classKey)) return { ok: false, reason: 'role_required' };
   s.availableClasses.splice(pos, 1); s.classChoiceIndex += 1; s.log.push(`${auto ? '⏱️ Автовыбор:' : '✅'} <@${user}> — ${roleIcon(c.role)} **${c.name}**.`); saveState(b, s);
   const joinedPlayer = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, user);
   const playerWithClass = {...joinedPlayer,class_key:classKey};
@@ -857,20 +897,29 @@ async function summonsAct(b) {
     const detail = ensureSummonDetail(state, summon);
     const ownerPlayer = battlePlayers(b.id).find(p => p.user_id === owner);
 
-    if (summon.support && summon.type === 'angel') {
-      let healed = 0;
-      for (const target of battlePlayers(b.id).filter(p => p.status === 'alive')) {
-        healed += healPlayer(b.id, owner, target, rand(...(summon.heal || [12, 20])));
-      }
-      const current = healingEntries.get(key) || { owner, name: summon.name, icon: summon.icon || '👼', healing: 0, count: 0 };
-      current.healing += healed;
-      current.count += 1;
-      detail.healing += healed;
-      detail.attacks += 1;
-      healingEntries.set(key, current);
+    if (summon.support) {
+      // Поддерживающие тотемы не имеют массива damage и не должны пытаться атаковать.
+      // Ранее rand(...summon.damage) падал на Тотеме защиты в конце хода последнего игрока,
+      // из-за чего раунд зависал и автоатака больше не запускалась.
+      if (summon.type === 'angel' || summon.type === 'healing_spirit') {
+        let healed = 0;
+        const healRange = Array.isArray(summon.heal)
+          ? summon.heal
+          : summon.type === 'healing_spirit' ? [10, 16] : [12, 20];
+        for (const target of battlePlayers(b.id).filter(p => p.status === 'alive')) {
+          healed += healPlayer(b.id, owner, target, rand(...healRange));
+        }
+        const current = healingEntries.get(key) || { owner, name: summon.name, icon: summon.icon || '👼', healing: 0, count: 0 };
+        current.healing += healed;
+        current.count += 1;
+        detail.healing += healed;
+        detail.attacks += 1;
+        healingEntries.set(key, current);
 
-      state.summonStats[owner] = state.summonStats[owner] || { damage: 0, absorbed: 0, healing: 0 };
-      state.summonStats[owner].healing += healed;
+        state.summonStats[owner] = state.summonStats[owner] || { damage: 0, absorbed: 0, healing: 0 };
+        state.summonStats[owner].healing += healed;
+      }
+      // Тотем силы и Тотем защиты дают постоянный эффект через state и не атакуют.
       continue;
     }
 
@@ -949,7 +998,33 @@ async function nextTurn(id, previousAlive = null) {
     let roundState = stateOf(b);
     roundState.playerActionsThisRound = 0;
     saveState(b, roundState);
-    await summonsAct(b); b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (b.boss_hp <= 0) return finish(id, true); await bossTurn(id); b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); alive = battlePlayers(id).filter(x => x.status === 'alive'); if (!alive.length) return finish(id, false); ni = 0; db.prepare('UPDATE world_boss_battles SET round_no=round_no+1 WHERE id=?').run(id); }
+
+    // Ошибка отдельного призыва или действия босса больше не должна навсегда стопорить бой.
+    try {
+      await summonsAct(b);
+    } catch (error) {
+      console.error(`[WorldBoss] summonsAct battle=${id} failed; round will continue:`, error);
+      const failedBattle = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+      if (failedBattle) addLog(failedBattle, '⚠️ Один из призывов не смог выполнить действие. Бой автоматически продолжен.');
+    }
+
+    b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+    if (b.boss_hp <= 0) return finish(id, true);
+
+    try {
+      await bossTurn(id);
+    } catch (error) {
+      console.error(`[WorldBoss] bossTurn battle=${id} failed; round will continue:`, error);
+      const failedBattle = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+      if (failedBattle) addLog(failedBattle, '⚠️ Ход босса завершился технической ошибкой. Следующий раунд запущен автоматически.');
+    }
+
+    b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+    alive = battlePlayers(id).filter(x => x.status === 'alive');
+    if (!alive.length) return finish(id, false);
+    ni = 0;
+    db.prepare('UPDATE world_boss_battles SET round_no=round_no+1 WHERE id=?').run(id);
+  }
   db.prepare('UPDATE world_boss_battles SET turn_index=?,turn_deadline=? WHERE id=?').run(ni, Date.now() + TURN_MS, id); await refresh(id); armTurn(id);
 }
 function damagePlayerSummons(state, ratio = 0.55) {
@@ -1360,8 +1435,9 @@ async function handle(interaction) {
   }
   if (interaction.customId === `wb_choose_${id}`) {
     const s = stateOf(b); if (b.status !== 'class_select' || s.classOrder?.[s.classChoiceIndex] !== uid) return interaction.reply({ content: 'Сейчас класс выбирает другой игрок.', flags: MessageFlags.Ephemeral });
-    const available = (s.availableClasses || []).slice(0, 25); const totals = available.reduce((m, k) => (m[k] = (m[k] || 0) + 1, m), {}); const seen = {};
-    const options = available.map((k, index) => {
+    const slots = allowedClassSlots(id, s).slice(0, 25);
+    const totals = slots.reduce((m, slot) => (m[slot.key] = (m[slot.key] || 0) + 1, m), {}); const seen = {};
+    const options = slots.map(({ key: k, index }) => {
       seen[k] = (seen[k] || 0) + 1;
       const suffix = totals[k] > 1 ? ` #${seen[k]}` : '';
       return {
@@ -1373,9 +1449,9 @@ async function handle(interaction) {
     const menu = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder().setCustomId(`wb_classpick_${id}`).setPlaceholder('Выберите класс').addOptions(options),
     );
-    return interaction.reply({ content: 'Выбери один из оставшихся классов:', components: [menu], flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content: `Выбери класс.\n${roleRequirementText(id, s)}${slots.length < (s.availableClasses || []).length ? '\n⚠️ Сейчас доступны только роли, необходимые для состава группы.' : ''}`, components: [menu], flags: MessageFlags.Ephemeral });
   }
-  if (interaction.isStringSelectMenu() && interaction.customId === `wb_classpick_${id}`) { const token = interaction.values[0]; const classKey = token.includes(':') ? token.slice(token.indexOf(':') + 1) : token; const r = await assignChosenClass(id, uid, token); if (!r.ok) return interaction.reply({ content: 'Этот класс уже недоступен или сейчас не твоя очередь.', flags: MessageFlags.Ephemeral }); const chosen = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, uid); const bonus = selectedClassBonuses(chosen); return interaction.reply({ content: `✅ Выбран класс **${CLASSES[classKey]?.name || classKey}** — Lv.${bonus.level}.\n📚 ${bonus.mastery.title}: ⚔️ +${bonus.mastery.damagePercent}% • ❤️ +${bonus.mastery.hpPercent}% • 🛡️ +${bonus.mastery.resistancePercent}%\n🎒 Экипировка: ⚔️ +${bonus.equipment.damagePercent}% • ❤️ +${bonus.equipment.hpPercent}% • 🛡️ +${bonus.equipment.resistancePercent}%`, flags: MessageFlags.Ephemeral }); }
+  if (interaction.isStringSelectMenu() && interaction.customId === `wb_classpick_${id}`) { const token = interaction.values[0]; const classKey = token.includes(':') ? token.slice(token.indexOf(':') + 1) : token; const r = await assignChosenClass(id, uid, token); if (!r.ok) return interaction.reply({ content: r.reason === 'role_required' ? '⚠️ Сейчас ты обязан выбрать недостающую роль: танка или хилера.' : 'Этот класс уже недоступен или сейчас не твоя очередь.', flags: MessageFlags.Ephemeral }); const chosen = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, uid); const bonus = selectedClassBonuses(chosen); return interaction.reply({ content: `✅ Выбран класс **${CLASSES[classKey]?.name || classKey}** — Lv.${bonus.level}.\n📚 ${bonus.mastery.title}: ⚔️ +${bonus.mastery.damagePercent}% • ❤️ +${bonus.mastery.hpPercent}% • 🛡️ +${bonus.mastery.resistancePercent}%\n🎒 Экипировка: ⚔️ +${bonus.equipment.damagePercent}% • ❤️ +${bonus.equipment.hpPercent}% • 🛡️ +${bonus.equipment.resistancePercent}%`, flags: MessageFlags.Ephemeral }); }
   if (interaction.customId === `wb_initroll_${id}`) {
     if (b.status !== 'initiative_roll') return interaction.reply({ content: 'Сейчас не этап инициативы.', flags: MessageFlags.Ephemeral }); const s = stateOf(b); if (s.initiativeRolls?.[uid] != null) return interaction.reply({ content: `Ты уже выбросил **${s.initiativeRolls[uid]}**.`, flags: MessageFlags.Ephemeral }); let roll = rand(1,20); s.initiativeRolls[uid] = roll; s.log.push(`⚔️ **${heroName(p)}** · <@${uid}> выбрасывает инициативу **${roll}**.`); saveState(b,s); await interaction.reply({ content:`🎲 Инициатива: **${roll}**`, flags:MessageFlags.Ephemeral }); await refresh(id); if(allHave(s.initiativeRolls,battlePlayers(id))) await startCombat(id); return true;
   }

@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.3.10",
+  "version": "18.3.15",
   "private": true,
-  "description": "Game Syndicate V18.3.10: strict card collection achievements and automatic reward rollback",
+  "description": "Game Syndicate V18.3.13: World Boss UX, class ult indicators, summons display, Archer and equipment market updates",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
