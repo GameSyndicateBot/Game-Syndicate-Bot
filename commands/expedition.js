@@ -312,7 +312,7 @@ ${preview}
     const tactic=getExpeditionTactic(tacticKey);
     const result = startExpedition(interaction.user.id, locationKey, interaction.guildId || 'global', classKey, tacticKey, durationHours);
     const errors = {
-      busy: '❌ Герой сейчас недоступен.', active: '❌ Герой уже находится в экспедиции.',
+      busy: '❌ Герой сейчас недоступен.', dungeon_active: '❌ Герой сейчас находится в активном подземелье.', active: '❌ Герой уже находится в экспедиции.',
       boss_active: '❌ Сейчас идёт регистрация или бой с World Boss.',
       boss_window: `❌ Выбранная длительность не помещается до World Boss. Герой не успеет вернуться к бою ${result.nextBossAt ? ts(result.nextBossAt) : ''}.`,
       not_offered: '❌ Эта локация сегодня уже недоступна. Обнови хаб.',
@@ -418,7 +418,7 @@ ${lockText}`).setFooter({ text: active ? 'Твой герой уже наход�
 
     if (sub === 'start') {
       const result = startExpedition(interaction.user.id, interaction.options.getString('location'), interaction.guildId || 'dm', interaction.options.getString('class'), interaction.options.getString('tactic'), interaction.options.getInteger('duration'));
-      const errors = { busy:'❌ Герой сейчас недоступен.', active:'❌ Герой уже находится в экспедиции.', boss_active:'❌ Сейчас идёт регистрация или бой с мировым боссом. Дождись его окончания.', boss_window:`❌ До следующего World Boss недостаточно времени для 4-часовой экспедиции. Следующий бой ${ts(result.nextBossAt)}. Отправь героя после боя.`, not_offered:'❌ Эта локация сегодня недоступна. Посмотри `/expedition locations`.', invalid_class:'❌ Неизвестный класс.' };
+      const errors = { busy:'❌ Герой сейчас недоступен.', dungeon_active:'❌ Герой сейчас находится в активном подземелье.', active:'❌ Герой уже находится в экспедиции.', boss_active:'❌ Сейчас идёт регистрация или бой с мировым боссом. Дождись его окончания.', boss_window:`❌ До следующего World Boss недостаточно времени для 4-часовой экспедиции. Следующий бой ${ts(result.nextBossAt)}. Отправь героя после боя.`, not_offered:'❌ Эта локация сегодня недоступна. Посмотри `/expedition locations`.', invalid_class:'❌ Неизвестный класс.' };
       if (!result.ok) return interaction.reply({ content: errors[result.reason] || '❌ Не удалось начать экспедицию.', flags: MessageFlags.Ephemeral });
       let expeditionBuffs = {}; try { expeditionBuffs = JSON.parse(result.expedition.buffs_json || '{}') || {}; } catch {}
       const tactic = getExpeditionTactic(result.expedition.tactic_key);

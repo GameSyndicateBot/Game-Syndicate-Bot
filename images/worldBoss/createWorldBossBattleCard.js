@@ -110,27 +110,26 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
   // Team grid
   panel(ctx, 478, 68, 700, 804, .73);
   text(ctx, 'КОМАНДА', 510, 110, 25, '#d8bdff', 'bold');
-  const maxShown = 10; const shown = players.slice(0, maxShown);
-  const cols = 2; const itemW = 316; const itemH = 132;
+  const maxShown = 14; const shown = players.slice(0, maxShown);
+  const cols = 2; const itemW = 316; const itemH = shown.length > 10 ? 94 : 132;
+  const rowStep = shown.length > 10 ? 101 : 142;
   for (let i = 0; i < shown.length; i++) {
     const p = shown[i], c = CLASSES[p.class_key] || { name: 'Без класса', role: 'support' }, e = effectsByUser[p.user_id] || {};
-    const col = i % cols, row = Math.floor(i / cols), x = 505 + col * 337, y = 132 + row * 142;
+    const col = i % cols, row = Math.floor(i / cols), x = 505 + col * 337, y = 132 + row * rowStep;
     ctx.save(); rounded(ctx, x, y, itemW, itemH, 16); ctx.fillStyle = p.user_id === currentUserId ? 'rgba(123,67,190,.56)' : p.status === 'dead' ? 'rgba(48,45,54,.72)' : 'rgba(23,17,35,.82)'; ctx.fill(); ctx.strokeStyle = p.user_id === currentUserId ? '#d4a8ff' : 'rgba(255,255,255,.12)'; ctx.lineWidth = p.user_id === currentUserId ? 3 : 1; ctx.stroke(); ctx.restore();
-    text(ctx, p.user_id === currentUserId ? '▶' : (p.status === 'dead' ? 'X' : '●'), x + 14, y + 27, 18, p.user_id === currentUserId ? '#e7c8ff' : p.status === 'dead' ? '#aaa' : '#6ee7a7', 'bold');
-    text(ctx, ellipsize(ctx, p.hero_name || p.displayName || p.username || `Игрок ${i + 1}`, 165), x + 42, y + 28, 20, '#fff', 'bold');
-    text(ctx, `${c.name} • ур.${p.hero_level || 1}`, x + itemW - 14, y + 28, 17, '#cdb7de', 'normal', 'right');
-    bar(ctx, x + 14, y + 44, itemW - 28, 23, p.hp, p.max_hp, '#3fbf72', `${p.hp}/${p.max_hp} HP`);
+    const compact = itemH < 120;
+    text(ctx, p.user_id === currentUserId ? '▶' : (p.status === 'dead' ? 'X' : '●'), x + 12, y + (compact ? 21 : 27), compact ? 15 : 18, p.user_id === currentUserId ? '#e7c8ff' : p.status === 'dead' ? '#aaa' : '#6ee7a7', 'bold');
+    text(ctx, ellipsize(ctx, p.hero_name || p.displayName || p.username || `Игрок ${i + 1}`, compact ? 145 : 165), x + 36, y + (compact ? 22 : 28), compact ? 16 : 20, '#fff', 'bold');
+    text(ctx, `${c.name} • ур.${p.hero_level || 1}`, x + itemW - 12, y + (compact ? 22 : 28), compact ? 14 : 17, '#cdb7de', 'normal', 'right');
+    bar(ctx, x + 12, y + (compact ? 33 : 44), itemW - 24, compact ? 18 : 23, p.hp, p.max_hp, '#3fbf72', `${p.hp}/${p.max_hp} HP`);
     const rt = c.resourceType || 'energy';
     const mainValue = rt === 'mana' ? Number(p.mana || 0) : Number(p.energy || 0);
     const mainLabel = rt === 'rage' ? 'ярости' : rt === 'mana' ? 'маны' : 'энергии';
-    bar(ctx, x + 14, y + 75, itemW - 28, 18, mainValue, 100, '#6f72db', `${mainValue}/100 ${mainLabel}`);
-    if (rt === 'mana') {
-      text(ctx, `Ульта: ${Number(p.ult_charge || 0)}/100`, x + itemW - 14, y + 117, 14, '#d8bdff', 'normal', 'right');
-    } else if (['assassin', 'archer'].includes(p.class_key)) {
-      const ready = Number(p.energy || 0) >= 100;
-      text(ctx, ready ? 'Ульта: ГОТОВА' : `Ульта: ${Number(p.energy || 0)}/100`, x + itemW - 14, y + 117, 14, ready ? '#f5d0fe' : '#d8bdff', 'bold', 'right');
-    }
-    text(ctx, ellipsize(ctx, effectLine(e), ['assassin','archer'].includes(p.class_key) ? 170 : itemW - 28), x + 14, y + 117, 14, '#c8c0d2');
+    bar(ctx, x + 12, y + (compact ? 56 : 75), itemW - 24, compact ? 15 : 18, mainValue, 100, '#6f72db', `${mainValue}/100 ${mainLabel}`);
+    const ultValue = ['assassin','archer'].includes(p.class_key) ? Number(p.energy || 0) : Number(p.ult_charge || 0);
+    const ultReady = ultValue >= 100;
+    text(ctx, `${ultReady ? '🟣' : '⚫'} ${ultReady ? 'Ульта готова' : `Ульта ${ultValue}/100`}`, x + itemW - 12, y + (compact ? 87 : 117), compact ? 12 : 14, ultReady ? '#e9c6ff' : '#b8afc2', 'bold', 'right');
+    text(ctx, ellipsize(ctx, effectLine(e), compact ? 145 : 170), x + 12, y + (compact ? 87 : 117), compact ? 12 : 14, '#c8c0d2');
   }
   if (players.length > maxShown) text(ctx, `+ ещё ${players.length - maxShown} участников`, 825, 850, 17, '#aaa', 'normal', 'center');
 
@@ -162,7 +161,7 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
   }
   const legendY = 882;
   const legend = [
-    ['heart', 'HP', '#ef476f'], ['mana', 'Мана', '#7c83ff'], ['energy', 'Энергия', '#f7c948'], ['flame', 'Ярость', '#f59e0b'], ['ult', 'Ульта', '#d8b4fe']
+    ['heart', 'HP', '#ef476f'], ['mana', 'Мана', '#7c83ff'], ['energy', 'Энергия', '#f7c948'], ['flame', 'Ярость', '#f59e0b'], ['ult', 'Ульта: ⚫ / 🟣 готова', '#d8b4fe']
   ];
   let lx = 520;
   for (const [icon, label, color] of legend) { drawUiIcon(ctx, icon, lx, legendY - 17, 18, color); text(ctx, label, lx + 25, legendY, 16, '#c8bfd1', 'bold'); lx += label === 'Энергия' ? 150 : 115; }

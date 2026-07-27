@@ -225,13 +225,13 @@ function buildEmbed(b, players) {
   if (b.status === 'active') { const turnNo = alive.length ? (b.turn_index % alive.length) + 1 : 0; e.addFields({ name: '▶️ Сейчас ходит', value: `${current ? `<@${current.user_id}> • **${CLASSES[current.class_key]?.name}**` : '—'}\n**Ход ${turnNo} из ${alive.length}** • Раунд **${b.round_no}**\nДо автоатаки: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` }); const cfg=BOSSES.find(x=>x.cardId===b.boss_card_id)||{}; const mech={shadow_dome:'🛡️ Теневой купол',void_absorption:'🕳️ Поглощение Пустоты',chaos_rift:'🌀 Разлом Хаоса',overheat:`🔥 Перегрев: ${Number(state.ironHeat||0)}%`,storm_charge:`⚡ Накопление грозы: ${Number(state.stormCharge||0)}%`,decay_curse:'☠️ Проклятие Разложения',ice_shackles:'❄️ Ледяные оковы',dragon_eggs:'🥚 Драконьи яйца'}[cfg.mechanic]; if(mech)e.addFields({name:'⚙️ Уникальная механика',value:mech}); }
   if (state.minions?.length) e.addFields({ name: '👾 Миньоны босса', value: state.minions.map(m => `${m.provoking ? '🛑' : '👾'} ${m.name}: ❤️ **${m.hp}/${m.maxHp}**${m.provoking ? ' • ПРОВОКАЦИЯ' : ''}`).join('\n').slice(0, 1024) });
   const sum = summonsText(state); if (sum) e.addFields({ name: '🧙 Тотемы, духи и призывы', value: sum });
-  if (['class_select','initiative_roll','active'].includes(b.status)) e.addFields({ name: b.status === 'active' ? '⚔️ Порядок ходов' : 'Команда', value: players.slice(0, 18).map((p, index) => {
+  if (['class_select','initiative_roll','active'].includes(b.status)) e.addFields({ name: b.status === 'active' ? '⚔️ Порядок ходов' : 'Команда', value: players.slice(0, 25).map((p, index) => {
     const c = CLASSES[p.class_key], ef = effects(p), sh = Number(ef.shield || 0);
     const aliveIndex = alive.findIndex(x => x.user_id === p.user_id);
     const currentIndex = alive.length ? b.turn_index % alive.length : -1;
     const marker = p.status === 'dead' ? '☠️' : b.status === 'active' ? (aliveIndex < currentIndex ? '✅' : aliveIndex === currentIndex ? '▶️' : '⏳') : roleIcon(c?.role);
     const ult = Math.max(0, Math.min(100, ultResourceValue(p)));
-    const ultIcon = ult >= 100 ? '🟣✨' : ult >= 75 ? '🟠✨' : ult >= 25 ? '🟡✨' : '⚫✨';
+    const ultIcon = ult >= 100 ? '🟣' : '⚫';
     return `${marker} **${index + 1}.** ${playerLabel(p)} • ${c?.name || 'класс не выбран'}${b.status === 'active' ? ` • ❤️${p.hp}/${p.max_hp}${sh ? ` • 🛡️${sh}` : ''} • ${resourceMeta(p.class_key).icon}${skillResourceValue(p)}\n　　${ultIcon} **Ульта: ${ult}/100**` : ''}`;
   }).join('\n').slice(0, 1024) });
   if (state.finalStats) {
@@ -423,6 +423,9 @@ function armStageTimer(id) {
 }
 async function autoChooseClass(id) {
   const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='class_select'").get(id); if (!b) return;
+  const remaining = Number(b.turn_deadline || 0) - Date.now();
+  // Защита от старого/раннего таймера: автовыбор не имеет права срабатывать до фактического дедлайна текущего игрока.
+  if (remaining > 250) { setTimer(id, () => autoChooseClass(id).catch(console.error), remaining); return; }
   const s = stateOf(b), user = s.classOrder?.[s.classChoiceIndex];
   const slots = allowedClassSlots(id, s);
   if (!user || !slots.length) return;

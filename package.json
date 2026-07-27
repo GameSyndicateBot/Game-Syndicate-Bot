@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.4.4",
+  "version": "18.4.5",
   "private": true,
-  "description": "Game Syndicate V18.4.4: одноразовое поздравление Артёма, праздничный пост и выдача паков",
+  "description": "Game Syndicate V18.4.5: переработанные ресурсы в заказах, блокировка экспедиция/данж, таймер выбора класса, 14 игроков на карточке и двухцветная ульта",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

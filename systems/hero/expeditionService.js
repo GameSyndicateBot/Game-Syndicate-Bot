@@ -166,9 +166,16 @@ function getWorldStats(guildId='global') {
   } catch (_) { return {active:0,free:0,completed:0,failed:0,dustToday:0}; }
 }
 
+function hasActiveDungeon(userId) {
+  try {
+    return Boolean(db.prepare(`SELECT 1 FROM dungeon_members m JOIN dungeon_groups g ON g.id=m.group_id WHERE m.user_id=? AND g.status='active' LIMIT 1`).get(String(userId)));
+  } catch (_) { return false; }
+}
+
 function startExpedition(userId, locationKey, guildId = 'global', classKey = null, tacticKey = 'balanced', durationHours = 4) {
   const hero = getHero(userId);
   if (!hero) return { ok: false, reason: 'no_hero' };
+  if (hasActiveDungeon(userId)) return { ok: false, reason: 'dungeon_active' };
   if (hero.status !== 'ready') return { ok: false, reason: 'busy' };
   classKey = normalizeClassKey(classKey || hero.class_key);
   if (!isValidClass(classKey)) return { ok: false, reason: 'invalid_class' };
