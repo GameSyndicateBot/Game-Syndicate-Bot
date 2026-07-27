@@ -42,14 +42,14 @@ const MINIONS = {
 };
 
 const BOSSES = [
-  {cardId:2037,attackTypes:[['physical',45],['magic',55]],name:'Теневой Страж',baseHp:1100,damage:[32,49],miss:7,physicalResist:18,magicResist:5,dark:true,minions:[2045,2046],summonEvery:3},
-  {cardId:2038,attackTypes:[['physical',25],['magic',75]],name:'Пожиратель Пустоты',baseHp:1350,damage:[36,52],miss:7,physicalResist:8,magicResist:22,dark:true,minions:[2047,2048],summonEvery:3},
-  {cardId:2039,attackTypes:[['physical',50],['magic',50]],name:'Архонт Хаоса',baseHp:1500,damage:[38,56],miss:7,physicalResist:12,magicResist:18,dark:true,minions:[2049,2050],summonEvery:3},
-  {cardId:2040,attackTypes:[['physical',85],['magic',15]],name:'Железный Колосс',baseHp:1750,damage:[36,52],miss:6,physicalResist:28,magicResist:-8,minions:[2051],summonEvery:3},
-  {cardId:2041,attackTypes:[['physical',20],['magic',80]],name:'Грозовой Тиран',baseHp:1600,damage:[36,51],miss:7,physicalResist:5,magicResist:25,minions:[2052,2053],summonEvery:2},
-  {cardId:2042,attackTypes:[['physical',65],['magic',35]],name:'Костяной Император',baseHp:1800,damage:[38,56],miss:7,physicalResist:22,magicResist:8,undead:true,dark:true,minions:[2054,2055],summonEvery:3},
-  {cardId:2043,attackTypes:[['physical',40],['magic',60]],name:'Ледяной Левиафан',baseHp:1900,damage:[41,58],miss:7,physicalResist:15,magicResist:20,minions:[2056,2057],summonEvery:3},
-  {cardId:2044,attackTypes:[['physical',60],['magic',40]],name:'Багровый Дракон',baseHp:2100,damage:[47,64],miss:6,physicalResist:20,magicResist:15,minions:[2058,2059],summonEvery:3},
+  {cardId:2037,attackTypes:[['physical',45],['magic',55]],name:'Теневой Страж',baseHp:1100,damage:[28,42],miss:12,abilityMiss:18,physicalResist:18,magicResist:5,dark:true,minions:[2045,2046],summonEvery:3,mechanic:'shadow_dome'},
+  {cardId:2038,attackTypes:[['physical',25],['magic',75]],name:'Пожиратель Пустоты',baseHp:1350,damage:[30,45],miss:12,abilityMiss:18,physicalResist:8,magicResist:22,dark:true,minions:[2047,2048],summonEvery:3,mechanic:'void_absorption'},
+  {cardId:2039,attackTypes:[['physical',50],['magic',50]],name:'Архонт Хаоса',baseHp:1500,damage:[32,48],miss:12,abilityMiss:18,physicalResist:12,magicResist:18,dark:true,minions:[2049,2050],summonEvery:3,mechanic:'chaos_rift'},
+  {cardId:2040,attackTypes:[['physical',85],['magic',15]],name:'Железный Колосс',baseHp:1750,damage:[30,45],miss:12,abilityMiss:18,physicalResist:28,magicResist:-8,minions:[2051],summonEvery:3,mechanic:'overheat'},
+  {cardId:2041,attackTypes:[['physical',20],['magic',80]],name:'Грозовой Тиран',baseHp:1600,damage:[30,44],miss:12,abilityMiss:18,physicalResist:5,magicResist:25,minions:[2052,2053],summonEvery:2,mechanic:'storm_charge'},
+  {cardId:2042,attackTypes:[['physical',35],['magic',65]],name:'Костяной Император',baseHp:1800,damage:[32,48],miss:12,abilityMiss:18,physicalResist:22,magicResist:8,undead:true,dark:true,minions:[2054,2055],summonEvery:3,mechanic:'decay_curse'},
+  {cardId:2043,attackTypes:[['physical',20],['magic',80]],name:'Ледяной Левиафан',baseHp:1650,damage:[30,45],miss:12,abilityMiss:18,physicalResist:15,magicResist:20,minions:[2056,2057],summonEvery:3,mechanic:'ice_shackles'},
+  {cardId:2044,attackTypes:[['physical',60],['magic',40]],name:'Багровый Дракон',baseHp:2100,damage:[40,55],miss:12,abilityMiss:18,physicalResist:20,magicResist:15,minions:[2058,2059],summonEvery:3,mechanic:'dragon_eggs'},
 ];
 
 module.exports={CLASSES,MINIONS,BOSSES};

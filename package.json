@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.4.2",
+  "version": "18.4.3",
   "private": true,
   "description": "Game Syndicate V18.4.1: русификация ресурсов, переработка древесины и трав, характеристики крафта",
   "main": "index.js",

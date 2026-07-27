@@ -779,7 +779,7 @@
     "series": "BOSS2026",
     "collection": "boss_pack",
     "base_rarity": "boss",
-    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "description": "Теневой купол: ниже 35% HP входящий урон снижен на 80%, пока живы призванные тени.",
     "drop_rarities": [
       "boss"
     ],
@@ -797,7 +797,7 @@
     "series": "BOSS2026",
     "collection": "boss_pack",
     "base_rarity": "boss",
-    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "description": "Поглощение Пустоты: каждые 4 раунда отнимает 40 единиц основного ресурса героя.",
     "drop_rarities": [
       "boss"
     ],
@@ -815,7 +815,7 @@
     "series": "BOSS2026",
     "collection": "boss_pack",
     "base_rarity": "boss",
-    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "description": "Разлом Хаоса: каждые 3 раунда открывает разлом; если не уничтожить за 2 раунда, выходит элитный прислужник.",
     "drop_rarities": [
       "boss"
     ],
@@ -833,7 +833,7 @@
     "series": "BOSS2026",
     "collection": "boss_pack",
     "base_rarity": "boss",
-    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "description": "Перегрев: каждый полученный удар повышает шкалу на 25%; при 100% босс пропускает ход и получает +30% урона.",
     "drop_rarities": [
       "boss"
     ],
@@ -851,7 +851,7 @@
     "series": "BOSS2026",
     "collection": "boss_pack",
     "base_rarity": "boss",
-    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "description": "Накопление грозы: после каждого хода +20%; при 100% цепная молния поражает трёх героев.",
     "drop_rarities": [
       "boss"
     ],
@@ -869,7 +869,7 @@
     "series": "BOSS2026",
     "collection": "boss_pack",
     "base_rarity": "boss",
-    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "description": "Проклятие Разложения: каждые 2 раунда накладывает заряд, наносит урон и снижает лечение на 50%; при 3 зарядах взрывается.",
     "drop_rarities": [
       "boss"
     ],
@@ -887,7 +887,7 @@
     "series": "BOSS2026",
     "collection": "boss_pack",
     "base_rarity": "boss",
-    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "description": "Ледяные оковы: каждые 3 раунда случайный герой на следующем ходу может использовать только обычную атаку.",
     "drop_rarities": [
       "boss"
     ],
@@ -905,7 +905,7 @@
     "series": "BOSS2026",
     "collection": "boss_pack",
     "base_rarity": "boss",
-    "description": "Специальная карта категории Boss из коллекции Boss Pack.",
+    "description": "Драконьи яйца: бой начинается с двух яиц; разрушенное яйцо выпускает Дракончика.",
     "drop_rarities": [
       "boss"
     ],
