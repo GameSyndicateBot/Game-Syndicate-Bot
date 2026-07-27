@@ -10,6 +10,7 @@ function repairRpgStates() {
     duplicateExpeditionsCancelled: 0,
     orphanHeroesReleased: 0,
     expiredRecoveriesReleased: 0,
+    returnedExpeditionHeroesReleased: 0,
   };
 
   const tx = db.transaction(() => {
@@ -49,6 +50,25 @@ function repairRpgStates() {
         stats.duplicateExpeditionsCancelled++;
       }
     }
+
+    // As soon as the expedition timer expires, the hero is physically back
+    // and may participate in World Boss. Keep the expedition row active until
+    // the player claims the result, so no rewards can be lost or duplicated.
+    const returnedResult = db.prepare(`
+      UPDATE heroes
+      SET status = 'ready',
+          recovery_until = NULL,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE status = 'expedition'
+        AND EXISTS (
+          SELECT 1
+          FROM hero_expeditions e
+          WHERE e.user_id = heroes.user_id
+            AND e.status = 'active'
+            AND datetime(e.returns_at) <= datetime('now')
+        )
+    `).run();
+    stats.returnedExpeditionHeroesReleased = returnedResult.changes;
 
     // Release heroes marked as being in an expedition when no active
     // expedition row exists. This is the common "stuck menu" state.

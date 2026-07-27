@@ -103,11 +103,31 @@ client.once('clientReady', () => {
         console.log(
             `[RPG State Recovery] duplicate=${repaired.duplicateExpeditionsCancelled}, ` +
             `orphan=${repaired.orphanHeroesReleased}, ` +
-            `recovered=${repaired.expiredRecoveriesReleased}`
+            `recovered=${repaired.expiredRecoveriesReleased}, ` +
+            `returned=${repaired.returnedExpeditionHeroesReleased}`
         );
     } catch (error) {
         console.error('[RPG State Recovery] Ошибка запуска:', error);
     }
+
+    // Repeat the safe check every minute. This covers expeditions that finish
+    // while the bot is already running and survives missed UI refreshes.
+    setInterval(() => {
+        try {
+            const { repairRpgStates } = require('./services/rpgStateRecovery');
+            const repaired = repairRpgStates();
+            if (repaired.returnedExpeditionHeroesReleased || repaired.orphanHeroesReleased || repaired.expiredRecoveriesReleased || repaired.duplicateExpeditionsCancelled) {
+                console.log(
+                    `[RPG State Recovery] duplicate=${repaired.duplicateExpeditionsCancelled}, ` +
+                    `orphan=${repaired.orphanHeroesReleased}, ` +
+                    `recovered=${repaired.expiredRecoveriesReleased}, ` +
+                    `returned=${repaired.returnedExpeditionHeroesReleased}`
+                );
+            }
+        } catch (error) {
+            console.error('[RPG State Recovery] Ошибка периодической проверки:', error);
+        }
+    }, 60 * 1000);
 
     // Пересчитываем пропущенные серии реакций и выдаём достижения
     // по уже накопленной статистике и коллекциям карточек.
