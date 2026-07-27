@@ -94,7 +94,7 @@ function ultResourceValue(p) { return resourceType(p.class_key) === 'mana' ? Num
 function hpBar(hp, max, size = 16) { const q = max ? Math.round(clamp(hp / max, 0, 1) * size) : 0; return '█'.repeat(q) + '░'.repeat(size - q); }
 function clearTimer(id) { const t = timers.get(Number(id)); if (t) clearTimeout(t); timers.delete(Number(id)); }
 function setTimer(id, fn, ms) { clearTimer(id); const t = setTimeout(fn, Math.max(500, ms)); t.unref?.(); timers.set(Number(id), t); }
-function addLog(b, text) { const s = stateOf(b); s.log = [...(s.log || []), text].slice(-12); saveState(b, s); return s; }
+function addLog(b, text) { const s = stateOf(b); s.log = [...(s.log || []), text].slice(-40); saveState(b, s); return s; }
 
 function rolePlan(n) {
   if (n <= 4) return { tank: 1, healer: 1, dps: 2, support: 0 };
@@ -180,12 +180,17 @@ function buildEmbed(b, players) {
     e.addFields({ name: '🧙 Выбор классов', value: `Сейчас выбирает: ${who ? playerLabel(players.find(p => p.user_id === who) || { user_id: who }) : '—'}\nДо автовыбора: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}\nОсталось классов: **${(state.availableClasses || []).length}**` });
   }
   if (b.status === 'initiative_roll') e.addFields({ name: '🎲 Инициатива боя', value: `Бросили: **${Object.keys(state.initiativeRolls || {}).length}/${players.length}**\nДо автоброска: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` });
-  if (b.status === 'active') e.addFields({ name: 'Состояние боя', value: `Раунд **${b.round_no}** • Живы **${alive.length}/${players.length}**\nХод: ${current ? `<@${current.user_id}> — **${CLASSES[current.class_key]?.name}**` : '—'}\nДо автоатаки: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` });
+  if (b.status === 'active') { const turnNo = alive.length ? (b.turn_index % alive.length) + 1 : 0; e.addFields({ name: '▶️ Сейчас ходит', value: `${current ? `<@${current.user_id}> • **${CLASSES[current.class_key]?.name}**` : '—'}\n**Ход ${turnNo} из ${alive.length}** • Раунд **${b.round_no}**\nДо автоатаки: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` }); }
   if (state.minions?.length) e.addFields({ name: '👾 Миньоны босса', value: state.minions.map(m => `${m.name}: ❤️ **${m.hp}/${m.maxHp}**`).join('\n').slice(0, 1024) });
-  const sum = summonsText(state); if (sum) e.addFields({ name: '⚙️ Призывы игроков', value: sum });
-  if (['class_select','initiative_roll','active'].includes(b.status)) e.addFields({ name: 'Команда', value: players.slice(0, 18).map(p => {
+  const sum = summonsText(state); if (sum) e.addFields({ name: '🧙 Тотемы, духи и призывы', value: sum });
+  if (['class_select','initiative_roll','active'].includes(b.status)) e.addFields({ name: b.status === 'active' ? '⚔️ Порядок ходов' : 'Команда', value: players.slice(0, 18).map((p, index) => {
     const c = CLASSES[p.class_key], ef = effects(p), sh = Number(ef.shield || 0);
-    return `${c ? roleIcon(c.role) : '❔'} ${playerLabel(p)} • ${c?.name || 'класс не выбран'}${b.status === 'active' ? ` • ❤️${p.hp}/${p.max_hp}${sh ? ` | 🛡️${sh}` : ''} | ${resourceMeta(p.class_key).icon}${skillResourceValue(p)}${resourceType(p.class_key) === 'mana' ? ` | 💥${p.ult_charge || 0}` : ''}` : ''}`;
+    const aliveIndex = alive.findIndex(x => x.user_id === p.user_id);
+    const currentIndex = alive.length ? b.turn_index % alive.length : -1;
+    const marker = p.status === 'dead' ? '☠️' : b.status === 'active' ? (aliveIndex < currentIndex ? '✅' : aliveIndex === currentIndex ? '▶️' : '⏳') : roleIcon(c?.role);
+    const ult = Math.max(0, Math.min(100, ultResourceValue(p)));
+    const ultIcon = ult >= 100 ? '🟣✨' : ult >= 75 ? '🟠✨' : ult >= 25 ? '🟡✨' : '⚫✨';
+    return `${marker} **${index + 1}.** ${playerLabel(p)} • ${c?.name || 'класс не выбран'}${b.status === 'active' ? ` • ❤️${p.hp}/${p.max_hp}${sh ? ` • 🛡️${sh}` : ''} • ${resourceMeta(p.class_key).icon}${skillResourceValue(p)} • ${ultIcon}${ult}/100` : ''}`;
   }).join('\n').slice(0, 1024) });
   if (state.finalStats) {
     const fs = state.finalStats;
@@ -636,7 +641,7 @@ function useSkill(b, p, c, e, state, targetId) {
     case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 75, maxHp: 75, heal: [10, 16], rounds: 4, support: true }); saveState(b, state); return `👼 <@${u}> призывает Ангела-хранителя на 4 хода. В конце каждого раунда ангел лечит всю живую группу.`; }
     case 'bard': { const t = targetById(id, targetId) || p, te = effects(t); te.damageBuffTurns = 3; te.damageBuff = 0.15; updateEffects(id, t.user_id, te); return `🎵 <@${u}> усиливает <@${t.user_id}> на 15% на 3 хода.`; }
     case 'assassin': { const r = hurtEnemy(b, state, rand(75, 95), 'physical', 'assassin', 0.5); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `🗡️ <@${u}> наносит **${r.dealt}** теневого урона.`; }
-    case 'archer': { let total = 0; for (let i = 0; i < 3; i++) if (Math.random() * 100 >= c.miss) total += hurtEnemy(b, state, rand(24, 30), 'physical', 'archer').dealt; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total, total, id, u); return `🏹 <@${u}> выпускает 3 стрелы: **${total}** урона.`; }
+    case 'archer': { let total = 0; const shots = []; for (let i = 0; i < 3; i++) { if (Math.random() * 100 < c.miss) { shots.push(`Стрела ${i + 1}: ❌ промах`); continue; } const r = hurtEnemy(b, state, rand(30, 38), 'physical', 'archer'); total += r.dealt; shots.push(`Стрела ${i + 1}: 💥 ${r.dealt} → ${r.target}`); } db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total, total, id, u); return `🏹 <@${u}> использует **Три выстрела**:\n${shots.join('\n')}\n**Всего: ${total} урона**.`; }
     case 'mage': { const r = hurtEnemy(b, state, rand(60, 80), 'magic', 'mage'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `🔥 <@${u}> наносит **${r.dealt}** магического урона.`; }
     case 'berserker': { let total = 0, hits = 0; for (let i = 0; i < 3; i++) { if (Math.random() * 100 < c.miss) continue; const r = hurtEnemy(b, state, Math.round(applyDamageBuff(p, rand(...c.damage)) * 0.62), 'physical', 'berserker'); total += r.dealt; hits++; } db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `🪓 <@${u}> проводит тройной удар: **${hits}/3** попаданий, **${total}** урона.`; }
     case 'engineer': state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'turret'); state.summons.push({ owner: u, type: 'turret', icon: '🔫', name: 'Турель', hp: 80, maxHp: 80, damage: [22, 30], miss: 8, permanent: true, damageType: 'physical' }); saveState(b, state); return `🔧 <@${u}> устанавливает турель. Она остаётся в бою, пока не будет уничтожена или заменена новой.`;
@@ -647,7 +652,7 @@ function useSkill(b, p, c, e, state, targetId) {
     case 'reaper': { const r=hurtEnemy(b,state,rand(70,90),'physical','reaper'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `☠️ <@${u}> применяет Жатву: **${r.dealt}** урона.`; }
     case 'mindlord': { const r=hurtEnemy(b,state,rand(60,80),'magic','mindlord'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🧠 <@${u}> наносит **${r.dealt}** психического урона.`; }
     case 'druid': { const r=hurtEnemy(b,state,rand(45,60),'magic','druid'); state.bossWeakenRounds=2; state.bossWeaken=0.15; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🌿 <@${u}> опутывает босса: **${r.dealt}** урона и -15% урона босса на 2 раунда.`; }
-    case 'shaman': state.teamDamageTotemRounds=3; state.teamDamageTotem=0.15; saveState(b,state); return `🪬 <@${u}> устанавливает Тотем силы: +15% урона союзников на 3 раунда.`;
+    case 'shaman': state.teamDamageTotemRounds=3; state.teamDamageTotem=0.15; state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='strength_totem'); state.summons.push({owner:u,type:'strength_totem',icon:'🔥',name:'Тотем силы',hp:60,maxHp:60,rounds:3,support:true}); saveState(b,state); return `🪬 <@${u}> устанавливает Тотем силы на 3 раунда: +15% урона союзников.`;
     case 'chronomancer': { const targets=validTargets(id,'alive').filter(x=>x.user_id!==u); const t=targets[0]||p; if(resourceType(t.class_key)==='mana') db.prepare('UPDATE world_boss_players SET mana=MIN(100,mana+30) WHERE battle_id=? AND user_id=?').run(id,t.user_id); else db.prepare('UPDATE world_boss_players SET energy=MIN(100,energy+30) WHERE battle_id=? AND user_id=?').run(id,t.user_id); return `⏳ <@${u}> ускоряет <@${t.user_id}> и восстанавливает 30 ресурса.`; }
     case 'illusionist': state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='illusion'); state.summons.push({owner:u,type:'illusion',icon:'🎭',name:'Иллюзия',hp:40,maxHp:40,damage:[0,0],miss:100,rounds:4,support:true}); saveState(b,state); return `🎭 <@${u}> создаёт иллюзию с 40 HP, способную принять атаку.`;
     default: return 'Способность использована.';
@@ -766,8 +771,8 @@ function useSecondSkill(b, p, c, e, state) {
     case 'duelist': e.counterAttack=true; return `⚔️ <@${u}> готовит Ответный удар и контратакует первую атаку босса до своего следующего хода.`;
     case 'reaper': { const hp=Math.max(1,p.hp-20); db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(hp,id,u); e.doubleNext=true; return `🩸 <@${u}> платит 20 HP. Следующая атака наносит двойной урон.`; }
     case 'mindlord': { const r=hurtEnemy(b,state,rand(65,75),'magic','mindlord'); state.magicVulnerabilityRounds=2; state.magicVulnerability=0.20; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🧠 <@${u}> наносит **${r.dealt}** урона и повышает получаемый магический урон цели на 20% на 2 раунда.`; }
-    case 'druid': { for(const t of validTargets(id,'alive')){const te=effects(t);te.groupDamageRounds=2;te.groupDamage=Math.max(Number(te.groupDamage||0),0.15);te.accuracyBuffRounds=2;te.accuracyBuff=0.15;te.protectionBuffRounds=2;te.protectionBuff=0.15;updateEffects(id,t.user_id,te);} return `🐻🐺🦉 <@${u}> призывает Дух зверя: команда получает усиление выбранного духа.`; }
-    case 'shaman': state.teamDefenseTotemRounds=3; state.teamDefenseTotem=0.15; saveState(b,state); return `🛡️ <@${u}> устанавливает Тотем защиты: -15% входящего урона на 3 раунда.`;
+    case 'druid': { for(const t of validTargets(id,'alive')){const te=effects(t);te.groupDamageRounds=2;te.groupDamage=Math.max(Number(te.groupDamage||0),0.15);te.accuracyBuffRounds=2;te.accuracyBuff=0.15;te.protectionBuffRounds=2;te.protectionBuff=0.15;updateEffects(id,t.user_id,te);} state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='beast_spirit'); state.summons.push({owner:u,type:'beast_spirit',icon:'🐺',name:'Дух зверя',hp:1,maxHp:1,rounds:2,support:true}); saveState(b,state); return `🐻🐺🦉 <@${u}> призывает Дух зверя на 2 раунда: команда получает усиление урона, точности и защиты.`; }
+    case 'shaman': state.teamDefenseTotemRounds=3; state.teamDefenseTotem=0.15; state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='defense_totem'); state.summons.push({owner:u,type:'defense_totem',icon:'🛡️',name:'Тотем защиты',hp:80,maxHp:80,rounds:3,support:true}); saveState(b,state); return `🛡️ <@${u}> устанавливает Тотем защиты на 3 раунда: -15% входящего урона.`;
     case 'chronomancer': { const targets=validTargets(id,'alive').filter(x=>x.user_id!==u); const t=targets[0]||p,te=effects(t); te.skillCd=Math.max(0,Number(te.skillCd||0)-1); te.skill2Cd=Math.max(0,Number(te.skill2Cd||0)-1); updateEffects(id,t.user_id,te); return `⏪ <@${u}> уменьшает КД способности <@${t.user_id}> на 1 ход.`; }
     case 'illusionist': state.bossAccuracyDownRounds=2; state.bossAccuracyDown=0.20; saveState(b,state); return `🌫️ <@${u}> создаёт Мираж: точность босса снижена на 20% на 2 раунда.`;
     default:
@@ -810,7 +815,7 @@ function useUlt(b, p, c, e, state, targetId) {
     case 'reaper': { const fresh=db.prepare('SELECT boss_hp,boss_max_hp FROM world_boss_battles WHERE id=?').get(id); const bonus=fresh.boss_hp/fresh.boss_max_hp<0.3?80:0,r=hurtEnemy(b,state,160+bonus,'physical','reaper'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `☠️ <@${u}> выносит Приговор: **${r.dealt}** урона${bonus?' с бонусом добивания':''}.`; }
     case 'mindlord': { const r=hurtEnemy(b,state,rand(150,180),'magic','mindlord'); state.rage=Math.max(0,Number(state.rage||0)-50); state.bossAccuracyDownRounds=2; state.bossAccuracyDown=0.20; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🧠 <@${u}> контролирует сознание: **${r.dealt}** урона, -50 ярости и -20% точности босса на 2 раунда.`; }
     case 'druid': { for(const t of validTargets(id,'alive')){const te=effects(t);te.groupDamageRounds=2;te.groupDamage=Math.max(Number(te.groupDamage||0),0.15);te.accuracyBuffRounds=2;te.accuracyBuff=0.15;te.protectionBuffRounds=2;te.protectionBuff=0.15;updateEffects(id,t.user_id,te);} return `🌳 <@${u}> активирует Силу природы: Медведь, Волк и Сова усиливают всю группу на 2 раунда.`; }
-    case 'shaman': state.teamDamageTotemRounds=3;state.teamDamageTotem=0.15;state.teamDefenseTotemRounds=3;state.teamDefenseTotem=0.15;state.healTotemRounds=3;saveState(b,state);return `🪬 <@${u}> созывает Совет духов: три тотема действуют 3 раунда.`;
+    case 'shaman': state.teamDamageTotemRounds=3;state.teamDamageTotem=0.15;state.teamDefenseTotemRounds=3;state.teamDefenseTotem=0.15;state.healTotemRounds=3;state.summons=(state.summons||[]).filter(x=>x.owner!==u||!['strength_totem','defense_totem','healing_spirit'].includes(x.type));state.summons.push({owner:u,type:'strength_totem',icon:'🔥',name:'Тотем силы',hp:60,maxHp:60,rounds:3,support:true},{owner:u,type:'defense_totem',icon:'🛡️',name:'Тотем защиты',hp:80,maxHp:80,rounds:3,support:true},{owner:u,type:'healing_spirit',icon:'👻',name:'Дух исцеления',hp:70,maxHp:70,rounds:3,support:true});saveState(b,state);return `🪬 <@${u}> созывает Совет духов: Тотем силы, Тотем защиты и Дух исцеления действуют 3 раунда.`;
     case 'chronomancer': state.extraActionRound=true; saveState(b,state); return `⏳ <@${u}> открывает Временной разлом: все союзники получают дополнительное действие в следующем раунде.`;
     case 'illusionist': for(let i=0;i<2;i++)state.summons.push({owner:u,type:'illusion',icon:'🎭',name:'Зеркальная копия',hp:60,maxHp:60,damage:[0,0],miss:100,rounds:3,support:true});state.bossAccuracyDownRounds=3;state.bossAccuracyDown=0.35;saveState(b,state);return `🪞 <@${u}> создаёт две копии по 60 HP и снижает точность всех врагов на 35% на 3 раунда.`;
     default: return 'Ульта использована.';
@@ -1385,8 +1390,8 @@ ${resourceMeta(p.class_key).icon} ${resourceMeta(p.class_key).label}: ${skillRes
 
 ✨ **${c.skill.name}** — ${c.skill.cost} ${resourceMeta(p.class_key).label.toLowerCase()} • КД ${e.skillCd || 0}
 🌟 **${c.secondSkill?.name || 'Дополнительная способность'}** — ${SECOND_SKILL_COST} ${resourceMeta(p.class_key).label.toLowerCase()} • КД ${e.skill2Cd || 0}
-${['assassin','archer'].includes(p.class_key) ? `💥 **Индикатор ульты:** ${ultResourceValue(p) >= 100 ? 'ГОТОВА' : `${ultResourceValue(p)}/100`}
-` : ''}${p.class_key === 'cleric' ? `✨ Пассивно: каждый успешный удар лечит Клирика на 20 HP.
+✨ **Индикатор ульты:** ${ultResourceValue(p) >= 100 ? '🟣 ГОТОВА — 100/100' : `${ultResourceValue(p)}/100`}
+${p.class_key === 'cleric' ? `✨ Пассивно: каждый успешный удар лечит Клирика на 20 HP.
 ` : ''}💥 **${c.ultimate.name}** — ${resourceType(p.class_key) === 'mana' ? '100 заряда ульты' : `${c.ultimate.cost} ${resourceMeta(p.class_key).label.toLowerCase()}`} • КД ${e.ultCd || 0}${e.skillSilencedTurns ? `
 🔒 Способность заблокирована: ${e.skillSilencedTurns}` : ''}${e.ultSilencedTurns ? `
 ⛓️ Ульта заблокирована: ${e.ultSilencedTurns}` : ''}
@@ -1399,7 +1404,7 @@ ${['assassin','archer'].includes(p.class_key) ? `💥 **Индикатор ул�
   if (interaction.customId === `wb_log_${id}`) {
     const lines = (stateOf(b).log || []).slice(-20);
     return interaction.reply({ content: `## 📖 Журнал боя
-${lines.length ? lines.map((x, i) => `**${i + 1}.** ${x}`).join('\n') : 'Журнал пока пуст.'}`, flags: MessageFlags.Ephemeral });
+${lines.length ? lines.map((x, i) => `**${i + 1}.** ${x}`).join('\n\n') : 'Журнал пока пуст.'}`, flags: MessageFlags.Ephemeral });
   }
   if (interaction.customId === `wb_summons_${id}`) {
     const own = (stateOf(b).summons || []).filter(x => x.owner === uid);
