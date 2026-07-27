@@ -75,6 +75,17 @@ client.once('clientReady', () => {
         }
     }, 8000);
 
+    // Запускаем планировщик групповых данжей и восстанавливаем их хаб.
+    setTimeout(async () => {
+        try {
+            const dungeonSystem = require('./services/groupDungeonSystem');
+            dungeonSystem.startScheduler(client);
+            await dungeonSystem.ensureHub(client);
+        } catch (error) {
+            console.error('[Dungeon Hub] Ошибка автозапуска:', error);
+        }
+    }, 9000);
+
     // Восстанавливаем постоянный Expedition Hub и обновляем его при смене дня/окна World Boss.
     setTimeout(async () => {
         try {
@@ -197,6 +208,11 @@ client.on('interactionCreate', async interaction => {
                 if (command?.handleComponent) {
                     return await command.handleComponent(interaction);
                 }
+            }
+
+            if (interaction.customId.startsWith('dng_')) {
+                const { handle } = require('./services/groupDungeonSystem');
+                return await handle(interaction);
             }
 
             if (interaction.customId.startsWith('wb_')) {
