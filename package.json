@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.3.16",
+  "version": "18.3.17",
   "private": true,
-  "description": "Game Syndicate V18.3.13: World Boss UX, class ult indicators, summons display, Archer and equipment market updates",
+  "description": "Game Syndicate V18.3.17: World Boss UX, class ult indicators, summons display, Archer and equipment market updates",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

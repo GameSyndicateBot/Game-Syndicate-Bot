@@ -88,7 +88,7 @@ function dateKey(ts = Date.now()) { const p = moscowParts(ts); return `${p.year}
 function playerLabel(p) { return `**${heroName(p)}** · <@${p.user_id}>`; }
 function roleIcon(role) { return role === 'tank' ? '🛡️' : role === 'healer' ? '💚' : role === 'dps' ? '🔥' : '⚙️'; }
 function resourceType(classKey) { return CLASSES[classKey]?.resourceType || 'energy'; }
-function resourceMeta(classKey) { const t = resourceType(classKey); return t === 'rage' ? { key:'energy', label:'Ярость', icon:'🔥' } : t === 'mana' ? { key:'mana', label:'Мана', icon:'🔷' } : { key:'energy', label:'Энергия', icon:'⚡' }; }
+function resourceMeta(classKey) { const t = resourceType(classKey); return t === 'rage' ? { key:'energy', label:'Ярость', icon:'🔥' } : t === 'holiness' ? { key:'energy', label:'Святость', icon:'✨' } : t === 'bloodlust' ? { key:'energy', label:'Кровожадность', icon:'🩸' } : t === 'mana' ? { key:'mana', label:'Мана', icon:'🔷' } : { key:'energy', label:'Энергия', icon:'⚡' }; }
 function skillResourceValue(p) { const m = resourceMeta(p.class_key); return Number(p[m.key] || 0); }
 function ultResourceValue(p) { return resourceType(p.class_key) === 'mana' ? Number(p.ult_charge || 0) : Number(p.energy || 0); }
 function hpBar(hp, max, size = 16) { const q = max ? Math.round(clamp(hp / max, 0, 1) * size) : 0; return '█'.repeat(q) + '░'.repeat(size - q); }
@@ -489,10 +489,14 @@ function damageTarget(id, target, amount, damageType = 'physical') {
   let shield = Number(e.shield || 0), absorbed = 0; const hadShield = shield > 0;
   if (shield) { absorbed = Math.min(shield, d); shield -= absorbed; d -= absorbed; e.shield = shield; updateEffects(id, target.user_id, e); }
   const hp = Math.max(0, target.hp - d), diedNow = target.status === 'alive' && target.hp > 0 && hp <= 0;
+  if (diedNow) {
+    e.deathResourceSnapshot = { energy:Number(target.energy||0), mana:Number(target.mana||0), ultCharge:Number(target.ult_charge||0) };
+    updateEffects(id, target.user_id, e);
+  }
   db.prepare("UPDATE world_boss_players SET hp=?,damage_taken=damage_taken+?,status=CASE WHEN ?<=0 THEN 'dead' ELSE status END WHERE battle_id=? AND user_id=?").run(hp, d, hp, id, target.user_id);
   if (hadShield && shield <= 0 && absorbed > 0) pushCombatEvent(id, `🛡️ Щит <@${target.user_id}> разрушен!`);
   if (diedNow) pushCombatEvent(id, `☠️ <@${target.user_id}> (${CLASSES[target.class_key]?.name || 'Игрок'}) пал!`, 'players');
-  if (resourceType(target.class_key) === 'rage' && d > 0) {
+  if (['rage','holiness','bloodlust'].includes(resourceType(target.class_key)) && d > 0) {
     const gained = Math.min(25, Math.max(5, Math.ceil(d / 3)));
     db.prepare('UPDATE world_boss_players SET energy=MIN(100,energy+?) WHERE battle_id=? AND user_id=?').run(gained, id, target.user_id);
   }
@@ -616,30 +620,31 @@ async function perform(id, userId, action, auto = false, targetId = null) {
       else { hit = true; let dmg = applyDamageBuff(p, rand(...c.damage)); const crit = Math.random() * 100 < CRIT_CHANCE; if (crit) dmg = Math.round(dmg * CRIT_MULTIPLIER); const r = hurtEnemy(b, state, dmg, c.damageType || 'physical', p.class_key); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, userId); text = `🗡️ <@${userId}> наносит **${r.dealt}** → ${r.target}${crit ? ' • 💥 КРИТ!' : ''}.`;
         if (p.class_key === 'cleric') { const fresh = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id,userId); const healed = healPlayer(id,userId,fresh,20); text += ` ✨ Свет удара восстанавливает **${healed} HP**.`; }
       }
-      if (rType === 'mana') { mana = clamp(mana + 15, 0, 100); ultCharge = clamp(ultCharge + (hit ? 20 : 12), 0, 100); }
+      if (rType === 'mana') mana = clamp(mana + 15, 0, 100);
       else if (rType === 'rage') energy = clamp(energy + (hit ? 15 : 8), 0, 100);
       else energy = clamp(energy + (hit ? 20 : 15), 0, 100);
+      ultCharge = clamp(ultCharge + (hit ? 20 : 12), 0, 100);
     } else if (action === 'skill') {
       if (Number(e.skillSilencedTurns || 0) > 0) return { ok: false, reason: 'silenced_skill', cd: e.skillSilencedTurns };
       if (Number(e.skillCd || 0) > 0) return { ok: false, reason: 'cooldown', cd: e.skillCd };
       const skillPool = rType === 'mana' ? mana : energy; if (skillPool < 40) return { ok: false, reason: rType };
       const kind = targetKind(p.class_key, action); if (kind && !targetId) return { ok: false, reason: 'target', kind };
-      if (rType === 'mana') { mana -= 40; ultCharge = clamp(ultCharge + 15, 0, 100); } else energy -= 40;
+      if (rType === 'mana') mana -= 40; else energy -= 40; ultCharge = clamp(ultCharge + 15, 0, 100);
       text = useSkill(b, p, c, e, state, targetId); e.skillCd = SKILL_CD;
     } else if (action === 'skill2') {
       if (Number(e.skillSilencedTurns || 0) > 0) return { ok: false, reason: 'silenced_skill', cd: e.skillSilencedTurns };
       if (Number(e.skill2Cd || 0) > 0) return { ok: false, reason: 'cooldown', cd: e.skill2Cd };
       const skillPool = rType === 'mana' ? mana : energy;
       if (skillPool < SECOND_SKILL_COST) return { ok: false, reason: rType };
-      if (rType === 'mana') { mana -= SECOND_SKILL_COST; ultCharge = clamp(ultCharge + 12, 0, 100); } else energy -= SECOND_SKILL_COST;
+      if (rType === 'mana') mana -= SECOND_SKILL_COST; else energy -= SECOND_SKILL_COST; ultCharge = clamp(ultCharge + 12, 0, 100);
       text = useSecondSkill(b, p, c, e, state);
       e.skill2Cd = SECOND_SKILL_CD;
     } else if (action === 'ult') {
       if (Number(e.ultSilencedTurns || 0) > 0) return { ok: false, reason: 'silenced_ult', cd: e.ultSilencedTurns };
       if (Number(e.ultCd || 0) > 0) return { ok: false, reason: 'cooldown', cd: e.ultCd };
-      const ultPool = rType === 'mana' ? ultCharge : energy; if (ultPool < 100) return { ok: false, reason: rType === 'mana' ? 'burst' : rType };
+      const ultPool = ultCharge; if (ultPool < 100) return { ok: false, reason: 'burst' };
       const kind = targetKind(p.class_key, action); if (kind && !targetId) return { ok: false, reason: 'target', kind };
-      if (rType === 'mana') ultCharge = 0; else energy = 0;
+      ultCharge = 0;
       text = useUlt(b, p, c, e, state, targetId); e.ultCd = ULT_CD;
     }
     if (e.rageTurns > 0) e.rageTurns--; if (e.bloodRageTurns > 0 && !(p.class_key === 'berserker' && action === 'ult')) e.bloodRageTurns--; if (e.damageBuffTurns > 0) e.damageBuffTurns--; tickCooldowns(e, action); updateEffects(id, userId, e);
@@ -667,7 +672,7 @@ async function perform(id, userId, action, auto = false, targetId = null) {
     await triggerImmediateBossRage(id);
     if (!battlePlayers(id).some(x => x.status === 'alive')) return finish(id, false);
 
-    const keepsTurn = p.class_key === 'berserker' && action === 'ult'; if (keepsTurn) { db.prepare('UPDATE world_boss_battles SET turn_deadline=? WHERE id=?').run(Date.now() + TURN_MS,id); await refresh(id); armTurn(id); } else await nextTurn(id, alive); return { ok: true, text };
+    const keepsTurn = p.class_key === 'berserker' && action === 'ult'; if (keepsTurn) { db.prepare('UPDATE world_boss_battles SET turn_deadline=? WHERE id=?').run(Date.now() + TURN_MS,id); await refresh(id); armTurn(id); } else await nextTurn(id, battlePlayers(id).filter(x => x.status === 'alive')); return { ok: true, text };
   } finally { busy = false; }
 }
 function targetById(id, targetId, status = 'alive') { return battlePlayers(id).find(x => x.user_id === String(targetId) && x.status === status); }
@@ -678,14 +683,14 @@ function useSkill(b, p, c, e, state, targetId) {
     case 'paladin': { const t = targetById(id, targetId) || p, te = effects(t); te.shield = Math.max(Number(te.shield || 0), 50); updateEffects(id, t.user_id, te); e.shield = Math.max(Number(e.shield || 0), 25); e.guardRounds = Math.max(Number(e.guardRounds || 0), 1); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); return `✨ <@${u}> накладывает на <@${t.user_id}> щит **50 HP**, сам получает щит **25 HP**, снижает входящий урон на 1 ход и провоцирует босса с миньонами на 3 раунда.`; }
     case 'guardian': e.guardRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); e.interceptChance = 0.35; return `🛡️ <@${u}> снижает входящий урон на 50%, провоцирует босса на 2 атаки и получает 35% шанс перехватить одиночный удар по союзнику.`;
     case 'cleric': { const t = targetById(id, targetId) || p, sacrifice = Math.min(rand(24, 34), Math.max(0, p.hp - 1)); if (sacrifice <= 0) return `💔 <@${u}> не хватает HP для жертвы.`; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(p.hp - sacrifice, id, u); const healed = healPlayer(id, u, t, rand(58, 76)); const te = effects(t); const shield = Math.max(1, Math.round(healed * 0.15)); te.shield = Number(te.shield || 0) + shield; updateEffects(id, t.user_id, te); return `💚 <@${u}> жертвует **${sacrifice} HP**, лечит <@${t.user_id}> на **${healed} HP** и даёт щит **${shield} HP**.`; }
-    case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 75, maxHp: 75, heal: [10, 16], rounds: 4, support: true }); saveState(b, state); return `👼 <@${u}> призывает Ангела-хранителя на 4 хода. В конце каждого раунда ангел лечит всю живую группу.`; }
+    case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 75, maxHp: 75, heal: [14, 20], rounds: 4, support: true }); saveState(b, state); return `👼 <@${u}> призывает Ангела-хранителя на 4 хода. В конце каждого раунда ангел лечит всю живую группу.`; }
     case 'bard': { const t = targetById(id, targetId) || p, te = effects(t); te.damageBuffTurns = 3; te.damageBuff = 0.15; updateEffects(id, t.user_id, te); return `🎵 <@${u}> усиливает <@${t.user_id}> на 15% на 3 хода.`; }
     case 'assassin': { const r = hurtEnemy(b, state, rand(75, 95), 'physical', 'assassin', 0.5); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `🗡️ <@${u}> наносит **${r.dealt}** теневого урона.`; }
     case 'archer': { let total = 0; const shots = []; for (let i = 0; i < 3; i++) { if (Math.random() * 100 < c.miss) { shots.push(`Стрела ${i + 1}: ❌ промах`); continue; } const r = hurtEnemy(b, state, rand(30, 38), 'physical', 'archer'); total += r.dealt; shots.push(`Стрела ${i + 1}: 💥 ${r.dealt} → ${r.target}`); } db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total, total, id, u); return `🏹 <@${u}> использует **Три выстрела**:\n${shots.join('\n')}\n**Всего: ${total} урона**.`; }
     case 'mage': { const r = hurtEnemy(b, state, rand(60, 80), 'magic', 'mage'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `🔥 <@${u}> наносит **${r.dealt}** магического урона.`; }
     case 'berserker': { let total = 0, hits = 0; for (let i = 0; i < 3; i++) { if (Math.random() * 100 < c.miss) continue; const r = hurtEnemy(b, state, Math.round(applyDamageBuff(p, rand(...c.damage)) * 0.62), 'physical', 'berserker'); total += r.dealt; hits++; } db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `🪓 <@${u}> проводит тройной удар: **${hits}/3** попаданий, **${total}** урона.`; }
     case 'engineer': state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'turret'); state.summons.push({ owner: u, type: 'turret', icon: '🔫', name: 'Турель', hp: 80, maxHp: 80, damage: [22, 30], miss: 8, permanent: true, damageType: 'physical' }); saveState(b, state); return `🔧 <@${u}> устанавливает турель. Она остаётся в бою, пока не будет уничтожена или заменена новой.`;
-    case 'necromancer': { state.summons = state.summons || []; const own = state.summons.filter(x => x.owner === u && x.type === 'skeleton'); if (own.length >= 2) state.summons.splice(state.summons.indexOf(own[0]), 1); state.summons.push({ owner: u, type: 'skeleton', icon: '💀', name: 'Скелет', hp: 55, maxHp: 55, damage: [18, 25], miss: 12, permanent: true, damageType: 'physical' }); saveState(b, state); return `💀 <@${u}> призывает **1 скелета**. Он остаётся в бою, пока не будет уничтожен или заменён из-за лимита.`; }
+    case 'necromancer': { const r=hurtEnemy(b,state,rand(55,70),'magic','necromancer'); let curse=''; if(Math.random()<0.30){state.necromancerCurseRounds=2;state.necromancerCurseDamage=18;curse=' и накладывает Порчу на 2 хода';} saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🌑 <@${u}> наносит **${r.dealt} магического урона**${curse}.`; }
 
     case 'pyromancer': { const r=hurtEnemy(b,state,rand(50,70),'magic','pyromancer'); state.burnStacks=Math.min(5,Number(state.burnStacks||0)+1); saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🔥 <@${u}> наносит **${r.dealt}** урона и накладывает Горение (${state.burnStacks}/5).`; }
     case 'duelist': { const r=hurtEnemy(b,state,rand(55,70),'physical','duelist'); e.combo=Math.min(5,Number(e.combo||0)+1); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `⚔️ <@${u}> делает выпад на **${r.dealt}** урона. Комбо: ${e.combo}/5.`; }
@@ -734,7 +739,7 @@ function useSecondSkill(b, p, c, e, state) {
     }
     case 'priest': {
       let total = 0;
-      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, rand(15, 22));
+      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, rand(20, 28));
       return `🙏 <@${u}> читает Массовую молитву и восстанавливает группе **${total} HP**.`;
     }
     case 'bard': {
@@ -800,11 +805,12 @@ function useSecondSkill(b, p, c, e, state) {
       return `🛠️ <@${u}> запускает Ремонтного дрона: призывы восстановили **${repaired} HP**, союзники получили щиты по **10 HP**.`;
     }
     case 'necromancer': {
-      const r = hurtEnemy(b, state, rand(58, 82), 'magic', 'necromancer');
-      const fresh = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, u);
-      const healed = healPlayer(id, u, fresh, Math.round(r.dealt * 0.5));
-      db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt + healed, id, u);
-      return `🕯️ <@${u}> применяет Похищение жизни: **${r.dealt} урона** и восстанавливает **${healed} HP**.`;
+      state.summons=state.summons||[];
+      const hp=rand(80,100);
+      state.summons=state.summons.filter(x=>x.owner!==u||x.type!=='skeleton');
+      state.summons.push({owner:u,type:'skeleton',icon:'💀',name:'Скелет',hp,maxHp:hp,damage:[24,32],miss:10,permanent:true,damageType:'physical'});
+      saveState(b,state);
+      return `💀 <@${u}> призывает скелета с **${hp} HP**. Скелет атакует одного врага и остаётся в бою, пока не будет уничтожен или заменён.`;
     }
 
     case 'pyromancer': { const r=hurtEnemy(b,state,rand(65,85),'magic','pyromancer'); state.burnStacks=Math.min(5,Number(state.burnStacks||0)+1); saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🔥 <@${u}> применяет Пламя: **${r.dealt}** урона, Горение ${state.burnStacks}/5.`; }
@@ -827,7 +833,7 @@ function useUlt(b, p, c, e, state, targetId) {
     case 'paladin': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.shield = Math.max(Number(te.shield || 0), t.user_id === u ? 60 : 40); updateEffects(id, t.user_id, te); } e.guardRounds = Math.max(Number(e.guardRounds || 0), 2); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); return `✨ <@${u}> накладывает союзникам щиты по **40 HP**, себе **60 HP**, получает -50% входящего урона на 2 хода и провоцирует босса с миньонами на 3 раунда.`;
     case 'guardian': { e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.guardianUltRounds = Math.max(Number(e.guardianUltRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); for (const t of validTargets(id, 'alive')) { if (t.user_id === u) continue; const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); te.partyGuardMultiplier = 0.8; updateEffects(id, t.user_id, te); } return `🛡️ <@${u}> применяет абсолютную провокацию: следующие 2 одиночные атаки направлены в Стража, он получает -40% урона, союзники — -20% урона.`; }
     case 'cleric': { const t = targetById(id, targetId) || p, healed = healPlayer(id, u, t, t.max_hp); return `🌟 <@${u}> полностью исцеляет <@${t.user_id}> на **${healed} HP**.`; }
-    case 'priest': { const dead = targetById(id, targetId, 'dead'); if (!dead) return `✨ Нет выбранной погибшей цели.`; db.prepare("UPDATE world_boss_players SET status='alive',hp=ROUND(max_hp*0.5),energy=0,mana=50,ult_charge=0 WHERE battle_id=? AND user_id=?").run(id, dead.user_id); return `✨ <@${u}> воскрешает <@${dead.user_id}>! Игрок возвращается в бой с **${Math.round(dead.max_hp * 0.5)} HP**.`; }
+    case 'priest': { const dead = targetById(id, targetId, 'dead'); if (!dead) return `✨ Нет выбранной погибшей цели.`; const de=effects(dead),snap=de.deathResourceSnapshot||{}; const restoredEnergy=Number(snap.energy ?? dead.energy ?? 0),restoredMana=Number(snap.mana ?? dead.mana ?? 0),restoredUlt=Number(snap.ultCharge ?? dead.ult_charge ?? 0); db.prepare("UPDATE world_boss_players SET status='alive',hp=ROUND(max_hp*0.5),energy=?,mana=?,ult_charge=? WHERE battle_id=? AND user_id=?").run(restoredEnergy,restoredMana,restoredUlt,id,dead.user_id); delete de.deathResourceSnapshot; updateEffects(id,dead.user_id,de); return `✨ <@${u}> воскрешает <@${dead.user_id}>! Игрок возвращается с **${Math.round(dead.max_hp * 0.5)} HP**, а ресурс и заряд ульты восстановлены до значений перед смертью.`; }
     case 'bard': {
       let totalHealed = 0;
       const healedTargets = [];
@@ -848,7 +854,7 @@ function useUlt(b, p, c, e, state, targetId) {
     case 'mage': { const r = hurtEnemy(b, state, rand(160, 210), 'magic', 'mage'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `☄️ <@${u}> вызывает метеор: **${r.dealt}** урона.`; }
     case 'berserker': e.bloodRageTurns = 6; return `🔥 <@${u}> входит в Кровавую ярость на 6 своих ходов: двойной исходящий урон и +25% входящего урона.`;
     case 'engineer': state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'golem'); state.summons.push({ owner: u, type: 'golem', icon: '🤖', name: 'Голем', hp: 220, maxHp: 220, damage: [38, 52], miss: 5, permanent: true, damageType: 'physical' }); saveState(b, state); return `🤖 <@${u}> призывает голема. Он остаётся в бою, пока не будет уничтожен или заменён новым.`;
-    case 'necromancer': state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'army'); for (let i = 0; i < 4; i++) state.summons.push({ owner: u, type: 'army', icon: '🦴', name: 'Скелет армии', hp: 110, maxHp: 110, damage: [22, 30], miss: 10, rounds: 5, damageType: 'physical' }); saveState(b, state); return `💀 <@${u}> поднимает **4 усиленных скелетов армии** на 5 раундов (по 110 HP).`;
+    case 'necromancer': state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='army'); for(let i=0;i<3;i++){const hp=rand(100,120);state.summons.push({owner:u,type:'army',icon:'🦴',name:`Скелет армии ${i+1}`,hp,maxHp:hp,damage:[28,36],miss:8,rounds:2,attackAll:true,damageType:'physical'});} saveState(b,state); return `💀 <@${u}> поднимает **3 скелетов** с 100–120 HP. В течение 2 раундов они атакуют всех врагов.`;
 
     case 'pyromancer': { const stacks=Number(state.burnStacks||0),r=hurtEnemy(b,state,rand(120,150)+stacks*35,'magic','pyromancer'); state.burnStacks=0; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🔥 <@${u}> выпускает Адское пламя: **${r.dealt}** урона и взрывает ${stacks} стаков Горения.`; }
     case 'duelist': { let total=0; for(let i=0;i<5;i++) total+=hurtEnemy(b,state,rand(40,50),'physical','duelist').dealt; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `⚔️ <@${u}> проводит Идеальную серию: **${total}** урона.`; }
@@ -1381,8 +1387,16 @@ async function finish(id, win) {
     ];
   } else {
     const classXpLines=[];
-    for (const p of ps) { const classKey=normalizeClassKey(p.class_key); const classXp=35; const progress=grantClassXp(p.user_id,classKey,classXp,{completed:false}); classXpLines.push(`<@${p.user_id}>: **+${classXp} XP класса** → Lv.${progress?.level||1}`); }
-    lines=['💀 Группа потерпела поражение.', `📚 **Опыт за участие:**\n${classXpLines.join('\n')}`];
+    for (const p of ps) {
+      const classKey=normalizeClassKey(p.class_key), classXp=35;
+      const progress=grantClassXp(p.user_id,classKey,classXp,{completed:false});
+      classXpLines.push(`<@${p.user_id}>: **+${classXp} XP класса** → Lv.${progress?.level||1}`);
+      try { db.prepare("UPDATE heroes SET status='wounded',hp=MAX(1,ROUND(max_hp*0.35)),recovery_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(p.user_id); } catch (_) {}
+    }
+    const damageTop=[...ps].sort((a,b)=>b.damage_done-a.damage_done), healTop=[...ps].sort((a,b)=>b.healing_done-a.healing_done), tankTop=[...ps].sort((a,b)=>b.damage_taken-a.damage_taken);
+    const finalState=stateOf(b), summonStats=finalState.summonStats||{}, summonDetails=summonDetailsForFinal(finalState);
+    finalStats={win:false,damageTop:damageTop.slice(0,10),healTop:healTop.slice(0,10),tankTop:tankTop.slice(0,10),summonStats,summonDetails,categoryAwards:[],dustRewards:[]};
+    lines=['💀 Группа потерпела поражение.','🏥 Все участвовавшие герои ранены. Перед следующей экспедицией или World Boss их обязательно нужно вылечить в Лечебнице.', `📚 **Опыт за участие:**\n${classXpLines.join('\n')}`]
   }
   b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const st = stateOf(b); st.finalStats = finalStats;
   const deaths = st.deathStats || { players: ps.filter(p => p.status === 'dead').length, bossMinions: 0, playerSummons: 0 };
