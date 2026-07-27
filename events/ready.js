@@ -87,6 +87,11 @@ module.exports = {
         startLuckyDayScheduler(client);
         startAutomaticBackups(client);
 
+        // Одноразовый праздничный пост Артёму и выдача четырёх паков.
+        // Состояние хранится в SQLite, поэтому повторный запуск не дублирует награды и сообщение.
+        const { runArtemBirthdayStartup } = require('../services/artemBirthdayStartup');
+        await runArtemBirthdayStartup(client);
+
         const { setGameLobbyRuntime } = require('../systems/gameLobbySystem');
         setGameLobbyRuntime(null, client);
 

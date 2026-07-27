@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.4.3",
+  "version": "18.4.4",
   "private": true,
-  "description": "Game Syndicate V18.4.1: русификация ресурсов, переработка древесины и трав, характеристики крафта",
+  "description": "Game Syndicate V18.4.4: одноразовое поздравление Артёма, праздничный пост и выдача паков",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
