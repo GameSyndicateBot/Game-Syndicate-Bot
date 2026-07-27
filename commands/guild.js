@@ -1,4 +1,4 @@
-const { listResources } = require('../systems/hero/resourceService');
+const { listResources, getResourceQuantity } = require('../systems/hero/resourceService');
 const {
   SlashCommandBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
   StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags,
@@ -17,7 +17,7 @@ const { getActiveExpedition } = require('../systems/hero/expeditionService');
 const { createGuildHubCard } = require('../images/hero/createGuildHubCard');
 const { createHeroCard } = require('../images/hero/createHeroCard');
 const { db, getCardDust, removeCardDust } = require('../database/db');
-const { PROFESSIONS, SPECIALIZATIONS, getProfession, getProfessionCounts, getProfessionLeaders, getAllProfessionLeaders } = require('../systems/hero/professionService');
+const { PROFESSIONS, SPECIALIZATIONS, getProfession, getProfessionCounts, getProfessionLeaders, getAllProfessionLeaders, processProfessionMaterial } = require('../systems/hero/professionService');
 const { ITEMS } = require('../systems/hero/itemData');
 const { listOpenOrders, stats: getOrderStats } = require('../systems/hero/orderBoardService');
 const { listCookRecipes, hydrateCookRecipe, cook } = require('../systems/hero/cookService');
@@ -685,8 +685,49 @@ async function showProfessionHub(interaction) {
   const p=PROFESSIONS[row.profession_key];
   const spec=row.specialization_key?SPECIALIZATIONS[row.profession_key]?.[row.specialization_key]:null;
   const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${p.icon} ${p.name} • ур. ${row.level}`)
-    .setDescription(`⚡ Энергия: **${row.energy}/${row.energy_max}**\n🔨 Работ: **${row.work_count}**\n📦 Ресурсов собрано: **${row.resources_gathered||0}**\n📜 Заказов выполнено: **${row.orders_completed||0}**\n💰 Заработано: **${row.dust_earned||0} Dust**${spec?`\n🏅 Специализация: **${spec.icon} ${spec.name}**`:''}\n\nРабота: **/profession work**\nПолный прогресс: **/profession status**`);
-  return interaction.reply({embeds:[embed],components:[guildNavRow('profession')],flags:MessageFlags.Ephemeral});
+    .setDescription(`⚡ Энергия: **${row.energy}/${row.energy_max}**\n🔨 Работ: **${row.work_count}**\n📦 Ресурсов собрано: **${row.resources_gathered||0}**\n📜 Заказов выполнено: **${row.orders_completed||0}**\n💰 Заработано: **${row.dust_earned||0} Dust**${spec?`\n🏅 Специализация: **${spec.icon} ${spec.name}**`:''}\n\nРабота: **/profession work**\nПолный прогресс: **/profession status**${['miner','hunter'].includes(row.profession_key)?'\nПереработка сырья доступна кнопкой ниже.':''}`);
+  const components=[];
+  if(['miner','hunter'].includes(row.profession_key)) {
+    components.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guild:profession:processing').setLabel('Переработка').setEmoji('⚒️').setStyle(ButtonStyle.Success),
+    ));
+  }
+  components.push(guildNavRow('profession'));
+  return interaction.reply({embeds:[embed],components,flags:MessageFlags.Ephemeral});
+}
+
+function professionProcessingRecipe(professionKey) {
+  if (professionKey === 'miner') return { input:'iron_ore', output:'iron_ingot', inputQty:2, outputQty:1, title:'Плавка руды' };
+  if (professionKey === 'hunter') return { input:'beast_hide', output:'leather', inputQty:2, outputQty:1, title:'Выделка шкур' };
+  return null;
+}
+
+async function showProfessionProcessing(interaction, notice='') {
+  const row=getProfession(interaction.user.id);
+  const recipe=professionProcessingRecipe(row?.profession_key);
+  if(!recipe) return interaction.update({content:'❌ Для этой профессии переработка пока недоступна.',embeds:[],components:[guildNavRow('profession')]});
+  const owned=getResourceQuantity(interaction.user.id,recipe.input);
+  const outputOwned=getResourceQuantity(interaction.user.id,recipe.output);
+  const possible=Math.floor(owned/recipe.inputQty);
+  const inputName=ITEMS[recipe.input]?.name||recipe.input;
+  const outputName=ITEMS[recipe.output]?.name||recipe.output;
+  const description=[
+    notice,
+    `**${recipe.inputQty} ${inputName} → ${recipe.outputQty} ${outputName}**`,
+    '',
+    `📦 Сырьё: **${owned}**`,
+    `⚒️ Можно изготовить: **${possible}**`,
+    `✅ Готового материала: **${outputOwned}**`,
+    '',
+    'Выбери количество партий переработки.',
+  ].filter(Boolean).join('\n');
+  const rowButtons=new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:profession:process:1').setLabel('+1').setStyle(ButtonStyle.Primary).setDisabled(possible<1),
+    new ButtonBuilder().setCustomId('guild:profession:process:5').setLabel('+5').setStyle(ButtonStyle.Primary).setDisabled(possible<5),
+    new ButtonBuilder().setCustomId('guild:profession:process:all').setLabel('Переработать всё').setEmoji('⚙️').setStyle(ButtonStyle.Success).setDisabled(possible<1),
+    new ButtonBuilder().setCustomId('guild:profession').setLabel('Назад').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+  );
+  return interaction.update({content:'',embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle(`⚒️ ${recipe.title}`).setDescription(description)],components:[rowButtons]});
 }
 async function showStorage(interaction) {
   if(!getHero(interaction.user.id))return interaction.reply({content:'❌ Сначала создай героя.',flags:MessageFlags.Ephemeral});
@@ -745,7 +786,21 @@ async function handleComponent(interaction) {
   if (action === 'registry' && parts[2] === 'professions') return showRegistryProfessions(interaction);
   if (action === 'registry' && parts[2] === 'stats') return showRegistryStats(interaction);
   if (action === 'masters') return showMasters(interaction);
-  if (action === 'profession') return showProfessionHub(interaction);
+  if (action === 'profession' && parts.length === 2) return showProfessionHub(interaction);
+  if (action === 'profession' && parts[2] === 'processing') return showProfessionProcessing(interaction);
+  if (action === 'profession' && parts[2] === 'process') {
+    const current=getProfession(interaction.user.id);
+    const recipe=professionProcessingRecipe(current?.profession_key);
+    if(!recipe) return showProfessionProcessing(interaction,'❌ Для этой профессии переработка недоступна.');
+    const owned=getResourceQuantity(interaction.user.id,recipe.input);
+    const possible=Math.floor(owned/recipe.inputQty);
+    const batches=parts[3]==='all'?possible:Math.max(1,Number(parts[3])||1);
+    const result=processProfessionMaterial(interaction.user.id,batches);
+    const notice=result.ok
+      ? `✅ Переработано партий: **${result.batches}**. Получено: **${ITEMS[result.recipe.output]?.name||result.recipe.output} ×${result.produced}**.`
+      : result.reason==='materials'?'❌ Недостаточно сырья для выбранного количества.':'❌ Переработка не выполнена.';
+    return showProfessionProcessing(interaction,notice);
+  }
   if (action === 'storage') return showStorage(interaction);
   if (action === 'orders') return showOrdersHub(interaction);
   if (action === 'cook' && parts.length === 2) return showCook(interaction);

@@ -2,7 +2,7 @@
 
 const CLASSES = {
   warrior:{name:'Воин',role:'tank',resourceType:'rage',damageType:'physical',physicalResist:18,magicResist:-8,cardId:2060,maxHp:180,damage:[28,36],miss:6,skill:{name:'Перехват',cost:40},secondSkill:{name:'Боевой клич',cost:50},ultimate:{name:'Последний рубеж',cost:100}},
-  paladin:{name:'Паладин',role:'tank',resourceType:'rage',damageType:'holy',physicalResist:12,magicResist:10,cardId:2061,maxHp:170,damage:[24,32],miss:7,skill:{name:'Щит веры',cost:40},secondSkill:{name:'Освящение',cost:50},ultimate:{name:'Благословение света',cost:100}},
+  paladin:{name:'Паладин',role:'tank',resourceType:'rage',damageType:'holy',physicalResist:16,magicResist:14,cardId:2061,maxHp:185,damage:[26,35],miss:6,skill:{name:'Щит веры',cost:40},secondSkill:{name:'Освящение',cost:50},ultimate:{name:'Благословение света',cost:100}},
   guardian:{name:'Страж',role:'tank',resourceType:'rage',damageType:'physical',physicalResist:25,magicResist:-12,cardId:2062,maxHp:200,damage:[22,30],miss:5,skill:{name:'Стальная защита',cost:40},secondSkill:{name:'Каменная стойка',cost:50},ultimate:{name:'Провокация',cost:100}},
   cleric:{name:'Клирик',role:'healer',resourceType:'energy',damageType:'holy',physicalResist:-12,magicResist:12,cardId:2063,maxHp:120,damage:[18,24],miss:6,skill:{name:'Передача жизни',cost:40},secondSkill:{name:'Карающий свет',cost:50},ultimate:{name:'Божественное исцеление',cost:100}},
   priest:{name:'Жрец',role:'healer',resourceType:'mana',damageType:'holy',physicalResist:-15,magicResist:15,cardId:2064,maxHp:125,damage:[20,26],miss:6,skill:{name:'Молитва жизни',cost:40},secondSkill:{name:'Массовая молитва',cost:50},ultimate:{name:'Воскрешение',cost:100}},

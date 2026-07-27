@@ -630,7 +630,7 @@ function useSkill(b, p, c, e, state, targetId) {
   const id = b.id, u = p.user_id;
   switch (p.class_key) {
     case 'warrior': e.interceptRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `🛡️ <@${u}> перехватывает 70% одиночного урона и провоцирует босса с миньонами на 2 раунда.`;
-    case 'paladin': { const t = targetById(id, targetId) || p, te = effects(t); te.shield = Math.max(Number(te.shield || 0), 40); updateEffects(id, t.user_id, te); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `✨ <@${u}> накладывает на <@${t.user_id}> щит **40 HP** и провоцирует босса с миньонами на 2 раунда.`; }
+    case 'paladin': { const t = targetById(id, targetId) || p, te = effects(t); te.shield = Math.max(Number(te.shield || 0), 50); updateEffects(id, t.user_id, te); e.shield = Math.max(Number(e.shield || 0), 25); e.guardRounds = Math.max(Number(e.guardRounds || 0), 1); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); return `✨ <@${u}> накладывает на <@${t.user_id}> щит **50 HP**, сам получает щит **25 HP**, снижает входящий урон на 1 ход и провоцирует босса с миньонами на 3 раунда.`; }
     case 'guardian': e.guardRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); e.interceptChance = 0.35; return `🛡️ <@${u}> снижает входящий урон на 50%, провоцирует босса на 2 атаки и получает 35% шанс перехватить одиночный удар по союзнику.`;
     case 'cleric': { const t = targetById(id, targetId) || p, sacrifice = Math.min(rand(24, 34), Math.max(0, p.hp - 1)); if (sacrifice <= 0) return `💔 <@${u}> не хватает HP для жертвы.`; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(p.hp - sacrifice, id, u); const healed = healPlayer(id, u, t, rand(58, 76)); const te = effects(t); const shield = Math.max(1, Math.round(healed * 0.15)); te.shield = Number(te.shield || 0) + shield; updateEffects(id, t.user_id, te); return `💚 <@${u}> жертвует **${sacrifice} HP**, лечит <@${t.user_id}> на **${healed} HP** и даёт щит **${shield} HP**.`; }
     case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 75, maxHp: 75, heal: [10, 16], rounds: 4, support: true }); saveState(b, state); return `👼 <@${u}> призывает Ангела-хранителя на 4 хода. В конце каждого раунда ангел лечит всю живую группу.`; }
@@ -669,8 +669,11 @@ function useSecondSkill(b, p, c, e, state) {
     }
     case 'paladin': {
       let total = 0;
-      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, Math.max(1, Math.round(t.max_hp * 0.12)));
-      return `☀️ <@${u}> освящает поле боя и восстанавливает группе **${total} HP**.`;
+      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, Math.max(1, Math.round(t.max_hp * 0.15)));
+      e.shield = Math.max(Number(e.shield || 0), 35);
+      e.guardRounds = Math.max(Number(e.guardRounds || 0), 1);
+      e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2);
+      return `☀️ <@${u}> освящает поле боя, восстанавливает группе **${total} HP**, получает щит **35 HP** и провоцирует врагов на 2 раунда.`;
     }
     case 'guardian': {
       e.shield = Math.max(Number(e.shield || 0), 70);
@@ -776,7 +779,7 @@ function useUlt(b, p, c, e, state, targetId) {
   const id = b.id, u = p.user_id;
   switch (p.class_key) {
     case 'warrior': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); updateEffects(id, t.user_id, te); } e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `🛡️ <@${u}> поднимает Последний рубеж: вся группа получает -40% урона на 2 хода, одиночные атаки направлены в Воина.`;
-    case 'paladin': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.shield = Math.max(Number(te.shield || 0), 30); updateEffects(id, t.user_id, te); } e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `✨ <@${u}> накладывает всей группе щиты по **30 HP** и провоцирует босса с миньонами на 2 раунда.`;
+    case 'paladin': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.shield = Math.max(Number(te.shield || 0), t.user_id === u ? 60 : 40); updateEffects(id, t.user_id, te); } e.guardRounds = Math.max(Number(e.guardRounds || 0), 2); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); return `✨ <@${u}> накладывает союзникам щиты по **40 HP**, себе **60 HP**, получает -50% входящего урона на 2 хода и провоцирует босса с миньонами на 3 раунда.`;
     case 'guardian': { e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.guardianUltRounds = Math.max(Number(e.guardianUltRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); for (const t of validTargets(id, 'alive')) { if (t.user_id === u) continue; const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); te.partyGuardMultiplier = 0.8; updateEffects(id, t.user_id, te); } return `🛡️ <@${u}> применяет абсолютную провокацию: следующие 2 одиночные атаки направлены в Стража, он получает -40% урона, союзники — -20% урона.`; }
     case 'cleric': { const t = targetById(id, targetId) || p, healed = healPlayer(id, u, t, t.max_hp); return `🌟 <@${u}> полностью исцеляет <@${t.user_id}> на **${healed} HP**.`; }
     case 'priest': { const dead = targetById(id, targetId, 'dead'); if (!dead) return `✨ Нет выбранной погибшей цели.`; db.prepare("UPDATE world_boss_players SET status='alive',hp=ROUND(max_hp*0.5),energy=0,mana=50,ult_charge=0 WHERE battle_id=? AND user_id=?").run(id, dead.user_id); return `✨ <@${u}> воскрешает <@${dead.user_id}>! Игрок возвращается в бой с **${Math.round(dead.max_hp * 0.5)} HP**.`; }

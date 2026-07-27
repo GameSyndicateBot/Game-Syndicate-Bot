@@ -156,7 +156,7 @@ function changeProfession(userId,key){
 }
 function processProfessionMaterial(userId,batches=1){
   const row=getProfession(userId); if(!row)return {ok:false,reason:'missing'};
-  const count=Math.max(1,Math.min(100,Math.floor(Number(batches)||1)));
+  const count=Math.max(1,Math.min(10000,Math.floor(Number(batches)||1)));
   const recipes={miner:{input:'iron_ore',output:'iron_ingot',inputQty:2,outputQty:1},hunter:{input:'beast_hide',output:'leather',inputQty:2,outputQty:1}};
   const recipe=recipes[row.profession_key];
   if(!recipe)return {ok:false,reason:'unsupported',profession:row.profession_key};
