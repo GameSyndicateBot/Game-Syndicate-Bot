@@ -1,7 +1,7 @@
 'use strict';
 
 const CLASSES = {
-  warrior:{name:'Воин',role:'tank',resourceType:'rage',damageType:'physical',physicalResist:18,magicResist:-8,cardId:2060,maxHp:180,damage:[28,36],miss:6,skill:{name:'Перехват',cost:40},secondSkill:{name:'Боевой клич',cost:50},ultimate:{name:'Последний рубеж',cost:100}},
+  warrior:{name:'Воин',role:'tank',resourceType:'rage',damageType:'physical',physicalResist:20,magicResist:10,cardId:2060,maxHp:185,damage:[30,38],miss:6,skill:{name:'Рассекающий удар',cost:40},secondSkill:{name:'Боевой клич',cost:50},ultimate:{name:'Неудержимый натиск',cost:100}},
   paladin:{name:'Паладин',role:'tank',resourceType:'holiness',damageType:'holy',physicalResist:16,magicResist:14,cardId:2061,maxHp:185,damage:[26,35],miss:6,skill:{name:'Щит веры',cost:40},secondSkill:{name:'Освящение',cost:50},ultimate:{name:'Благословение света',cost:100}},
   guardian:{name:'Страж',role:'tank',resourceType:'rage',damageType:'physical',physicalResist:25,magicResist:-12,cardId:2062,maxHp:200,damage:[22,30],miss:5,skill:{name:'Стальная защита',cost:40},secondSkill:{name:'Каменная стойка',cost:50},ultimate:{name:'Провокация',cost:100}},
   cleric:{name:'Клирик',role:'healer',resourceType:'energy',damageType:'holy',physicalResist:-12,magicResist:12,cardId:2063,maxHp:120,damage:[18,24],miss:6,skill:{name:'Передача жизни',cost:40},secondSkill:{name:'Карающий свет',cost:50},ultimate:{name:'Божественное исцеление',cost:100}},
@@ -25,20 +25,20 @@ const CLASSES = {
 
 const MINIONS = {
   2045:{damageType:'magic',name:'Тень Бездны',dark:true,physicalResist:10,magicResist:0,maxHp:140,damage:[22,30],miss:20},
-  2046:{damageType:'magic',name:'Искажённая Тень',dark:true,physicalResist:12,magicResist:4,maxHp:160,damage:[24,33],miss:18},
+  2046:{provoking:true,damageType:'magic',name:'Искажённая Тень',dark:true,physicalResist:12,magicResist:4,maxHp:160,damage:[24,33],miss:18},
   2047:{damageType:'physical',name:'Паразит Бездны',maxHp:180,damage:[25,36],miss:18},
   2048:{damageType:'magic',name:'Сгусток Пустоты',maxHp:200,damage:[20,28],miss:15},
-  2049:{damageType:'physical',name:'Хаосит',maxHp:170,damage:[27,39],miss:20},
-  2050:{damageType:'magic',name:'Разломный Демон',maxHp:200,damage:[30,43],miss:15},
-  2051:{damageType:'physical',name:'Автоматон',physicalResist:25,magicResist:-10,maxHp:240,damage:[28,38],miss:10},
+  2049:{provoking:true,damageType:'physical',name:'Хаосит',maxHp:170,damage:[27,39],miss:20},
+  2050:{provoking:true,damageType:'magic',name:'Разломный Демон',maxHp:200,damage:[30,43],miss:15},
+  2051:{provoking:true,damageType:'physical',name:'Автоматон',physicalResist:25,magicResist:-10,maxHp:240,damage:[28,38],miss:10},
   2052:{damageType:'magic',name:'Искра Бури',maxHp:150,damage:[24,33],miss:15},
-  2053:{damageType:'magic',name:'Грозовой Элементаль',maxHp:210,damage:[30,43],miss:12},
-  2054:{damageType:'physical',name:'Скелет-Воин',undead:true,dark:true,physicalResist:18,magicResist:0,maxHp:200,damage:[29,40],miss:12},
+  2053:{provoking:true,damageType:'magic',name:'Грозовой Элементаль',maxHp:210,damage:[30,43],miss:12},
+  2054:{provoking:true,damageType:'physical',name:'Скелет-Воин',undead:true,dark:true,physicalResist:18,magicResist:0,maxHp:200,damage:[29,40],miss:12},
   2055:{damageType:'magic',name:'Некромант-Призрак',undead:true,dark:true,physicalResist:5,magicResist:15,maxHp:160,damage:[24,33],miss:16},
   2056:{damageType:'magic',name:'Ледяной Осколок',maxHp:150,damage:[22,30],miss:20},
-  2057:{damageType:'physical',name:'Ледяной Голем',maxHp:230,damage:[28,38],miss:10},
+  2057:{provoking:true,damageType:'physical',name:'Ледяной Голем',maxHp:230,damage:[28,38],miss:10},
   2058:{damageType:'magic',name:'Драконье Яйцо',maxHp:200,damage:[0,0],miss:0},
-  2059:{damageType:'physical',name:'Дракончик',maxHp:180,damage:[34,48],miss:15},
+  2059:{provoking:true,damageType:'physical',name:'Дракончик',maxHp:180,damage:[34,48],miss:15},
 };
 
 const BOSSES = [

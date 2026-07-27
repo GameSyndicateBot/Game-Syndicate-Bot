@@ -90,7 +90,7 @@ function roleIcon(role) { return role === 'tank' ? '🛡️' : role === 'healer'
 function resourceType(classKey) { return CLASSES[classKey]?.resourceType || 'energy'; }
 function resourceMeta(classKey) { const t = resourceType(classKey); return t === 'rage' ? { key:'energy', label:'Ярость', icon:'🔥' } : t === 'holiness' ? { key:'energy', label:'Святость', icon:'✨' } : t === 'bloodlust' ? { key:'energy', label:'Кровожадность', icon:'🩸' } : t === 'mana' ? { key:'mana', label:'Мана', icon:'🔷' } : { key:'energy', label:'Энергия', icon:'⚡' }; }
 function skillResourceValue(p) { const m = resourceMeta(p.class_key); return Number(p[m.key] || 0); }
-function ultResourceValue(p) { return resourceType(p.class_key) === 'mana' ? Number(p.ult_charge || 0) : Number(p.energy || 0); }
+function ultResourceValue(p) { return Number(p.ult_charge || 0); }
 function hpBar(hp, max, size = 16) { const q = max ? Math.round(clamp(hp / max, 0, 1) * size) : 0; return '█'.repeat(q) + '░'.repeat(size - q); }
 function clearTimer(id) { const t = timers.get(Number(id)); if (t) clearTimeout(t); timers.delete(Number(id)); }
 function setTimer(id, fn, ms) { clearTimer(id); const t = setTimeout(fn, Math.max(500, ms)); t.unref?.(); timers.set(Number(id), t); }
@@ -150,6 +150,13 @@ function buildClassPool(n) {
     out.push(pick(leastUsed.slice(0, Math.min(4, leastUsed.length))));
   }
   return shuffle(out);
+}
+
+function chooseUniqueBoss() {
+  const recent = db.prepare(`SELECT boss_card_id FROM world_boss_battles ORDER BY id DESC LIMIT ?`).all(Math.max(1, BOSSES.length - 1));
+  const blocked = new Set(recent.map(row => Number(row.boss_card_id)));
+  const available = BOSSES.filter(boss => !blocked.has(Number(boss.cardId)));
+  return pick(available.length ? available : BOSSES);
 }
 
 function scaledHp(base, n) {
@@ -216,7 +223,7 @@ function buildEmbed(b, players) {
   }
   if (b.status === 'initiative_roll') e.addFields({ name: '🎲 Инициатива боя', value: `Бросили: **${Object.keys(state.initiativeRolls || {}).length}/${players.length}**\nДо автоброска: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` });
   if (b.status === 'active') { const turnNo = alive.length ? (b.turn_index % alive.length) + 1 : 0; e.addFields({ name: '▶️ Сейчас ходит', value: `${current ? `<@${current.user_id}> • **${CLASSES[current.class_key]?.name}**` : '—'}\n**Ход ${turnNo} из ${alive.length}** • Раунд **${b.round_no}**\nДо автоатаки: ${b.turn_deadline ? `<t:${Math.floor(b.turn_deadline / 1000)}:R>` : '—'}` }); }
-  if (state.minions?.length) e.addFields({ name: '👾 Миньоны босса', value: state.minions.map(m => `${m.name}: ❤️ **${m.hp}/${m.maxHp}**`).join('\n').slice(0, 1024) });
+  if (state.minions?.length) e.addFields({ name: '👾 Миньоны босса', value: state.minions.map(m => `${m.provoking ? '🛑' : '👾'} ${m.name}: ❤️ **${m.hp}/${m.maxHp}**${m.provoking ? ' • ПРОВОКАЦИЯ' : ''}`).join('\n').slice(0, 1024) });
   const sum = summonsText(state); if (sum) e.addFields({ name: '🧙 Тотемы, духи и призывы', value: sum });
   if (['class_select','initiative_roll','active'].includes(b.status)) e.addFields({ name: b.status === 'active' ? '⚔️ Порядок ходов' : 'Команда', value: players.slice(0, 18).map((p, index) => {
     const c = CLASSES[p.class_key], ef = effects(p), sh = Number(ef.shield || 0);
@@ -225,7 +232,7 @@ function buildEmbed(b, players) {
     const marker = p.status === 'dead' ? '☠️' : b.status === 'active' ? (aliveIndex < currentIndex ? '✅' : aliveIndex === currentIndex ? '▶️' : '⏳') : roleIcon(c?.role);
     const ult = Math.max(0, Math.min(100, ultResourceValue(p)));
     const ultIcon = ult >= 100 ? '🟣✨' : ult >= 75 ? '🟠✨' : ult >= 25 ? '🟡✨' : '⚫✨';
-    return `${marker} **${index + 1}.** ${playerLabel(p)} • ${c?.name || 'класс не выбран'}${b.status === 'active' ? ` • ❤️${p.hp}/${p.max_hp}${sh ? ` • 🛡️${sh}` : ''} • ${resourceMeta(p.class_key).icon}${skillResourceValue(p)} • ${ultIcon}${ult}/100` : ''}`;
+    return `${marker} **${index + 1}.** ${playerLabel(p)} • ${c?.name || 'класс не выбран'}${b.status === 'active' ? ` • ❤️${p.hp}/${p.max_hp}${sh ? ` • 🛡️${sh}` : ''} • ${resourceMeta(p.class_key).icon}${skillResourceValue(p)}\n　　${ultIcon} **Ульта: ${ult}/100**` : ''}`;
   }).join('\n').slice(0, 1024) });
   if (state.finalStats) {
     const fs = state.finalStats;
@@ -307,7 +314,7 @@ async function startRegistration(client, { manual = false } = {}) {
   try {
     db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE status IN ('active','pending')").run();
     const ch = await clientRef.channels.fetch(CHANNEL_ID).catch(() => null); if (!ch?.isTextBased()) return { ok: false, reason: 'channel' }; const me = ch.guild?.members?.me; const perms = me ? ch.permissionsFor(me) : null; if (perms && !perms.has([PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.EmbedLinks])) return { ok: false, reason: 'permissions' }; if (perms && !perms.has(PermissionsBitField.Flags.AttachFiles)) console.warn('[WorldBoss] В канале нет права «Прикреплять файлы»: визуальная карточка будет недоступна, но бой продолжит работать.');
-    const boss = pick(BOSSES), now = Date.now();
+    const boss = chooseUniqueBoss(), now = Date.now();
     const st = { bossCardId: boss.cardId, allowedMinions: [...boss.minions], minions: [], summons: [], rage: 0, lastDestroyRound: -99, lastGroupCurseRound: -99, lastSummonRound: -99, lastCurseRound: -99, bossActionStats: {}, deathStats: { players: 0, bossMinions: 0, playerSummons: 0 }, log: [manual ? '🛠️ Босс вызван вручную.' : '⏰ Босс появился по расписанию.'] };
     const info = db.prepare(`INSERT INTO world_boss_battles(channel_id,boss_card_id,boss_name,boss_hp,boss_max_hp,status,registration_ends_at,state_json,created_at) VALUES(?,?,?,?,?,'registration',?,?,?)`).run(CHANNEL_ID, boss.cardId, boss.name, boss.baseHp, boss.baseHp, now + REGISTRATION_MS, JSON.stringify(st), now);
     const id = Number(info.lastInsertRowid); createdBattleId = id;
@@ -514,17 +521,30 @@ function holyBonus(target, sourceClass) {
   return target?.undead || target?.dark ? 1.35 : 1;
 }
 function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null, pierce = 0) {
-  if (state.minions?.length) {
-    const m = state.minions.find(x => x.hp > 0);
-    if (m) {
-      const adjusted = Math.max(1, Math.round(amount * resistanceMultiplier(m, damageType, pierce) * holyBonus(m, sourceClass)));
-      const dealt = Math.min(adjusted, m.hp); const died = m.hp > 0 && m.hp - adjusted <= 0; m.hp -= adjusted;
-      if (died) { state.log = state.log || []; state.log.push(`💀 Миньон босса **${m.name}** уничтожен!`); state.deathStats = state.deathStats || { players: 0, bossMinions: 0, playerSummons: 0 }; state.deathStats.bossMinions = Number(state.deathStats.bossMinions || 0) + 1; }
-      state.minions = state.minions.filter(x => x.hp > 0); saveState(b, state);
-      return { dealt, target: m.name, minion: true, died };
-    }
-  }
   const cfg = BOSSES.find(x => x.cardId === b.boss_card_id) || {};
+  const minions = (state.minions || []).filter(x => Number(x.hp || 0) > 0);
+  const provoking = minions.filter(x => x.provoking);
+  const selected = String(state._selectedEnemyTarget || '');
+  let targetMinion = null;
+  let hitBoss = false;
+  if (provoking.length) {
+    targetMinion = provoking.find(m => selected === `minion:${m.instanceId}`) || pick(provoking);
+  } else if (selected === 'boss') {
+    hitBoss = true;
+  } else if (selected.startsWith('minion:')) {
+    targetMinion = minions.find(m => selected === `minion:${m.instanceId}`) || null;
+  } else {
+    const randomPool = ['boss', ...minions];
+    const chosen = pick(randomPool);
+    if (chosen === 'boss') hitBoss = true; else targetMinion = chosen;
+  }
+  if (targetMinion && !hitBoss) {
+    const adjusted = Math.max(1, Math.round(amount * resistanceMultiplier(targetMinion, damageType, pierce) * holyBonus(targetMinion, sourceClass)));
+    const dealt = Math.min(adjusted, targetMinion.hp); const died = targetMinion.hp > 0 && targetMinion.hp - adjusted <= 0; targetMinion.hp -= adjusted;
+    if (died) { state.log = state.log || []; state.log.push(`💀 Миньон босса **${targetMinion.name}** уничтожен!`); state.deathStats = state.deathStats || { players: 0, bossMinions: 0, playerSummons: 0 }; state.deathStats.bossMinions = Number(state.deathStats.bossMinions || 0) + 1; }
+    state.minions = state.minions.filter(x => x.hp > 0); saveState(b, state);
+    return { dealt, target: targetMinion.name, minion: true, died };
+  }
   const vulnerability = Number(state.bossVulnerabilityOwnerTurns || 0) > 0 ? 1 + Number(state.bossVulnerability || 0) : 1;
   const adjusted = Math.max(1, Math.round(amount * resistanceMultiplier(cfg, damageType, pierce) * holyBonus(cfg, sourceClass) * vulnerability));
   const dealt = Math.min(adjusted, b.boss_hp); db.prepare('UPDATE world_boss_battles SET boss_hp=MAX(0,boss_hp-?) WHERE id=?').run(adjusted, b.id);
@@ -536,6 +556,29 @@ function healPlayer(id, healerId, target, amount) { const te = effects(target); 
 function validTargets(id, kind) { const ps = battlePlayers(id); return kind === 'dead' ? ps.filter(x => x.status === 'dead') : ps.filter(x => x.status === 'alive'); }
 function actionTargets(id, player, action, kind) { let list = validTargets(id, kind); if (player.class_key === 'cleric' && action === 'skill') list = list.filter(x => x.user_id !== player.user_id); return list; }
 function targetKind(classKey, action) { if (action === 'skill' && ['paladin','cleric','bard'].includes(classKey)) return 'alive'; if (action === 'ult' && ['cleric'].includes(classKey)) return 'alive'; if (action === 'ult' && classKey === 'priest') return 'dead'; return null; }
+function enemyTargets(b, state) {
+  const minions = (state.minions || []).filter(m => Number(m.hp || 0) > 0);
+  const provoking = minions.filter(m => m.provoking);
+  const pool = provoking.length ? provoking.map(m => ({ type: 'minion', token: `minion:${m.instanceId}`, name: m.name, hp: m.hp, maxHp: m.maxHp, provoking: true }))
+    : [{ type: 'boss', token: 'boss', name: b.boss_name, hp: b.boss_hp, maxHp: b.boss_max_hp }, ...minions.map(m => ({ type: 'minion', token: `minion:${m.instanceId}`, name: m.name, hp: m.hp, maxHp: m.maxHp, provoking: false }))];
+  return pool;
+}
+function enemyTargetMenu(id, action, targets) {
+  return new ActionRowBuilder().addComponents(new StringSelectMenuBuilder()
+    .setCustomId(`wb_enemy_target_${action}_${id}`)
+    .setPlaceholder(targets.some(t => t.provoking) ? 'Выберите провоцирующего миньона' : 'Выберите босса или миньона')
+    .addOptions(targets.slice(0, 25).map(t => ({ label: `${t.provoking ? '🛑 ' : t.type === 'boss' ? '👹 ' : '👾 '}${t.name}`.slice(0,100), value: t.token, description: `${t.hp}/${t.maxHp} HP${t.provoking ? ' • заставляет атаковать себя' : ''}`.slice(0,100) }))));
+}
+function needsEnemyTarget(classKey, action) {
+  if (action === 'attack') return true;
+  const byAction = {
+    skill: new Set(['assassin','archer','mage','berserker','necromancer','pyromancer','duelist','reaper','mindlord','druid']),
+    skill2: new Set(['bard','assassin','archer','mage','pyromancer','mindlord']),
+    ult: new Set(['assassin','mage','pyromancer','duelist','reaper','mindlord']),
+  };
+  return Boolean(byAction[action]?.has(classKey));
+}
+
 function targetMenu(id, action, targets) { return new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`wb_target_${action}_${id}`).setPlaceholder('Выберите цель').addOptions(targets.slice(0, 25).map(t => ({ label: `${CLASSES[t.class_key]?.name || 'Игрок'} • ${t.hp}/${t.max_hp} HP`, value: t.user_id, description: t.status === 'dead' ? 'Погиб' : `${resourceMeta(t.class_key).label}: ${skillResourceValue(t)}` })))); }
 function tickCooldowns(e, used) { if (used !== 'skill' && e.skillCd > 0) e.skillCd--; if (used !== 'skill2' && e.skill2Cd > 0) e.skill2Cd--; if (used !== 'ult' && e.ultCd > 0) e.ultCd--; if (e.skillSilencedTurns > 0) e.skillSilencedTurns--; if (e.ultSilencedTurns > 0) e.ultSilencedTurns--; }
 
@@ -611,7 +654,7 @@ async function perform(id, userId, action, auto = false, targetId = null) {
       }
     }
     const freshPlayer = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, userId);
-    const c = CLASSES[freshPlayer.class_key], e = effects(freshPlayer), state = stateOf(b); let text = '';
+    const c = CLASSES[freshPlayer.class_key], e = effects(freshPlayer), state = stateOf(b); state._selectedEnemyTarget = targetId; let text = '';
     const pNow = freshPlayer;
     const rType = resourceType(p.class_key); let energy = Number(p.energy || 0), mana = Number(p.mana || 0), ultCharge = Number(p.ult_charge || 0);
     if (action === 'attack') {
@@ -637,7 +680,7 @@ async function perform(id, userId, action, auto = false, targetId = null) {
       const skillPool = rType === 'mana' ? mana : energy;
       if (skillPool < SECOND_SKILL_COST) return { ok: false, reason: rType };
       if (rType === 'mana') mana -= SECOND_SKILL_COST; else energy -= SECOND_SKILL_COST; ultCharge = clamp(ultCharge + 12, 0, 100);
-      text = useSecondSkill(b, p, c, e, state);
+      text = useSecondSkill(b, p, c, e, state, targetId);
       e.skill2Cd = SECOND_SKILL_CD;
     } else if (action === 'ult') {
       if (Number(e.ultSilencedTurns || 0) > 0) return { ok: false, reason: 'silenced_ult', cd: e.ultSilencedTurns };
@@ -679,7 +722,7 @@ function targetById(id, targetId, status = 'alive') { return battlePlayers(id).f
 function useSkill(b, p, c, e, state, targetId) {
   const id = b.id, u = p.user_id;
   switch (p.class_key) {
-    case 'warrior': e.interceptRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `🛡️ <@${u}> перехватывает 70% одиночного урона и провоцирует босса с миньонами на 2 раунда.`;
+    case 'warrior': { const r = hurtEnemy(b, state, rand(55,70), 'physical', 'warrior'); for (const m of state.minions || []) { if (m.hp > 0) { const splash = Math.min(m.hp, rand(20,30)); m.hp -= splash; } } state.minions = (state.minions || []).filter(m => m.hp > 0); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.warriorAggroRounds = 2; e.warriorAggroBonus = 0.15; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `⚔️ <@${u}> использует Рассекающий удар: **${r.dealt}** урона → ${r.target}, задевает миньонов и получает +15% агро на 2 раунда.`; }
     case 'paladin': { const t = targetById(id, targetId) || p, te = effects(t); te.shield = Math.max(Number(te.shield || 0), 50); updateEffects(id, t.user_id, te); e.shield = Math.max(Number(e.shield || 0), 25); e.guardRounds = Math.max(Number(e.guardRounds || 0), 1); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); return `✨ <@${u}> накладывает на <@${t.user_id}> щит **50 HP**, сам получает щит **25 HP**, снижает входящий урон на 1 ход и провоцирует босса с миньонами на 3 раунда.`; }
     case 'guardian': e.guardRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); e.interceptChance = 0.35; return `🛡️ <@${u}> снижает входящий урон на 50%, провоцирует босса на 2 атаки и получает 35% шанс перехватить одиночный удар по союзнику.`;
     case 'cleric': { const t = targetById(id, targetId) || p, sacrifice = Math.min(rand(24, 34), Math.max(0, p.hp - 1)); if (sacrifice <= 0) return `💔 <@${u}> не хватает HP для жертвы.`; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(p.hp - sacrifice, id, u); const healed = healPlayer(id, u, t, rand(58, 76)); const te = effects(t); const shield = Math.max(1, Math.round(healed * 0.15)); te.shield = Number(te.shield || 0) + shield; updateEffects(id, t.user_id, te); return `💚 <@${u}> жертвует **${sacrifice} HP**, лечит <@${t.user_id}> на **${healed} HP** и даёт щит **${shield} HP**.`; }
@@ -704,18 +747,16 @@ function useSkill(b, p, c, e, state, targetId) {
   }
 }
 
-function useSecondSkill(b, p, c, e, state) {
+function useSecondSkill(b, p, c, e, state, targetId) {
   const id = b.id, u = p.user_id;
   switch (p.class_key) {
     case 'warrior': {
-      for (const t of validTargets(id, 'alive')) {
-        const te = effects(t);
-        te.groupDamageRounds = Math.max(Number(te.groupDamageRounds || 0), 2);
-        te.groupDamage = Math.max(Number(te.groupDamage || 0), 0.10);
-        updateEffects(id, t.user_id, te);
-      }
-      e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 1);
-      return `📣 <@${u}> использует Боевой клич: вся группа получает **+10% урона на 2 раунда**, Воин провоцирует врагов.`;
+      e.shield = Math.max(Number(e.shield || 0), 50);
+      e.guardRounds = Math.max(Number(e.guardRounds || 0), 2);
+      e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2);
+      e.warriorAggroRounds = 2;
+      e.warriorAggroBonus = 0.30;
+      return `📣 <@${u}> использует Боевой клич: щит **50 HP**, +25% физической и +15% магической защиты на 2 хода, провокация врагов на 2 раунда.`;
     }
     case 'paladin': {
       let total = 0;
@@ -829,7 +870,7 @@ function useSecondSkill(b, p, c, e, state) {
 function useUlt(b, p, c, e, state, targetId) {
   const id = b.id, u = p.user_id;
   switch (p.class_key) {
-    case 'warrior': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); updateEffects(id, t.user_id, te); } e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); return `🛡️ <@${u}> поднимает Последний рубеж: вся группа получает -40% урона на 2 хода, одиночные атаки направлены в Воина.`;
+    case 'warrior': { const r=hurtEnemy(b,state,rand(110,140),'physical','warrior'); e.shield=Math.max(Number(e.shield||0),60); e.guardRounds=Math.max(Number(e.guardRounds||0),2); e.tauntRounds=Math.max(Number(e.tauntRounds||0),2); e.damageBuffTurns=Math.max(Number(e.damageBuffTurns||0),1); e.damageBuff=Math.max(Number(e.damageBuff||0),0.30); db.prepare('UPDATE world_boss_players SET energy=MIN(100,energy+20),damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `💥 <@${u}> совершает Неудержимый натиск: **${r.dealt}** урона → ${r.target}, щит **60 HP**, +30% урона на следующий ход и провокация на 2 раунда.`; }
     case 'paladin': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.shield = Math.max(Number(te.shield || 0), t.user_id === u ? 60 : 40); updateEffects(id, t.user_id, te); } e.guardRounds = Math.max(Number(e.guardRounds || 0), 2); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); return `✨ <@${u}> накладывает союзникам щиты по **40 HP**, себе **60 HP**, получает -50% входящего урона на 2 хода и провоцирует босса с миньонами на 3 раунда.`;
     case 'guardian': { e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.guardianUltRounds = Math.max(Number(e.guardianUltRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); for (const t of validTargets(id, 'alive')) { if (t.user_id === u) continue; const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); te.partyGuardMultiplier = 0.8; updateEffects(id, t.user_id, te); } return `🛡️ <@${u}> применяет абсолютную провокацию: следующие 2 одиночные атаки направлены в Стража, он получает -40% урона, союзники — -20% урона.`; }
     case 'cleric': { const t = targetById(id, targetId) || p, healed = healPlayer(id, u, t, t.max_hp); return `🌟 <@${u}> полностью исцеляет <@${t.user_id}> на **${healed} HP**.`; }
@@ -1121,6 +1162,8 @@ async function bossTurn(id) {
       const cfg = MINIONS[minionId];
       state.minions.push({
         cardId: minionId,
+        instanceId: `${minionId}-${Date.now()}-${i}-${Math.random().toString(36).slice(2,7)}`,
+        provoking: Boolean(cfg.provoking),
         ownerBossCardId: boss.cardId,
         name: cfg.name,
         hp: cfg.maxHp,
@@ -1473,8 +1516,8 @@ async function handle(interaction) {
     const c = CLASSES[p.class_key], e = effects(p), file = cardFile(c.cardId, 'class');
     const content = `⚔️ ${heroSummary(p)}\n${roleIcon(c.role)} **${c.name}**
 ❤️ ${p.hp}/${p.max_hp}${e.shield ? ` • 🛡️ ${e.shield}` : ''}
-${resourceMeta(p.class_key).icon} ${resourceMeta(p.class_key).label}: ${skillResourceValue(p)}/100${resourceType(p.class_key) === 'mana' ? `
-💥 Заряд ульты: ${p.ult_charge || 0}/100` : ''}
+${resourceMeta(p.class_key).icon} ${resourceMeta(p.class_key).label}: ${skillResourceValue(p)}/100
+💥 Заряд ульты: ${p.ult_charge || 0}/100
 🗡️ Урон ${c.damage[0]}–${c.damage[1]} • тип: ${c.damageType === 'magic' ? 'магический' : c.damageType === 'holy' ? 'святой' : 'физический'} • промах ${c.miss}% • крит ${CRIT_CHANCE}% ×${CRIT_MULTIPLIER}
 🛡️ Защита: физ. ${Number(c.physicalResist || 0) >= 0 ? '+' : ''}${c.physicalResist || 0}% • маг. ${Number(c.magicResist || 0) >= 0 ? '+' : ''}${c.magicResist || 0}%
 
@@ -1505,7 +1548,7 @@ ${own.map((x, i) => `**${x.icon || '▫️'} ${x.name}${own.length > 1 ? ` #${i 
   if (interaction.customId === `wb_enemies_${id}`) {
     const st = stateOf(b), boss = BOSSES.find(x => x.cardId === b.boss_card_id), file = cardFile(b.boss_card_id, 'boss'), files = [];
     if (require('fs').existsSync(file)) files.push(new AttachmentBuilder(file, { name: `boss-${b.boss_card_id}.jpg` }));
-    const enemyText = (st.minions || []).length ? st.minions.map(m => `👾 **${m.name}** — ❤️ ${m.hp}/${m.maxHp}`).join('\n') : 'Миньоны босса пока не призваны.';
+    const enemyText = (st.minions || []).length ? st.minions.map(m => `${m.provoking ? '🛑' : '👾'} **${m.name}** — ❤️ ${m.hp}/${m.maxHp}${m.provoking ? ' • провоцирует' : ''}`).join('\n') : 'Миньоны босса пока не призваны.';
     return interaction.reply({ content: `## 👹 ${b.boss_name}
 ❤️ ${b.boss_hp}/${b.boss_max_hp}
 🔥 Ярость ${Number(st.rage || 0)}/100
@@ -1514,10 +1557,20 @@ ${enemyText}
 
 Может призывать: ${(boss?.minions || []).map(mid => MINIONS[mid]?.name).filter(Boolean).join(', ') || '—'}`, files, flags: MessageFlags.Ephemeral });
   }
+  const enemyTargetSelect = interaction.customId.match(/^wb_enemy_target_(attack|skill2|skill|ult)_\d+$/);
+  if (interaction.isStringSelectMenu() && enemyTargetSelect) {
+    const r = await perform(id, uid, enemyTargetSelect[1], false, interaction.values[0]);
+    return interaction.reply({ content: resultText(r), flags: MessageFlags.Ephemeral });
+  }
   const targetSelect = interaction.customId.match(/^wb_target_(skill|ult)_\d+$/); if (interaction.isStringSelectMenu() && targetSelect) { const r = await perform(id, uid, targetSelect[1], false, interaction.values[0]); return interaction.reply({ content: resultText(r), flags: MessageFlags.Ephemeral }); }
   const actMatch = interaction.customId.match(/^wb_(attack|skill2|skill|ult)_\d+$/); if (actMatch) {
     const action = actMatch[1], kind = targetKind(p.class_key, action);
     if (kind) { const targets = actionTargets(id, p, action, kind); if (!targets.length) return interaction.reply({ content: kind === 'dead' ? 'Нет погибших союзников.' : 'Нет доступных целей.', flags: MessageFlags.Ephemeral }); return interaction.reply({ content: 'Выбери цель:', components: [targetMenu(id, action, targets)], flags: MessageFlags.Ephemeral }); }
+    if (needsEnemyTarget(p.class_key, action)) {
+      const st = stateOf(b), targets = enemyTargets(b, st);
+      if (targets.length > 1) return interaction.reply({ content: targets.some(t => t.provoking) ? '🛑 Провоцирующий миньон заставляет атаковать его. Выбери цель:' : '🎯 Выбери, кого атаковать:', components: [enemyTargetMenu(id, action, targets)], flags: MessageFlags.Ephemeral });
+      const r = await perform(id, uid, action, false, targets[0]?.token || null); return interaction.reply({ content: resultText(r), flags: MessageFlags.Ephemeral });
+    }
     const r = await perform(id, uid, action); return interaction.reply({ content: resultText(r), flags: MessageFlags.Ephemeral });
   }
   return false;
