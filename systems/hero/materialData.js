@@ -8,6 +8,8 @@ const MATERIALS = Object.freeze({
   herb: { name: 'Лечебная трава', icon: '🌿', rarity: 'common', value: 9, description: 'Основа будущих зелий.' },
   bone: { name: 'Кость', icon: '🦴', rarity: 'common', value: 10, description: 'Материал для талисманов и тёмного ремесла.' },
   leather: { name: 'Кожа', icon: '🟫', rarity: 'common', value: 11, description: 'Используется для лёгкой брони.' },
+  board: { name: 'Доска', icon: '🪵', rarity: 'common', value: 18, description: 'Обработанная древесина для оружия, щитов и снаряжения.' },
+  herb_extract: { name: 'Экстракт трав', icon: '🧪', rarity: 'common', value: 20, description: 'Концентрированная основа для зелий Алхимика.' },
   crystal: { name: 'Магический кристалл', icon: '💎', rarity: 'rare', value: 45, description: 'Накопитель магической энергии.' },
   essence: { name: 'Эссенция', icon: '✨', rarity: 'rare', value: 55, description: 'Редкая субстанция для чар и алхимии.' },
   ancient_fragment: { name: 'Древний фрагмент', icon: '🏺', rarity: 'rare', value: 70, description: 'Обломок исчезнувшей цивилизации.' },

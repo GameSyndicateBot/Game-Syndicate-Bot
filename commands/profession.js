@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { getHero } = require('../systems/hero/heroService');
 const { ITEMS } = require('../systems/hero/itemData');
+const { MATERIALS } = require('../systems/hero/materialData');
 const {
   PROFESSIONS,SPECIALIZATIONS,ENERGY_REGEN_PER_HOUR,LEVEL_CAP,xpNeeded,energyMaxForLevel,energyCostForLevel,
   getProfession,chooseProfession,changeProfession,processProfessionMaterial,PROFESSION_CHANGE_COST,work,chooseSpecialization,getProfessionCounts,getMilestones
@@ -50,12 +51,12 @@ module.exports={
    const batches=interaction.options.getInteger('batches')||1;
    const result=processProfessionMaterial(interaction.user.id,batches);
    if(!result.ok){
-    if(result.reason==='unsupported') return interaction.reply({content:'❌ Переработка сейчас доступна Горняку (руда → слитки) и Охотнику (шкуры → кожа).',flags:MessageFlags.Ephemeral});
+    if(result.reason==='unsupported') return interaction.reply({content:'❌ Переработка доступна Горняку (руда → слитки), Охотнику (шкуры → кожа), Леснику (древесина → доски) и Травнику (травы → экстракт).',flags:MessageFlags.Ephemeral});
     if(result.reason==='materials') return interaction.reply({content:`❌ Недостаточно сырья: нужно **${result.needed}**, есть **${result.owned}**.`,flags:MessageFlags.Ephemeral});
     return interaction.reply({content:'❌ Не удалось переработать материалы.',flags:MessageFlags.Ephemeral});
    }
-   const input=ITEMS[result.recipe.input]?.name||result.recipe.input;
-   const output=ITEMS[result.recipe.output]?.name||result.recipe.output;
+   const input=(MATERIALS[result.recipe.input]||ITEMS[result.recipe.input])?.name||result.recipe.input;
+   const output=(MATERIALS[result.recipe.output]||ITEMS[result.recipe.output])?.name||result.recipe.output;
    return interaction.reply({embeds:[new EmbedBuilder().setColor(0x22C55E).setTitle('⚒️ Материал обработан').setDescription(`Использовано: **${input} ×${result.consumed}**
 Получено: **${output} ×${result.produced}**`)],flags:MessageFlags.Ephemeral});
   }

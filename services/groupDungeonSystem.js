@@ -2,12 +2,16 @@
 
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
-  StringSelectMenuBuilder, ChannelType, PermissionFlagsBits,
+  StringSelectMenuBuilder, ChannelType, PermissionFlagsBits, AttachmentBuilder,
 } = require('discord.js');
 const { db, addCardDust } = require('../database/db');
 const { getHero } = require('../systems/hero/heroService');
 const { getClassProgress, grantClassXp, normalizeClassKey } = require('../systems/hero/classProgressService');
 const { buildHeroSnapshot } = require('./worldBoss/heroIntegration');
+const path = require('path');
+
+const DUNGEON_HUB_IMAGE_PATH = path.join(__dirname, '..', 'assets', 'dungeons', 'dungeon-hub.jpg');
+const DUNGEON_HUB_IMAGE_NAME = 'dungeon-hub.jpg';
 
 const TZ = 'Europe/Moscow';
 const MIN_PLAYERS = 4;
@@ -68,10 +72,44 @@ function analyze(groupId){ const g=getGroup(groupId); const ms=members(groupId);
  if(n>4)add(`Численность группы (${n})`,Math.min(14,(n-4)*2));
  const chance=clamp(Math.round(diff.base+bonus),5,95); return {chance,base:diff.base,bonus,lines,tanks,heals,controls,avgPower:Math.round(avgPower),members:enriched,difficulty:diff}; }
 
-function hubEmbed(guildId){ const w=currentWindow(); const forming=db.prepare("SELECT COUNT(*) c FROM dungeon_groups WHERE guild_id=? AND status='forming'").get(guildId).c; const active=db.prepare("SELECT COUNT(*) c FROM dungeon_groups WHERE guild_id=? AND status='active'").get(guildId).c; const inRaid=db.prepare("SELECT COUNT(*) c FROM dungeon_members m JOIN dungeon_groups g ON g.id=m.group_id WHERE g.guild_id=? AND g.status='active'").get(guildId).c; return new EmbedBuilder().setColor(w?0x7c3aed:0x374151).setTitle('🏰 ГРУППОВЫЕ ДАНЖИ').setDescription(w?`**Окно открыто:** ${windowLabel(w)}\nЗапуск новых рейдов доступен только до **${w.lastH}:${String(w.lastM).padStart(2,'0')} МСК**.\nКаждый рейд длится ровно **50 минут**.`:'Сейчас окно групповых данжей закрыто.\n\n🌞 11:00–12:09 МСК (старт до 11:19)\n🌙 18:00–19:09 МСК (старт до 18:19)').addFields({name:'Сейчас',value:`🟡 Собираются: **${forming}**\n🟢 В данже: **${active}**\n👥 Участников в рейдах: **${inRaid}**`,inline:true},{name:'Правила',value:'Минимум: **4 героя**\nМаксимум: **без ограничений**\nОдновременно можно быть только в одной группе.',inline:true}).setFooter({text:'Состав, классы и экипировка пересчитывают шанс прохождения до старта.'}); }
+function hubEmbed(guildId,imageUrl=`attachment://${DUNGEON_HUB_IMAGE_NAME}`){
+ const w=currentWindow();
+ const forming=db.prepare("SELECT COUNT(*) c FROM dungeon_groups WHERE guild_id=? AND status='forming'").get(guildId).c;
+ const active=db.prepare("SELECT COUNT(*) c FROM dungeon_groups WHERE guild_id=? AND status='active'").get(guildId).c;
+ const inRaid=db.prepare("SELECT COUNT(*) c FROM dungeon_members m JOIN dungeon_groups g ON g.id=m.group_id WHERE g.guild_id=? AND g.status='active'").get(guildId).c;
+ const state=w
+  ? `🟢 **Окно открыто:** ${windowLabel(w)}\n⏳ Новые рейды можно запускать до **${w.lastH}:${String(w.lastM).padStart(2,'0')} МСК**.\n🕯️ Продолжительность каждого похода — **50 минут**.`
+  : '🔒 **Окно сейчас закрыто**\n\n🌞 Дневное окно: **11:00–12:09 МСК** — старт до **11:19**\n🌙 Вечернее окно: **18:00–19:09 МСК** — старт до **18:19**';
+ return new EmbedBuilder()
+  .setColor(w?0x7c3aed:0x312e81)
+  .setAuthor({name:'GAME SYNDICATE • DUNGEON HUB'})
+  .setTitle('🏰 ГРУППОВЫЕ ДАНЖИ')
+  .setDescription(`${state}\n\nСоберите отряд, выберите героев и изучите **актуальный шанс прохождения** до запуска. Состав, классы и экипировка пересчитываются автоматически.`)
+  .addFields(
+   {name:'⚔️ Состояние рейдов',value:`🟡 Собираются: **${forming}**\n🟢 Уже в данже: **${active}**\n👥 Героев в походах: **${inRaid}**`,inline:true},
+   {name:'🗝️ Условия входа',value:'Минимум: **4 героя**\nМаксимум: **без ограничений**\nОдин герой — только в одной группе.',inline:true},
+   {name:'📊 Перед стартом',value:'Откройте группу и нажмите **«Анализ состава»**, чтобы увидеть силу отряда, роли, бонусы и итоговый процент успеха.',inline:false}
+  )
+  .setImage(imageUrl)
+  .setFooter({text:'Создать группу • Найти группу • Активные рейды • Анализ • Награды'});
+}
 function hubRows(){return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dng_create').setLabel('Создать группу').setEmoji('⚔️').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('dng_find').setLabel('Найти группу').setEmoji('🔎').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('dng_active').setLabel('Активные рейды').setEmoji('🗺️').setStyle(ButtonStyle.Secondary)),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dng_my').setLabel('Моя группа').setEmoji('👤').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('dng_rules').setLabel('Вся информация').setEmoji('📖').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('dng_rewards').setLabel('Награды').setEmoji('🎁').setStyle(ButtonStyle.Secondary))];}
 
-async function ensureHub(client,guildId=null){ const guilds=guildId?[client.guilds.cache.get(guildId)].filter(Boolean):[...client.guilds.cache.values()]; for(const guild of guilds){let cfg=getConfig(guild.id); if(!cfg?.channel_id)continue; const ch=await guild.channels.fetch(cfg.channel_id).catch(()=>null); if(!ch?.isTextBased())continue; let msg=cfg.hub_message_id?await ch.messages.fetch(cfg.hub_message_id).catch(()=>null):null; const payload={embeds:[hubEmbed(guild.id)],components:hubRows()}; if(msg) await msg.edit(payload).catch(()=>null); else {msg=await ch.send(payload);setConfig(guild.id,ch.id,msg.id);} }}
+async function ensureHub(client,guildId=null){
+ const guilds=guildId?[client.guilds.cache.get(guildId)].filter(Boolean):[...client.guilds.cache.values()];
+ for(const guild of guilds){
+  const cfg=getConfig(guild.id);
+  if(!cfg?.channel_id)continue;
+  const ch=await guild.channels.fetch(cfg.channel_id).catch(()=>null);
+  if(!ch?.isTextBased())continue;
+  let msg=cfg.hub_message_id?await ch.messages.fetch(cfg.hub_message_id).catch(()=>null):null;
+  const existingImage=msg?.attachments?.find?.(a=>a.name===DUNGEON_HUB_IMAGE_NAME);
+  const payload={embeds:[hubEmbed(guild.id,existingImage?.url||`attachment://${DUNGEON_HUB_IMAGE_NAME}`)],components:hubRows()};
+  if(!existingImage)payload.files=[new AttachmentBuilder(DUNGEON_HUB_IMAGE_PATH,{name:DUNGEON_HUB_IMAGE_NAME})];
+  if(msg)await msg.edit(payload).catch(e=>console.error('[Dungeon] hub edit',e));
+  else {msg=await ch.send(payload);setConfig(guild.id,ch.id,msg.id);}
+ }
+}
 
 async function setupChannel(interaction){ if(!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) return interaction.reply({content:'Нужно право «Управление каналами».',ephemeral:true}); let ch=interaction.options.getChannel('channel'); if(!ch){ch=await interaction.guild.channels.create({name:'🏰｜данжи',type:ChannelType.GuildText,reason:'Хаб групповых данжей Game Syndicate'});} setConfig(interaction.guildId,ch.id,null); await interaction.reply({content:`✅ Канал данжей: ${ch}`,ephemeral:true}); await ensureHub(interaction.client,interaction.guildId); }
 

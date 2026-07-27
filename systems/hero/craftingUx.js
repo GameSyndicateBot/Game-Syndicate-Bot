@@ -1,11 +1,27 @@
+
+const BONUS_LABELS = Object.freeze({
+  strength:'⚔️ Сила', dexterity:'🎯 Ловкость', intelligence:'✨ Интеллект', hp:'❤️ HP', defense:'🛡️ Защита', luck:'🍀 Удача',
+  expedition_success:'🗺️ Успех экспедиций', rare_find:'💎 Шанс редкой добычи', world_boss_damage:'👹 Урон по боссу',
+  world_boss_resistance:'🛡️ Защита от босса', heal:'❤️ Лечение', boss_flat_damage:'💥 Урон по боссу'
+});
+function itemBonusLines(item) {
+  const entries=Object.entries(item?.bonuses||{});
+  if(!entries.length) return '• Без дополнительных характеристик';
+  return entries.map(([key,value])=>`• ${BONUS_LABELS[key]||key}: **+${value}${['expedition_success','rare_find','world_boss_damage','world_boss_resistance'].includes(key)?'%':''}**`).join('\n');
+}
+
 const MATERIAL_SOURCES = Object.freeze({
   iron_ore: 'работа горняка',
   iron_ingot: 'переплавка железной руды через /profession process',
-  wood: 'лесные экспедиции и события с древесиной',
-  leather: 'охотничьи экспедиции и победы над зверями',
+  wood: 'старые запасы древесины',
+  hardwood: 'работа лесника',
+  board: 'переработка крепкой древесины через меню профессии или /profession process',
+  beast_hide: 'работа охотника и охотничьи экспедиции',
+  leather: 'выделка шкур через меню профессии или /profession process',
   stone: 'горы, шахты и каменистые локации',
   herb: 'старые запасы трав (автоматически объединяются)',
   forest_herbs: 'работа травника и лесные экспедиции',
+  herb_extract: 'переработка лесных трав через меню профессии или /profession process',
   essence: 'магические события, сундуки и сильные противники',
   crystal: 'пещеры, руины, сундуки и редкие события',
   bone: 'нежить, кладбища и опасные боевые события',
@@ -69,4 +85,5 @@ module.exports = {
   missingCookSummary,
   recipeState,
   cookState,
+  itemBonusLines,
 };

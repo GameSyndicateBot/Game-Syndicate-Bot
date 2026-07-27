@@ -21,7 +21,7 @@ const { PROFESSIONS, SPECIALIZATIONS, getProfession, getProfessionCounts, getPro
 const { ITEMS } = require('../systems/hero/itemData');
 const { listOpenOrders, stats: getOrderStats } = require('../systems/hero/orderBoardService');
 const { listCookRecipes, hydrateCookRecipe, cook } = require('../systems/hero/cookService');
-const { sourceFor, missingRecipeSummary, missingCookSummary, recipeState, cookState } = require('../systems/hero/craftingUx');
+const { sourceFor, missingRecipeSummary, missingCookSummary, recipeState, cookState, itemBonusLines } = require('../systems/hero/craftingUx');
 
 const GUILD_CHANNEL_ID = '1530165282512044032';
 const EXPEDITION_CHANNEL_ID = '1529566430301782017';
@@ -381,6 +381,9 @@ async function showBlacksmithRecipe(interaction, recipeKey, notice = '', categor
       `🧙 **Уровень героя:** ${recipe.heroLevel}/${recipe.level} ${recipe.heroLevel >= recipe.level ? '✅' : '❌'}`,
       `💠 **Dust:** ${recipe.dustBalance}/${recipe.dust} ${recipe.dustBalance >= recipe.dust ? '✅' : '❌'}`,
       '',
+      '**Характеристики предмета**',
+      itemBonusLines(recipe.item),
+      '',
       '**Материалы**',
       recipeMaterials(recipe),
       '',
@@ -685,10 +688,10 @@ async function showProfessionHub(interaction) {
   const p=PROFESSIONS[row.profession_key];
   const spec=row.specialization_key?SPECIALIZATIONS[row.profession_key]?.[row.specialization_key]:null;
   const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${p.icon} ${p.name} • ур. ${row.level}`)
-    .setDescription(`⚡ Энергия: **${row.energy}/${row.energy_max}**\n🔨 Работ: **${row.work_count}**\n📦 Ресурсов собрано: **${row.resources_gathered||0}**\n📜 Заказов выполнено: **${row.orders_completed||0}**\n💰 Заработано: **${row.dust_earned||0} Dust**${spec?`\n🏅 Специализация: **${spec.icon} ${spec.name}**`:''}\n\nРабота: **/profession work**\nПолный прогресс: **/profession status**${['miner','hunter'].includes(row.profession_key)?'\nПереработка сырья доступна кнопкой ниже.':''}`);
+    .setDescription(`⚡ Энергия: **${row.energy}/${row.energy_max}**\n🔨 Работ: **${row.work_count}**\n📦 Ресурсов собрано: **${row.resources_gathered||0}**\n📜 Заказов выполнено: **${row.orders_completed||0}**\n💰 Заработано: **${row.dust_earned||0} Dust**${spec?`\n🏅 Специализация: **${spec.icon} ${spec.name}**`:''}\n\nРабота: **/profession work**\nПолный прогресс: **/profession status**${['miner','hunter','lumberjack','herbalist'].includes(row.profession_key)?'\nПереработка сырья доступна кнопкой ниже.':''}`);
   const components=[];
   const professionButtons=[];
-  if(['miner','hunter'].includes(row.profession_key)) {
+  if(['miner','hunter','lumberjack','herbalist'].includes(row.profession_key)) {
     professionButtons.push(new ButtonBuilder().setCustomId('guild:profession:processing').setLabel('Переработка').setEmoji('⚒️').setStyle(ButtonStyle.Success));
   }
   professionButtons.push(new ButtonBuilder().setCustomId('guild:profession:change').setLabel(`Сменить профессию · ${PROFESSION_CHANGE_COST} Dust`).setEmoji('🔄').setStyle(ButtonStyle.Primary));
@@ -700,6 +703,8 @@ async function showProfessionHub(interaction) {
 function professionProcessingRecipe(professionKey) {
   if (professionKey === 'miner') return { input:'iron_ore', output:'iron_ingot', inputQty:2, outputQty:1, title:'Плавка руды' };
   if (professionKey === 'hunter') return { input:'beast_hide', output:'leather', inputQty:2, outputQty:1, title:'Выделка шкур' };
+  if (professionKey === 'lumberjack') return { input:'hardwood', output:'board', inputQty:2, outputQty:1, title:'Обработка древесины' };
+  if (professionKey === 'herbalist') return { input:'forest_herbs', output:'herb_extract', inputQty:2, outputQty:1, title:'Приготовление экстракта' };
   return null;
 }
 
@@ -710,15 +715,22 @@ async function showProfessionProcessing(interaction, notice='') {
   const owned=getResourceQuantity(interaction.user.id,recipe.input);
   const outputOwned=getResourceQuantity(interaction.user.id,recipe.output);
   const possible=Math.floor(owned/recipe.inputQty);
-  const inputName=ITEMS[recipe.input]?.name||recipe.input;
-  const outputName=ITEMS[recipe.output]?.name||recipe.output;
+  const inputMeta=MATERIALS[recipe.input]||ITEMS[recipe.input]||{};
+  const outputMeta=MATERIALS[recipe.output]||ITEMS[recipe.output]||{};
+  const inputName=inputMeta.name||recipe.input;
+  const outputName=outputMeta.name||recipe.output;
   const description=[
     notice,
     `**${recipe.inputQty} ${inputName} → ${recipe.outputQty} ${outputName}**`,
     '',
-    `📦 Сырьё: **${owned}**`,
-    `⚒️ Можно изготовить: **${possible}**`,
-    `✅ Готового материала: **${outputOwned}**`,
+    `🧱 **Исходный материал**`,
+    `${inputMeta.icon||'📦'} ${inputName}: **${owned}**`,
+    '',
+    `🔨 **После переработки получится**`,
+    `${outputMeta.icon||'✅'} ${outputName}: **${possible * recipe.outputQty}**`,
+    '',
+    `📦 **Уже на складе**`,
+    `${outputMeta.icon||'✅'} ${outputName}: **${outputOwned}**`,
     '',
     'Выбери количество партий переработки.',
   ].filter(Boolean).join('\n');
