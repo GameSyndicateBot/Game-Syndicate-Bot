@@ -19,7 +19,10 @@ const { createHeroCard } = require('../images/hero/createHeroCard');
 const { db, getCardDust, removeCardDust } = require('../database/db');
 const { PROFESSIONS, SPECIALIZATIONS, getProfession, getProfessionCounts, getProfessionLeaders, getAllProfessionLeaders, processProfessionMaterial, changeProfession, PROFESSION_CHANGE_COST } = require('../systems/hero/professionService');
 const { ITEMS } = require('../systems/hero/itemData');
-const { listOpenOrders, stats: getOrderStats } = require('../systems/hero/orderBoardService');
+const { listOpenOrders, listMyOrders, stats: getOrderStats } = require('../systems/hero/orderBoardService');
+const { listOpen: listEquipmentMarket, listMine: listMyEquipmentMarket, duplicateEquipment } = require('../systems/hero/equipmentMarketService');
+const { getChests, openChest } = require('../systems/hero/materialService');
+const { CHESTS, MATERIALS } = require('../systems/hero/materialData');
 const { listCookRecipes, hydrateCookRecipe, cook } = require('../systems/hero/cookService');
 const { sourceFor, missingRecipeSummary, missingCookSummary, recipeState, cookState, itemBonusLines } = require('../systems/hero/craftingUx');
 
@@ -47,11 +50,12 @@ function hubRows() {
       new ButtonBuilder().setCustomId('guild:registry').setLabel('Реестр Гильдии').setEmoji('📖').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('guild:masters').setLabel('Зал мастеров').setEmoji('🏆').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('guild:profession').setLabel('Профессия').setEmoji('👷').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('guild:orders').setLabel('Доска заказов').setEmoji('📜').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:orders').setLabel('Рынок').setEmoji('🏪').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('guild:hospital').setLabel('Лечебница').setEmoji('🏥').setStyle(ButtonStyle.Success),
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('guild:cook').setLabel('Повар').setEmoji('👨‍🍳').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('guild:chests').setLabel('Сундуки').setEmoji('🎁').setStyle(ButtonStyle.Primary),
     ),
   ];
 }
@@ -748,10 +752,81 @@ async function showStorage(interaction) {
   const text=rows.length?rows.map(r=>`${r.icon || '📦'} **${r.name}** ×${r.quantity}`).join('\n'):'Хранилище ресурсов пока пусто.';
   return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('📦 Хранилище ресурсов').setDescription(`${text}\n\nРесурсы профессий автоматически складываются сюда и используются доской заказов и ремесленниками.`.slice(0,4000))],components:[guildNavRow('storage')],flags:MessageFlags.Ephemeral});
 }
-async function showOrdersHub(interaction) {
-  const rows=listOpenOrders(10);
-  const text=rows.length?rows.map(o=>`#${o.id} • **${ITEMS[o.item_key]?.name||o.item_key}** ×${o.quantity_remaining} • ${o.price_each} Dust/шт.`).join('\n'):'Открытых заказов пока нет.';
-  return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('📜 Доска заказов').setDescription(`${text}\n\nСоздать заказ: **/orders create**\nВыполнить: **/orders fulfill**\nМои заказы: **/orders mine**`)],components:[guildNavRow('orders')],flags:MessageFlags.Ephemeral});
+function marketRows() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guild:orders:buy').setLabel('Купить').setEmoji('🛒').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('guild:orders:sell').setLabel('Продать').setEmoji('💰').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('guild:orders:exchange').setLabel('Обмен').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:orders:requests').setLabel('Заказы').setEmoji('📋').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('guild:orders:mine').setLabel('Мои лоты').setEmoji('📦').setStyle(ButtonStyle.Secondary),
+    ),
+    guildNavRow('orders'),
+  ];
+}
+async function showOrdersHub(interaction, notice='') {
+  const orderStats=getOrderStats();
+  const equipment=listEquipmentMarket(50);
+  const openOrders=listOpenOrders(50);
+  const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('🏪 Рынок Game Syndicate')
+    .setDescription([notice,
+      `💰 **Активных лотов экипировки:** ${equipment.length}`,
+      `📋 **Активных заказов на материалы:** ${openOrders.length}`,
+      `🔒 **Зарезервировано в заказах:** ${orderStats.reserved_dust||0} GS Dust`,
+      '',
+      '**Здесь можно:**',
+      '🪨 покупать и продавать материалы',
+      '⚔️ торговать найденной экипировкой и предметами',
+      '🐾 просматривать питомцев для будущих сделок',
+      '🔄 переходить к обменам между игроками',
+      '📋 создавать и выполнять заказы',
+      '',
+      'Выбери нужный раздел кнопками ниже.'
+    ].filter(Boolean).join('\n'));
+  const payload={embeds:[embed],components:marketRows(),flags:MessageFlags.Ephemeral};
+  return interaction.replied||interaction.deferred?interaction.editReply(payload):interaction.reply(payload);
+}
+async function showMarketBuy(interaction){
+  const eq=listEquipmentMarket(15);
+  const orders=listOpenOrders(15);
+  const eqText=eq.length?eq.map(x=>`#**${x.id}** • **${x.item_name}** [${x.rarity}]${x.upgrade_level?` +${x.upgrade_level}`:''} • **${x.price} Dust** • <@${x.seller_id}>`).join('\n'):'Нет экипировки на продаже.';
+  const orderText=orders.length?orders.map(o=>`#**${o.id}** • **${ITEMS[o.item_key]?.name||o.item_key}** ×${o.quantity_remaining} • **${o.price_each} Dust/шт.**`).join('\n'):'Нет активных заказов.';
+  return interaction.update({embeds:[new EmbedBuilder().setColor(0x22C55E).setTitle('🛒 Купить на рынке').setDescription(`### ⚔️ Экипировка игроков\n${eqText}\n\nПокупка: **/orders equipment-buy**\n\n### 📋 Заказы на материалы\n${orderText}\n\nПродать материал в заказ: **/orders fulfill**`)],components:marketRows()});
+}
+async function showMarketSell(interaction){
+  const resources=listResources(interaction.user.id).filter(x=>Number(x.quantity)>0).slice(0,15);
+  const duplicates=duplicateEquipment(interaction.user.id).slice(0,15);
+  const companions=listCompanions(interaction.user.id).slice(0,10);
+  const res=resources.length?resources.map(x=>`${ITEMS[x.resource_key]?.icon||'📦'} **${ITEMS[x.resource_key]?.name||x.resource_key}** ×${x.quantity}`).join('\n'):'Материалов нет.';
+  const eq=duplicates.length?duplicates.map(x=>`ID **${x.id}** • **${x.name}** [${x.rarity}] • свободно ${x.sellable}`).join('\n'):'Свободных дубликатов экипировки нет.';
+  const pets=companions.length?companions.map(x=>`#${x.id} 🐾 **${x.name}**${x.active?' • активен':''}`).join('\n'):'Питомцев нет.';
+  return interaction.update({embeds:[new EmbedBuilder().setColor(0xF59E0B).setTitle('💰 Продажа').setDescription(`### 🪨 Материалы\n${res}\n\nМатериалы продаются через выполнение заказов: **/orders fulfill**.\n\n### ⚔️ Экипировка\n${eq}\n\nВыставить: **/orders equipment-sell**\nПродать кузнецу: **/orders blacksmith-sell**\n\n### 🐾 Питомцы\n${pets}\n\nБезопасная торговля питомцами будет доступна отдельными подтверждаемыми сделками; активного питомца перед продажей потребуется снять.`)],components:marketRows()});
+}
+async function showMarketRequests(interaction){
+  const rows=listOpenOrders(20);
+  const text=rows.length?rows.map(o=>`#${o.id} • **${ITEMS[o.item_key]?.name||o.item_key}** ×${o.quantity_remaining}/${o.quantity_total} • **${o.price_each} Dust/шт.** • <@${o.buyer_id}>`).join('\n'):'Открытых заказов нет.';
+  return interaction.update({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('📋 Заказы игроков').setDescription(`${text}\n\nСоздать: **/orders create**\nВыполнить: **/orders fulfill**`)],components:marketRows()});
+}
+async function showMarketMine(interaction){
+  const orders=listMyOrders(interaction.user.id,15);
+  const eq=listMyEquipmentMarket(interaction.user.id,15);
+  const a=orders.length?orders.map(o=>`#${o.id} • ${ITEMS[o.item_key]?.name||o.item_key} ×${o.quantity_remaining} • ${o.status}`).join('\n'):'Нет заказов.';
+  const b=eq.length?eq.map(x=>`#${x.id} • ${x.item_name} • ${x.price} Dust • ${x.status}`).join('\n'):'Нет лотов экипировки.';
+  return interaction.update({embeds:[new EmbedBuilder().setColor(0x60A5FA).setTitle('📦 Мои лоты и заказы').setDescription(`### Лоты экипировки\n${b}\n\n### Заказы\n${a}\n\nСнять лот: **/orders equipment-cancel**\nОтменить заказ: **/orders cancel**`)],components:marketRows()});
+}
+async function showChestsHub(interaction, notice=''){
+  const hero=getHero(interaction.user.id);
+  if(!hero)return interaction.reply({content:'❌ Сначала создай героя.',flags:MessageFlags.Ephemeral});
+  const rows=getChests(interaction.user.id);
+  const text=rows.length?rows.map(c=>`${c.icon} **${c.name}** × **${c.quantity}**`).join('\n\n'):'Сундуков пока нет. Их можно найти в экспедициях, данжах и получить за особые события.';
+  const components=[];
+  if(rows.length) components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:chests:open').setPlaceholder('Выбери сундук для открытия').addOptions(rows.slice(0,25).map(c=>({label:`${c.name} ×${c.quantity}`.slice(0,100),value:c.key,emoji:c.icon,description:'Открыть один сундук'})))));
+  components.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:chests:loot').setLabel('Возможная добыча').setEmoji('📖').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
+  ));
+  const payload={embeds:[new EmbedBuilder().setColor(0xEAB308).setTitle(`🎁 Сундуки: ${hero.name}`).setDescription([notice,text,'','Выбери сундук в меню — он откроется сразу, а награда попадёт в инвентарь героя.'].filter(Boolean).join('\n\n'))],components,flags:MessageFlags.Ephemeral};
+  return interaction.replied||interaction.deferred?interaction.editReply(payload):interaction.reply(payload);
 }
 
 async function handleComponent(interaction) {
@@ -847,7 +922,22 @@ async function handleComponent(interaction) {
     return showProfessionProcessing(interaction,notice);
   }
   if (action === 'storage') return showStorage(interaction);
-  if (action === 'orders') return showOrdersHub(interaction);
+  if (action === 'orders' && parts.length === 2) return showOrdersHub(interaction);
+  if (action === 'orders' && parts[2] === 'buy') return showMarketBuy(interaction);
+  if (action === 'orders' && parts[2] === 'sell') return showMarketSell(interaction);
+  if (action === 'orders' && parts[2] === 'requests') return showMarketRequests(interaction);
+  if (action === 'orders' && parts[2] === 'mine') return showMarketMine(interaction);
+  if (action === 'orders' && parts[2] === 'exchange') return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('🔄 Обмен между игроками').setDescription('Для обмена коллекционными карточками используй **/trade**.\n\nОбмен экипировкой, материалами и питомцами будет проходить через подтверждаемую сделку, чтобы ни одна сторона не могла потерять предмет без встречного подтверждения.')],components:marketRows()});
+  if (action === 'chests' && parts.length === 2) return showChestsHub(interaction);
+  if (action === 'chests' && parts[2] === 'loot') return interaction.update({embeds:[new EmbedBuilder().setColor(0xEAB308).setTitle('📖 Возможная добыча из сундуков').setDescription('📦 **Обычный:** Dust, обычные материалы, небольшой шанс экипировки.\n🎁 **Редкий:** больше материалов и повышенный шанс экипировки.\n🧰 **Эпический:** ценные материалы и высокий шанс сильного предмета.\n👑 **Легендарный:** крупная награда и очень высокий шанс экипировки.\n🐉 **Сундук босса:** особая добыча Мирового босса.\n\nТочный результат определяется только при открытии.')],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:chests').setLabel('Назад').setEmoji('↩️').setStyle(ButtonStyle.Secondary))]});
+  if (action === 'chests' && parts[2] === 'open') {
+    const result=openChest(interaction.user.id,interaction.values?.[0]);
+    if(!result.ok)return showChestsHub(interaction,result.reason==='none'?'❌ У тебя больше нет такого сундука.':'❌ Не удалось открыть сундук.');
+    const r=result.rewards;
+    const materialLines=r.materials.map(x=>{const m=MATERIALS[x.key];return `${m?.icon||'📦'} **${m?.name||x.key} ×${x.quantity}**`;});
+    const rewardLines=[`💠 **${r.dust} Dust**`,...materialLines,r.item?`⚔️ **${r.item.name}** [${r.item.rarity}]`:null].filter(Boolean);
+    return showChestsHub(interaction,`${result.chest.icon} **${result.chest.name} открыт!**\n${rewardLines.join('\n')}`);
+  }
   if (action === 'cook' && parts.length === 2) return showCook(interaction);
   if (action === 'cook' && parts[2] === 'recipe') return showCookRecipe(interaction, interaction.values?.[0]);
   if (action === 'cook' && parts[2] === 'make') {

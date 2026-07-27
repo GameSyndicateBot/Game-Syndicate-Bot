@@ -31,6 +31,28 @@ function getChests(userId) {
   return db.prepare('SELECT chest_key, quantity FROM hero_chests WHERE user_id=? AND quantity>0 ORDER BY chest_key').all(userId)
     .map(row => ({ key: row.chest_key, quantity: row.quantity, ...(CHESTS[row.chest_key] || { name: row.chest_key, icon: '📦', rarity: 'unknown' }) }));
 }
+
+// Адресная разовая компенсация сундука, который был показан в результате экспедиции,
+// но раньше не имел понятного интерфейса открытия. Маркер исключает повторную выдачу.
+db.exec(`CREATE TABLE IF NOT EXISTS system_one_time_grants (
+  grant_key TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  granted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`);
+function applyOneTimeChestGrant() {
+  const userId = '308557208147329025';
+  const grantKey = 'expedition-common-chest-ui-compensation-v1842';
+  if (db.prepare('SELECT 1 FROM system_one_time_grants WHERE grant_key=?').get(grantKey)) return;
+  const tx = db.transaction(() => {
+    grantChest(userId, 'common_chest', 1);
+    db.prepare('INSERT INTO system_one_time_grants(grant_key,user_id) VALUES(?,?)').run(grantKey,userId);
+  });
+  try { tx(); console.log(`[Chests] One-time common chest granted to ${userId}`); }
+  catch (error) { console.error('[Chests] One-time grant failed:', error); }
+}
+
+applyOneTimeChestGrant();
+
 function expeditionMaterialRewards(userId, locationKey, difficulty, outcome, sourceId) {
   if (outcome === 'fail') return { materials: [], chest: null };
   const rng = seeded(`materials:${userId}:${locationKey}:${sourceId}`);
