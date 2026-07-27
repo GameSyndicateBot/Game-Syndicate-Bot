@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.4.5",
+  "version": "18.4.6",
   "private": true,
-  "description": "Game Syndicate V18.4.5: переработанные ресурсы в заказах, блокировка экспедиция/данж, таймер выбора класса, 14 игроков на карточке и двухцветная ульта",
+  "description": "Game Syndicate V18.4.6: иконки боевых ролей возле каждого игрока в World Boss",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

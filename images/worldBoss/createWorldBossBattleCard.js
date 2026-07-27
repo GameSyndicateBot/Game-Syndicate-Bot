@@ -72,6 +72,14 @@ function effectLine(e) {
   if (e.ultSilencedTurns) out.push(`Ульта заблокирована ${e.ultSilencedTurns}`);
   return out.join(' • ') || 'Эффектов нет';
 }
+
+function roleVisual(role) {
+  if (role === 'tank') return { icon: 'shield', label: 'Танк', color: '#74b7ff' };
+  if (role === 'healer') return { icon: 'heart', label: 'Хил', color: '#62d99b' };
+  if (role === 'dps') return { icon: 'swords', label: 'ДПС', color: '#ff7878' };
+  return { icon: 'artifact', label: 'Поддержка', color: '#d7a7ff' };
+}
+
 function stripEmoji(value) {
   return String(value)
     .replace(/[\u{1F000}-\u{1FAFF}]/gu, '')
@@ -119,7 +127,9 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
     ctx.save(); rounded(ctx, x, y, itemW, itemH, 16); ctx.fillStyle = p.user_id === currentUserId ? 'rgba(123,67,190,.56)' : p.status === 'dead' ? 'rgba(48,45,54,.72)' : 'rgba(23,17,35,.82)'; ctx.fill(); ctx.strokeStyle = p.user_id === currentUserId ? '#d4a8ff' : 'rgba(255,255,255,.12)'; ctx.lineWidth = p.user_id === currentUserId ? 3 : 1; ctx.stroke(); ctx.restore();
     const compact = itemH < 120;
     text(ctx, p.user_id === currentUserId ? '▶' : (p.status === 'dead' ? 'X' : '●'), x + 12, y + (compact ? 21 : 27), compact ? 15 : 18, p.user_id === currentUserId ? '#e7c8ff' : p.status === 'dead' ? '#aaa' : '#6ee7a7', 'bold');
-    text(ctx, ellipsize(ctx, p.hero_name || p.displayName || p.username || `Игрок ${i + 1}`, compact ? 145 : 165), x + 36, y + (compact ? 22 : 28), compact ? 16 : 20, '#fff', 'bold');
+    const role = roleVisual(c.role);
+    drawUiIcon(ctx, role.icon, x + 35, y + (compact ? 7 : 10), compact ? 18 : 22, role.color);
+    text(ctx, ellipsize(ctx, p.hero_name || p.displayName || p.username || `Игрок ${i + 1}`, compact ? 118 : 135), x + 60, y + (compact ? 22 : 28), compact ? 16 : 20, '#fff', 'bold');
     text(ctx, `${c.name} • ур.${p.hero_level || 1}`, x + itemW - 12, y + (compact ? 22 : 28), compact ? 14 : 17, '#cdb7de', 'normal', 'right');
     bar(ctx, x + 12, y + (compact ? 33 : 44), itemW - 24, compact ? 18 : 23, p.hp, p.max_hp, '#3fbf72', `${p.hp}/${p.max_hp} HP`);
     const rt = c.resourceType || 'energy';
@@ -141,7 +151,9 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
     const c = CLASSES[p.class_key] || { name: '—' };
     const mark = p.user_id === currentUserId ? '▶' : `${i + 1}.`;
     text(ctx, mark, 1225, 149 + i * 38, 18, p.user_id === currentUserId ? '#e4bdff' : '#aaa', 'bold');
-    text(ctx, ellipsize(ctx, `${p.hero_name || p.displayName || p.username || 'Игрок'} — ${c.name}`, 280), 1260, 149 + i * 38, 17, '#fff');
+    const role = roleVisual(c.role);
+    drawUiIcon(ctx, role.icon, 1257, 132 + i * 38, 20, role.color);
+    text(ctx, ellipsize(ctx, `${p.hero_name || p.displayName || p.username || 'Игрок'} — ${c.name}`, 255), 1283, 149 + i * 38, 17, '#fff');
   });
   text(ctx, 'ЖУРНАЛ БОЯ', 1225, 448, 23, '#d8bdff', 'bold');
   const logs = (state.log || []).slice(-8).reverse();
@@ -161,10 +173,10 @@ async function createWorldBossBattleCard({ battle, players, state, effectsByUser
   }
   const legendY = 882;
   const legend = [
-    ['heart', 'HP', '#ef476f'], ['mana', 'Мана', '#7c83ff'], ['energy', 'Энергия', '#f7c948'], ['flame', 'Ярость', '#f59e0b'], ['ult', 'Ульта: ⚫ / 🟣 готова', '#d8b4fe']
+    ['shield', 'Танк', '#74b7ff'], ['heart', 'Хил', '#62d99b'], ['artifact', 'Поддержка', '#d7a7ff'], ['swords', 'ДПС', '#ff7878'], ['ult', 'Ульта: ⚫ / 🟣', '#d8b4fe']
   ];
-  let lx = 520;
-  for (const [icon, label, color] of legend) { drawUiIcon(ctx, icon, lx, legendY - 17, 18, color); text(ctx, label, lx + 25, legendY, 16, '#c8bfd1', 'bold'); lx += label === 'Энергия' ? 150 : 115; }
+  let lx = 500;
+  for (const [icon, label, color] of legend) { drawUiIcon(ctx, icon, lx, legendY - 17, 18, color); text(ctx, label, lx + 25, legendY, 16, '#c8bfd1', 'bold'); lx += label === 'Поддержка' ? 165 : label.startsWith('Ульта') ? 180 : 105; }
   return canvas.toBuffer('image/png');
 }
 
