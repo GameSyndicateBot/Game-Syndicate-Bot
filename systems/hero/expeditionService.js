@@ -374,8 +374,10 @@ function resolveExpedition(userId, { force = false } = {}) {
   addReputation(userId, expedition.location_key, reputation);
   const recoveryUntil = injuryHours ? new Date(Date.now() + injuryHours * 3600000).toISOString() : null;
   const hpAfter = miniboss ? Math.max(1, Math.min(baseHero.max_hp, Number(miniboss.remainingHp || 1))) : (injuryHours ? Math.max(1, Math.round(baseHero.max_hp * 0.35)) : baseHero.max_hp);
+  const forceReadyAfterClaim = Boolean(expeditionBuffs?.patchCompensation?.forceReadyAfterClaim);
   db.prepare("UPDATE heroes SET status=?, recovery_until=?, hp=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
-    .run(injuryHours ? 'wounded' : 'ready', recoveryUntil, hpAfter, userId);
+    .run(forceReadyAfterClaim ? 'ready' : (injuryHours ? 'wounded' : 'ready'), forceReadyAfterClaim ? null : recoveryUntil, forceReadyAfterClaim ? Number(baseHero.max_hp || hpAfter) : hpAfter, userId);
+  if (forceReadyAfterClaim) injuryHours = 0;
   const resourceRewards = expeditionMaterialRewards(userId, expedition.location_key, location.difficulty, outcome, expedition.id);
   const materialMultiplier = Number(tactic.materials || 1) * Number(worldEffects.materials || 1) * duration.materials;
   if (materialMultiplier > 1 && Array.isArray(resourceRewards.materials)) {
@@ -453,21 +455,39 @@ function recoverHero(userId) {
 
 function applyTargetedExpeditionRepairs() {
   try {
-    // One-time live-data repair requested on 2026-07-26:
-    // release a hero stuck in an active expedition.
-    const stuckUserId = '308557208147329025';
-    const stuck = db.prepare("SELECT id FROM hero_expeditions WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1").get(stuckUserId);
-    if (stuck) {
-      db.prepare("UPDATE hero_expeditions SET status='cancelled', resolved_at=CURRENT_TIMESTAMP, result_json=? WHERE id=?")
-        .run(JSON.stringify({ outcome:'cancelled', reason:'admin_recovery_20260726', rewards:false }), stuck.id);
-      db.prepare("UPDATE heroes SET status='ready', recovery_until=NULL, hp=max_hp, updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(stuckUserId);
-      console.log(`[Expedition Repair] Освобождён застрявший герой ${stuckUserId}, expedition #${stuck.id}.`);
-    } else {
-      db.prepare("UPDATE heroes SET status='ready', recovery_until=NULL, hp=max_hp, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND status='expedition'").run(stuckUserId);
+    // V18.3.19: previous builds contained a dangerous hard-coded startup repair
+    // that cancelled this player's active expedition on every bot restart.
+    // Restore exactly one affected expedition as a claimable result instead.
+    const affectedUserId = '308557208147329025';
+    db.exec(`CREATE TABLE IF NOT EXISTS expedition_patch_repairs (
+      repair_key TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      details_json TEXT NOT NULL DEFAULT '{}'
+    )`);
+    const repairKey='v18.3.19:restore-cancelled-expedition:308557208147329025';
+    const already=db.prepare('SELECT 1 FROM expedition_patch_repairs WHERE repair_key=?').get(repairKey);
+    if(!already){
+      const cancelledRows=db.prepare(`SELECT * FROM hero_expeditions WHERE user_id=? AND status='cancelled' ORDER BY id DESC LIMIT 20`).all(affectedUserId);
+      const cancelled=cancelledRows.find(row=>{try{return JSON.parse(row.result_json||'{}').reason==='admin_recovery_20260726';}catch(_){return false;}}) || null;
+      if(cancelled){
+        let buffs={};
+        try{buffs=JSON.parse(cancelled.buffs_json||'{}')||{};}catch(_){buffs={};}
+        buffs.patchCompensation={key:repairKey,forceReadyAfterClaim:true,restoredAt:new Date().toISOString()};
+        db.prepare(`UPDATE hero_expeditions
+          SET status='active', returns_at=datetime('now','-1 minute'), resolved_at=NULL,
+              result_json=NULL, buffs_json=?
+          WHERE id=?`).run(JSON.stringify(buffs),cancelled.id);
+        db.prepare("UPDATE heroes SET status='expedition', recovery_until=NULL, updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(affectedUserId);
+        db.prepare('INSERT INTO expedition_patch_repairs(repair_key,details_json) VALUES(?,?)')
+          .run(repairKey,JSON.stringify({userId:affectedUserId,expeditionId:cancelled.id,action:'restored_for_one_time_claim'}));
+        console.log(`[Expedition Repair] Экспедиция #${cancelled.id} игрока ${affectedUserId} восстановлена для разового получения результата.`);
+      }else{
+        db.prepare('INSERT INTO expedition_patch_repairs(repair_key,details_json) VALUES(?,?)')
+          .run(repairKey,JSON.stringify({userId:affectedUserId,action:'no_cancelled_expedition_found'}));
+      }
     }
 
-    // Druid used to be incorrectly normalized to Bard. Keep the selected class and
-    // synchronize the affected player's Druid mastery with the higher stored value.
+    // Preserve the old Druid/Bard migration, but make it idempotent and data-only.
     const levelUserId = '302797251271458817';
     const druid = db.prepare("SELECT level,xp,expeditions_completed FROM hero_class_progress WHERE user_id=? AND class_key='druid'").get(levelUserId);
     const bard = db.prepare("SELECT level,xp,expeditions_completed FROM hero_class_progress WHERE user_id=? AND class_key='bard'").get(levelUserId);
@@ -480,13 +500,11 @@ function applyTargetedExpeditionRepairs() {
           expeditions_completed=MAX(hero_class_progress.expeditions_completed,excluded.expeditions_completed),
           updated_at=CURRENT_TIMESTAMP`)
         .run(levelUserId,'druid',Number(bard.level||1),Number(bard.xp||0),Number(bard.expeditions_completed||0));
-      console.log(`[Expedition Repair] Синхронизирован уровень Друида для ${levelUserId}: Lv.${bard.level}.`);
     }
   } catch (error) {
     console.error('[Expedition Repair] Ошибка безопасного восстановления:', error.message);
   }
 }
-
 applyTargetedExpeditionRepairs();
 
 module.exports = { EXPEDITION_TACTICS, getExpeditionTactic, durationModifiers, rewardPreview, todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, availableExpeditionDurations, activeWorldBoss};

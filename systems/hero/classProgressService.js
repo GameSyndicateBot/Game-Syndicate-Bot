@@ -90,4 +90,39 @@ function classProgressPercent(level, xp) {
 function serializeClassProgress(userId) {
   const out={}; for(const row of getAllClassProgress(userId)) out[row.class_key]={level:Number(row.level||1),xp:Number(row.xp||0)}; return out;
 }
-module.exports={MAX_CLASS_LEVEL,MASTERY_RANKS,CLASS_BONUS_PROFILES,normalizeClassKey,isValidClass,classXpForNextLevel,ensureClassProgress,getClassProgress,getAllClassProgress,grantClassXp,classWorldBossBonuses,getMasteryRank,getNextMilestone,classProgressPercent,serializeClassProgress};
+
+function auditClassProgressIntegrity() {
+  try {
+    const tx=db.transaction(()=>{
+      // Merge legacy aliases into canonical class keys without lowering progress.
+      for(const [alias,canonical] of Object.entries(CLASS_ALIASES)){
+        const rows=db.prepare('SELECT * FROM hero_class_progress WHERE class_key=?').all(alias);
+        for(const row of rows){
+          db.prepare(`INSERT INTO hero_class_progress(user_id,class_key,level,xp,expeditions_completed)
+            VALUES(?,?,?,?,?)
+            ON CONFLICT(user_id,class_key) DO UPDATE SET
+              level=MAX(hero_class_progress.level,excluded.level),
+              xp=CASE WHEN excluded.level>hero_class_progress.level THEN excluded.xp WHEN excluded.level=hero_class_progress.level THEN MAX(hero_class_progress.xp,excluded.xp) ELSE hero_class_progress.xp END,
+              expeditions_completed=MAX(hero_class_progress.expeditions_completed,excluded.expeditions_completed),
+              updated_at=CURRENT_TIMESTAMP`)
+            .run(row.user_id,canonical,Number(row.level||1),Number(row.xp||0),Number(row.expeditions_completed||0));
+        }
+        db.prepare('DELETE FROM hero_class_progress WHERE class_key=?').run(alias);
+      }
+      // Persist every class at Lv.1 for every hero, so Guild, Expeditions and World Boss
+      // always read the same row instead of mixing virtual defaults with stored data.
+      const heroes=db.prepare('SELECT user_id FROM heroes').all();
+      const stmt=db.prepare('INSERT OR IGNORE INTO hero_class_progress(user_id,class_key,level,xp,expeditions_completed) VALUES(?,?,1,0,0)');
+      for(const hero of heroes) for(const key of Object.keys(HERO_CLASSES)) stmt.run(hero.user_id,key);
+    });
+    tx();
+    return true;
+  } catch(error){
+    console.error('[Class Progress Audit] Ошибка синхронизации уровней классов:',error.message);
+    return false;
+  }
+}
+
+auditClassProgressIntegrity();
+
+module.exports={MAX_CLASS_LEVEL,MASTERY_RANKS,CLASS_BONUS_PROFILES,normalizeClassKey,isValidClass,classXpForNextLevel,ensureClassProgress,getClassProgress,getAllClassProgress,grantClassXp,classWorldBossBonuses,getMasteryRank,getNextMilestone,classProgressPercent,serializeClassProgress,auditClassProgressIntegrity};

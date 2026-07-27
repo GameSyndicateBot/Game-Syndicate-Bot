@@ -17,7 +17,7 @@ const { getActiveExpedition } = require('../systems/hero/expeditionService');
 const { createGuildHubCard } = require('../images/hero/createGuildHubCard');
 const { createHeroCard } = require('../images/hero/createHeroCard');
 const { db, getCardDust, removeCardDust } = require('../database/db');
-const { PROFESSIONS, SPECIALIZATIONS, getProfession, getProfessionCounts, getProfessionLeaders, getAllProfessionLeaders, processProfessionMaterial } = require('../systems/hero/professionService');
+const { PROFESSIONS, SPECIALIZATIONS, getProfession, getProfessionCounts, getProfessionLeaders, getAllProfessionLeaders, processProfessionMaterial, changeProfession, PROFESSION_CHANGE_COST } = require('../systems/hero/professionService');
 const { ITEMS } = require('../systems/hero/itemData');
 const { listOpenOrders, stats: getOrderStats } = require('../systems/hero/orderBoardService');
 const { listCookRecipes, hydrateCookRecipe, cook } = require('../systems/hero/cookService');
@@ -237,7 +237,7 @@ async function showClassDetails(interaction, classKey) {
   const row = getClassProgress(interaction.user.id, classKey) || { class_key: classKey, level: 1, xp: 0, expeditions_completed: 0 };
   const cls = HERO_CLASSES[classKey];
   if (!cls) return interaction.update({ content: '❌ Неизвестный класс.', components: classesMenu(interaction.user.id) });
-  const bonus = classWorldBossBonuses(row.level);
+  const bonus = classWorldBossBonuses(row.level, classKey);
   const rank = getMasteryRank(row.level);
   const next = getNextMilestone(row.level);
   const pct = classProgressPercent(row.level, row.xp);
@@ -687,11 +687,12 @@ async function showProfessionHub(interaction) {
   const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${p.icon} ${p.name} • ур. ${row.level}`)
     .setDescription(`⚡ Энергия: **${row.energy}/${row.energy_max}**\n🔨 Работ: **${row.work_count}**\n📦 Ресурсов собрано: **${row.resources_gathered||0}**\n📜 Заказов выполнено: **${row.orders_completed||0}**\n💰 Заработано: **${row.dust_earned||0} Dust**${spec?`\n🏅 Специализация: **${spec.icon} ${spec.name}**`:''}\n\nРабота: **/profession work**\nПолный прогресс: **/profession status**${['miner','hunter'].includes(row.profession_key)?'\nПереработка сырья доступна кнопкой ниже.':''}`);
   const components=[];
+  const professionButtons=[];
   if(['miner','hunter'].includes(row.profession_key)) {
-    components.push(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('guild:profession:processing').setLabel('Переработка').setEmoji('⚒️').setStyle(ButtonStyle.Success),
-    ));
+    professionButtons.push(new ButtonBuilder().setCustomId('guild:profession:processing').setLabel('Переработка').setEmoji('⚒️').setStyle(ButtonStyle.Success));
   }
+  professionButtons.push(new ButtonBuilder().setCustomId('guild:profession:change').setLabel(`Сменить профессию · ${PROFESSION_CHANGE_COST} Dust`).setEmoji('🔄').setStyle(ButtonStyle.Primary));
+  components.push(new ActionRowBuilder().addComponents(...professionButtons));
   components.push(guildNavRow('profession'));
   return interaction.reply({embeds:[embed],components,flags:MessageFlags.Ephemeral});
 }
@@ -787,6 +788,38 @@ async function handleComponent(interaction) {
   if (action === 'registry' && parts[2] === 'stats') return showRegistryStats(interaction);
   if (action === 'masters') return showMasters(interaction);
   if (action === 'profession' && parts.length === 2) return showProfessionHub(interaction);
+  if (action === 'profession' && parts[2] === 'change' && parts.length === 3) {
+    const current=getProfession(interaction.user.id);
+    if(!current) return interaction.update({content:'❌ Сначала выбери профессию через `/profession choose`.',embeds:[],components:[guildNavRow('profession')]});
+    const options=Object.entries(PROFESSIONS).filter(([key])=>key!==current.profession_key).map(([value,p])=>({label:p.name,value,emoji:p.icon,description:`Смена за ${PROFESSION_CHANGE_COST} GS Dust · прогресс новой профессии начнётся с 1 уровня`}));
+    const menu=new StringSelectMenuBuilder().setCustomId('guild:profession:change:select').setPlaceholder('Выбери новую профессию').addOptions(options);
+    return interaction.update({content:`## 🔄 Смена профессии
+Текущая: **${PROFESSIONS[current.profession_key]?.icon||'👷'} ${PROFESSIONS[current.profession_key]?.name||current.profession_key}**
+Стоимость: **${PROFESSION_CHANGE_COST} GS Dust**
+
+⚠️ Уровень, опыт, специализация и прогресс текущей профессии будут сброшены. Предметы и материалы сохранятся.`,embeds:[],components:[new ActionRowBuilder().addComponents(menu),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:profession').setLabel('Назад').setEmoji('↩️').setStyle(ButtonStyle.Secondary))]});
+  }
+  if (action === 'profession' && parts[2] === 'change' && parts[3] === 'select') {
+    const nextKey=interaction.values?.[0];
+    const current=getProfession(interaction.user.id);
+    const next=PROFESSIONS[nextKey];
+    if(!current||!next) return showProfessionHub(interaction);
+    return interaction.update({content:`## ⚠️ Подтверждение смены
+**Сейчас:** ${PROFESSIONS[current.profession_key]?.icon||'👷'} ${PROFESSIONS[current.profession_key]?.name||current.profession_key}
+**Новая:** ${next.icon} ${next.name}
+**Цена:** ${PROFESSION_CHANGE_COST} GS Dust
+
+Подтвердить смену профессии?`,embeds:[],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`guild:profession:change:confirm:${nextKey}`).setLabel('Подтвердить').setEmoji('✅').setStyle(ButtonStyle.Danger),new ButtonBuilder().setCustomId('guild:profession').setLabel('Отмена').setEmoji('❌').setStyle(ButtonStyle.Secondary))]});
+  }
+  if (action === 'profession' && parts[2] === 'change' && parts[3] === 'confirm') {
+    const nextKey=parts[4];
+    const result=changeProfession(interaction.user.id,nextKey);
+    let notice='❌ Не удалось сменить профессию.';
+    if(result.ok) notice=`✅ Профессия изменена на **${PROFESSIONS[nextKey]?.icon||'👷'} ${PROFESSIONS[nextKey]?.name||nextKey}**. Списано **${PROFESSION_CHANGE_COST} GS Dust**.`;
+    else if(result.reason==='dust') notice=`❌ Недостаточно GS Dust. Нужно **${PROFESSION_CHANGE_COST}**, баланс: **${result.balance||0}**.`;
+    else if(result.reason==='same') notice='ℹ️ Эта профессия уже выбрана.';
+    return showProfessionHub(interaction,notice);
+  }
   if (action === 'profession' && parts[2] === 'processing') return showProfessionProcessing(interaction);
   if (action === 'profession' && parts[2] === 'process') {
     const current=getProfession(interaction.user.id);
