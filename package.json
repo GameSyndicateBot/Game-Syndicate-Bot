@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.3.2",
+  "version": "19.3.3",
   "private": true,
-  "description": "Game Syndicate V19.3.2: GS Blitz automatic rematch and lobby recovery",
+  "description": "Game Syndicate V19.3.3: GS Blitz empty lobby after match",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

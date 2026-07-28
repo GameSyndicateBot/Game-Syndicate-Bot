@@ -463,12 +463,12 @@ async function resetLobby(game) {
     const gameKey = key(game.chatId, game.threadId);
     clearTimer(gameKey, game);
 
-    // Все участники завершившегося матча автоматически переходят в реванш.
-    // Игроки, нажавшие «Играть» во время текущего матча, также сохраняются.
-    const rematchQueue = new Map(game.players || []);
-    for (const [id, player] of game.nextQueue || []) rematchQueue.set(id, player);
+    // Завершившийся матч никогда не переносит прежних участников автоматически.
+    // В новое лобби попадают только игроки, которые отдельно нажали «Играть»
+    // уже во время текущего матча и тем самым добровольно записались на следующий.
+    const voluntaryQueue = new Map(game.nextQueue || []);
 
-    const next = makeGame(game.chatId, game.threadId, rematchQueue);
+    const next = makeGame(game.chatId, game.threadId, voluntaryQueue);
     next.lobbyMessageId = game.lobbyMessageId;
     games.set(gameKey, next);
 
