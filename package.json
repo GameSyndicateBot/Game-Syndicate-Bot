@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.1.6",
+  "version": "19.2.0",
   "private": true,
-  "description": "Game Syndicate V19.1.1: исправления рынка, обмена и повторок экипировки",
+  "description": "Game Syndicate V19.2.0: Telegram GS Blitz — 3400 вопросов, 17 категорий, рейтинг",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

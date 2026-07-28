@@ -16,6 +16,7 @@ const {
 } = require('../systems/gameLobbySystem');
 const crocodile = require('../crocodileSystem');
 const gsCall = require('./gsCallSystem');
+const blitz = require('./blitzSystem');
 
 const drafts = new Map();
 let pollingStarted = false;
@@ -655,6 +656,16 @@ async function handleText(api, message) {
     const text = message.text?.trim();
     if (!text) return;
 
+    const rawCommand = text.split(/\s+/)[0].split('@')[0].toLowerCase();
+    if (['/setblitz', '/blitztop', '/blitzstats', '/blitzreset'].includes(rawCommand)) {
+        const needsAdmin = rawCommand === '/setblitz' || rawCommand === '/blitzreset';
+        const blitzHandled = await blitz.handleText(
+            message,
+            needsAdmin ? await isChatAdmin(api, message.chat.id) : false,
+        );
+        if (blitzHandled) return;
+    }
+
     // Дополнительно понимаем вариант "/ game" с пробелом.
     const normalizedText = text.replace(/^\/\s+game\b/i, '/game');
     if (normalizedText !== text) {
@@ -747,6 +758,9 @@ async function handleCallback(api, callback) {
     const from = callback.from;
     const message = callback.message;
     if (!message) return;
+
+    const blitzCallbackHandled = await blitz.handleCallback(callback);
+    if (blitzCallbackHandled) return;
 
     const crocCallbackHandled = await crocodile.handleCallback(api, callback);
     if (crocCallbackHandled) return;
@@ -890,12 +904,17 @@ async function startTelegramBot(client) {
             { command: 'crocstats', description: 'личная статистика Крокодила' },
             { command: 'crocstop', description: 'остановить текущий раунд' },
             { command: 'crocreset', description: 'сбросить зависшие раунды' },
+            { command: 'setblitz', description: 'назначить постоянный чат GS Blitz' },
+            { command: 'blitztop', description: 'топ рейтинга GS Blitz' },
+            { command: 'blitzstats', description: 'личная статистика GS Blitz' },
+            { command: 'blitzreset', description: 'перезапустить лобби GS Blitz' },
         ],
     }).catch(error => {
         console.error('⚠️ Не удалось установить команды Telegram:', error.message);
     });
 
     crocodile.init(api);
+    await blitz.init(api);
 
     pollingStarted = true;
     pollingLoop(api).catch(error => {
