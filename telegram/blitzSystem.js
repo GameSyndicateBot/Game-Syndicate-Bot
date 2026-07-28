@@ -165,7 +165,13 @@ async function top(chatId,threadId){
 async function stats(chatId,threadId,user){upsertPlayer(user);const r=playerRow(user.id);const acc=r.total_answers?Math.round(r.correct_answers/r.total_answers*100):0;return api('sendMessage',{chat_id:chatId,...(threadId?{message_thread_id:threadId}:{}),text:`📊 <b>Статистика GS Blitz</b>\n\nИгрок: ${esc(r.display_name)}\n⭐ Рейтинг: <b>${r.rating}</b>\n🏆 Победы: <b>${r.wins}</b>\n🎮 Игры: <b>${r.games}</b>\n✅ Правильные ответы: <b>${r.correct_answers}</b>\n🎯 Точность: <b>${acc}%</b>\n🔥 Лучшая серия: <b>${r.best_streak}</b>`,parse_mode:'HTML'});}
 async function handleText(message,isAdmin){
  const cmd=(message.text||'').trim().split(/\s+/)[0].split('@')[0].toLowerCase();
- if(cmd==='/setblitz') return setup(message,isAdmin);
+ if(cmd==='/setblitz') {
+  if(!isAdmin){
+    await api('sendMessage',{chat_id:message.chat.id,...(threadOf(message)?{message_thread_id:threadOf(message)}:{}),text:'❌ Команду /setblitz может использовать только администратор группы.'});
+    return true;
+  }
+  return setup(message,true);
+ }
  if(cmd==='/blitztop'){await top(message.chat.id,threadOf(message));return true;}
  if(cmd==='/blitzstats'){await stats(message.chat.id,threadOf(message),message.from);return true;}
  if(cmd==='/blitzreset'&&isAdmin){await createLobby(message.chat.id,threadOf(message));return true;}

@@ -721,7 +721,7 @@ async function handleText(api, message) {
         const needsAdmin = rawCommand === '/setblitz' || rawCommand === '/blitzreset';
         const blitzHandled = await blitz.handleText(
             message,
-            needsAdmin ? await isChatAdmin(api, message.chat.id) : false,
+            needsAdmin ? await isChatAdmin(api, message.chat.id, message.from.id) : false,
         );
         if (blitzHandled) return;
     }
