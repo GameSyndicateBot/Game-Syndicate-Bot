@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.1.5",
+  "version": "19.1.6",
   "private": true,
   "description": "Game Syndicate V19.1.1: исправления рынка, обмена и повторок экипировки",
   "main": "index.js",

@@ -139,8 +139,78 @@ ${busy.map(m=>`• <@${m.user_id}>`).join('\n')}
 
 Пусть они завершат активность или покинут группу.`});const a=analyze(id),now=Date.now(),end=now+RAID_DURATION_MS;const tx=db.transaction(()=>{db.prepare("UPDATE dungeon_groups SET status='active',success_chance=?,started_at=?,ends_at=? WHERE id=? AND status='forming'").run(a.chance,new Date(now).toISOString(),new Date(end).toISOString(),id);for(const m of ms){const changed=db.prepare("UPDATE heroes SET status='dungeon',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND status='ready'").run(m.user_id);if(!changed.changes)throw new Error(`busy:${m.user_id}`);}});try{tx();}catch(error){return ephemeral(interaction,{content:'❌ Не удалось запустить рейд: состояние одного из героев изменилось. Обнови группу и повтори запуск.'});}await interaction.update({embeds:[groupEmbed(id,false)],components:[]});await ensureHub(interaction.client,interaction.guildId);}
 
-function giveValuable(userId,diff){const luck=db.prepare('SELECT * FROM dungeon_valuable_luck WHERE user_id=?').get(userId)||{penalty:0};const base={normal:0.03,dangerous:0.06,heroic:0.11,epic:0.18,legendary:0.28}[diff.key]||0.03;const chance=Math.max(0.005,base*(1-Number(luck.penalty||0)));const won=Math.random()<chance;if(won){db.prepare(`INSERT INTO dungeon_valuable_luck(user_id,penalty,last_valuable_at) VALUES(?,0.55,CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET penalty=0.55,last_valuable_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP`).run(userId);}else{db.prepare(`INSERT INTO dungeon_valuable_luck(user_id,penalty) VALUES(?,0) ON CONFLICT(user_id) DO UPDATE SET penalty=MAX(0,dungeon_valuable_luck.penalty-0.10),updated_at=CURRENT_TIMESTAMP`).run(userId);}return won;}
-async function resolveGroup(client,g){const ms=members(g.id),diff=DIFFICULTIES.find(d=>d.key===g.difficulty_key)||DIFFICULTIES[0];const success=Math.random()*100<Number(g.success_chance||0);const rewards=[];for(const m of ms){const dust=Math.round((success?120:30)*diff.reward+Math.random()*(success?80:20));addCardDust(m.user_id,dust);grantClassXp(m.user_id,m.class_key,Math.round((success?90:25)*diff.reward),{completed:success});const valuable=success&&giveValuable(m.user_id,diff);let valuableName=null;if(valuable){const item=db.prepare("SELECT item_key,name FROM hero_items WHERE is_consumable=0 ORDER BY RANDOM() LIMIT 1").get();if(item){db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,1,?) ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+1`).run(m.user_id,item.item_key,`dungeon:${g.id}`);valuableName=item.name;}}rewards.push({userId:m.user_id,dust,valuable:valuableName});db.prepare("UPDATE heroes SET status='ready',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND status='dungeon'").run(m.user_id);}db.prepare("UPDATE dungeon_groups SET status='resolved',resolved_at=CURRENT_TIMESTAMP,success=?,result_json=? WHERE id=?").run(success?1:0,JSON.stringify({rewards}),g.id);const cfg=getConfig(g.guild_id),guild=client.guilds.cache.get(g.guild_id),ch=cfg&&guild?await guild.channels.fetch(cfg.channel_id).catch(()=>null):null;if(ch?.isTextBased()){const lines=rewards.map(r=>`<@${r.userId}> — 🪙 ${r.dust} Dust${r.valuable?` • 💎 **${r.valuable}**`:''}`);await ch.send({embeds:[new EmbedBuilder().setColor(success?0x16a34a:0xdc2626).setTitle(success?'🏆 Данж пройден!':'💀 Данж провален').setDescription(`**${g.difficulty_icon} ${g.dungeon_name}**\nШанс группы: ${Math.round(g.success_chance)}%\n\n${success?'Каждый участник получил награду.':'Группа получила утешительные награды.'}\n\n${lines.join('\n')}`)]});}await ensureHub(client,g.guild_id);}
+function ensureDungeonPlayer(userId){
+ db.prepare(`INSERT OR IGNORE INTO players(user_id,username,card_dust) VALUES(?,?,0)`).run(String(userId),`Dungeon ${userId}`);
+}
+function valuableCountFor(diff,partySize){
+ const ranges={normal:[0,1],dangerous:[1,1],heroic:[2,3],epic:[2,4],legendary:[3,5]};
+ const [min,max]=ranges[diff.key]||[0,1];
+ return Math.min(partySize,min+Math.floor(Math.random()*(max-min+1)));
+}
+function rarityPoolFor(diff){
+ const pools={normal:['common','rare'],dangerous:['rare','epic'],heroic:['rare','epic'],epic:['epic','legendary'],legendary:['epic','legendary','mythic']};
+ return pools[diff.key]||['rare'];
+}
+function chooseDungeonItem(diff){
+ const rarities=rarityPoolFor(diff);
+ const placeholders=rarities.map(()=>'?').join(',');
+ let item=db.prepare(`SELECT item_key,name,rarity FROM hero_items WHERE is_consumable=0 AND item_type NOT IN ('material','mount') AND rarity IN (${placeholders}) ORDER BY RANDOM() LIMIT 1`).get(...rarities);
+ if(!item)item=db.prepare("SELECT item_key,name,rarity FROM hero_items WHERE is_consumable=0 AND item_type NOT IN ('material','mount') ORDER BY RANDOM() LIMIT 1").get();
+ return item||null;
+}
+function pickValuableWinners(ms,count){
+ const pool=[...ms]; const out=[];
+ while(pool.length&&out.length<count){
+  const weights=pool.map(m=>{const row=db.prepare('SELECT penalty FROM dungeon_valuable_luck WHERE user_id=?').get(m.user_id);return Math.max(.15,1-Number(row?.penalty||0));});
+  let roll=Math.random()*weights.reduce((a,b)=>a+b,0),idx=0;
+  for(;idx<weights.length;idx++){roll-=weights[idx];if(roll<=0)break;}
+  const [winner]=pool.splice(Math.min(idx,pool.length-1),1);out.push(winner);
+ }
+ return new Set(out.map(x=>String(x.user_id)));
+}
+function updateValuableLuck(userId,won){
+ if(won) db.prepare(`INSERT INTO dungeon_valuable_luck(user_id,penalty,last_valuable_at) VALUES(?,0.55,CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET penalty=0.55,last_valuable_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP`).run(userId);
+ else db.prepare(`INSERT INTO dungeon_valuable_luck(user_id,penalty) VALUES(?,0) ON CONFLICT(user_id) DO UPDATE SET penalty=MAX(0,dungeon_valuable_luck.penalty-0.10),updated_at=CURRENT_TIMESTAMP`).run(userId);
+}
+async function resolveGroup(client,g){
+ const ms=members(g.id),diff=DIFFICULTIES.find(d=>d.key===g.difficulty_key)||DIFFICULTIES[0];
+ const success=Math.random()*100<Number(g.success_chance||0), rewards=[];
+ const winnerIds=success?pickValuableWinners(ms,valuableCountFor(diff,ms.length)):new Set();
+ const tx=db.transaction(()=>{
+  for(const m of ms){
+   ensureDungeonPlayer(m.user_id);
+   const dust=Math.round((success?120:30)*diff.reward+Math.random()*(success?80:20));
+   addCardDust(m.user_id,dust,`Награда данжа #${g.id}: ${g.dungeon_name}`);
+   const classXp=Math.round((success?90:25)*diff.reward);
+   grantClassXp(m.user_id,m.class_key,classXp,{completed:success});
+   let valuableName=null,valuableKey=null;
+   const won=winnerIds.has(String(m.user_id));
+   if(won){
+    const item=chooseDungeonItem(diff);
+    if(item){
+     db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,1,?) ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+1`).run(m.user_id,item.item_key,`dungeon:${g.id}`);
+     db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,?)`).run(m.user_id,item.item_key,`dungeon:${g.id}`);
+     valuableName=item.name; valuableKey=item.item_key;
+    }
+   }
+   updateValuableLuck(m.user_id,Boolean(valuableName));
+   rewards.push({userId:m.user_id,dust,classXp,valuable:valuableName,valuableKey});
+   db.prepare("UPDATE heroes SET status='ready',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND status='dungeon'").run(m.user_id);
+  }
+  db.prepare("UPDATE dungeon_groups SET status='resolved',resolved_at=CURRENT_TIMESTAMP,success=?,result_json=? WHERE id=?").run(success?1:0,JSON.stringify({version:2,dungeon:g.dungeon_name,difficulty:diff.key,rewards}),g.id);
+ });
+ tx();
+ const cfg=getConfig(g.guild_id),guild=client.guilds.cache.get(g.guild_id),ch=cfg&&guild?await guild.channels.fetch(cfg.channel_id).catch(()=>null):null;
+ if(ch?.isTextBased()){
+  const lines=rewards.map(r=>`<@${r.userId}> — 🪙 **${r.dust} Dust** • 📚 **${r.classXp} опыта класса**${r.valuable?` • 💎 **${r.valuable}**`:''}`);
+  const winners=rewards.filter(r=>r.valuable);
+  const summary=success
+   ? `Каждый участник получил Dust и опыт класса.\n${winners.length?`Редкую добычу получили **${winners.length}** участника. Остальные получили обычную награду.`:'В этот раз редкая добыча не найдена.'}`
+   : 'Группа получила небольшие утешительные Dust и опыт.';
+  await ch.send({embeds:[new EmbedBuilder().setColor(success?0x16a34a:0xdc2626).setTitle(success?'🏆 Данж пройден!':'💀 Данж провален').setDescription(`**${g.difficulty_icon} ${g.dungeon_name}**\nШанс группы: ${Math.round(g.success_chance)}%\n\n${summary}\n\n${lines.join('\n')}`).setFooter({text:'Награды сразу сохранены в профилях и истории рейда.'})]});
+ }
+ await ensureHub(client,g.guild_id);
+}
 async function tick(client){cleanupClosedFormingGroups();const due=db.prepare("SELECT * FROM dungeon_groups WHERE status='active' AND ends_at<=?").all(new Date().toISOString());for(const g of due)await resolveGroup(client,g).catch(e=>console.error('[Dungeon] resolve',g.id,e));await ensureHub(client).catch(()=>{});}
 function startScheduler(client){if(globalThis.__gsDungeonTimer)return;globalThis.__gsDungeonTimer=setInterval(()=>tick(client),60_000);setTimeout(()=>tick(client),10_000);console.log('🏰 Group Dungeon scheduler started');}
 

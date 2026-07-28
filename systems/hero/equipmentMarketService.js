@@ -26,11 +26,10 @@ function isEquipped(userId,inventoryId){
  UNION ALL SELECT 1 FROM hero_class_equipment WHERE user_id=? AND inventory_id=? LIMIT 1`).get(userId,inventoryId,userId,inventoryId);
 }
 function sellableEquipmentCount(userId,item){
- const total=Math.max(0,Number(item?.quantity)||0);
- // Одна запись инвентаря может содержать несколько одинаковых экземпляров.
- // Если один экземпляр надет (в том числе в классовом пресете), блокируем только его,
- // а не весь стак повторок.
- return Math.max(0,total-(isEquipped(userId,item.id)?1:0));
+ // Любой принадлежащий игроку экземпляр можно продать или обменять.
+ // Если продаётся единственный надетый экземпляр, система автоматически снимает его
+ // из основного и классовых комплектов перед резервированием.
+ return Math.max(0,Number(item?.quantity)||0);
 }
 function duplicateEquipment(userId){
  return getInventory(userId,{limit:200})
@@ -38,13 +37,19 @@ function duplicateEquipment(userId){
   .map(x=>({...x,sellable:sellableEquipmentCount(userId,x)}))
   .filter(x=>x.sellable>0);
 }
+function unequipInventoryItem(userId,inventoryId){
+ db.prepare('DELETE FROM hero_equipment WHERE user_id=? AND inventory_id=?').run(String(userId),Number(inventoryId));
+ db.prepare('DELETE FROM hero_class_equipment WHERE user_id=? AND inventory_id=?').run(String(userId),Number(inventoryId));
+}
 function removeOne(userId,item){
- if(Number(item.quantity)<=1) db.prepare('DELETE FROM hero_inventory WHERE id=? AND user_id=?').run(item.id,userId);
- else db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=? AND user_id=?').run(item.id,userId);
+ if(Number(item.quantity)<=1){
+  unequipInventoryItem(userId,item.id);
+  db.prepare('DELETE FROM hero_inventory WHERE id=? AND user_id=?').run(item.id,userId);
+ } else db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=? AND user_id=?').run(item.id,userId);
 }
 function sellToBlacksmith(userId,inventoryId){
  const item=getInventoryItem(userId,inventoryId); if(!item||!item.slot)return {ok:false,reason:'not_found'};
- if(sellableEquipmentCount(userId,item)<1)return {ok:false,reason:'equipped'};
+ if(sellableEquipmentCount(userId,item)<1)return {ok:false,reason:'missing'};
  const earned=(BLACKSMITH_PRICES[item.rarity]||20)+Number(item.upgrade_level||0)*15;
  const tx=db.transaction(()=>{removeOne(userId,item);addCardDust(userId,earned);}); tx();
  return {ok:true,item,earned,balance:getCardDust(userId)};
@@ -52,7 +57,7 @@ function sellToBlacksmith(userId,inventoryId){
 function createListing(userId,inventoryId,price){
  price=Math.floor(Number(price)); if(price<1||price>10000000)return {ok:false,reason:'price'};
  const item=getInventoryItem(userId,inventoryId); if(!item||!item.slot)return {ok:false,reason:'not_found'};
- if(sellableEquipmentCount(userId,item)<1)return {ok:false,reason:'equipped'};
+ if(sellableEquipmentCount(userId,item)<1)return {ok:false,reason:'missing'};
  let id; const tx=db.transaction(()=>{removeOne(userId,item);id=db.prepare(`INSERT INTO equipment_market_listings(seller_id,item_key,item_name,rarity,upgrade_level,quantity,price) VALUES(?,?,?,?,?,1,?)`).run(userId,item.item_key,item.name,item.rarity,Number(item.upgrade_level||0),price).lastInsertRowid;}); tx();
  return {ok:true,listing:getListing(id)};
 }

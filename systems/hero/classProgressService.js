@@ -56,13 +56,13 @@ function grantClassXp(userId,classKey,amount,{completed=true}={}) {
   return {...getClassProgress(userId,key),levelsGained:gained};
 }
 function classWorldBossBonuses(level, classKey = null) {
-  const progress=Math.max(0,Math.min(MAX_CLASS_LEVEL,Number(level||1))-1)/(MAX_CLASS_LEVEL-1);
+  const progress=Math.max(0,Math.min(MAX_CLASS_LEVEL,Number(level||1))-1)/12;
   const key=normalizeClassKey(classKey);
   const profile=CLASS_BONUS_PROFILES[key] || { damage: 8, hp: 6, resistance: 4, title: 'Мастерство класса' };
   return {
-    damagePercent: Math.round(progress*profile.damage*10)/10,
-    hpPercent: Math.round(progress*profile.hp*10)/10,
-    resistancePercent: Math.round(progress*profile.resistance*10)/10,
+    damagePercent: Math.round(Math.min(profile.damage,progress*profile.damage)*10)/10,
+    hpPercent: Math.round(Math.min(profile.hp,progress*profile.hp)*10)/10,
+    resistancePercent: Math.round(Math.min(profile.resistance,progress*profile.resistance)*10)/10,
     title: profile.title,
   };
 }

@@ -413,3 +413,66 @@ async function sendV1915DungeonRecoveryNotice(client){
 }
 
 module.exports.sendV1915DungeonRecoveryNotice=sendV1915DungeonRecoveryNotice;
+
+// V19.1.6 — восстановление Логова Мантикоры и Изумрудного Обруча Севера.
+function applyV1916DungeonAndItemRecovery(){
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const migrationKey='v19.1.6-manticore-dungeon-and-emerald-ring-recovery';
+  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)) return false;
+  const dustRewards=[
+    ['759026090038657034',198],['752908251896479915',230],['468683569359880192',175],['290777169431625728',162],
+    ['219160343467786240',178],['561961056197672991',173],['614389501955014667',212],['506371696878551041',151],
+  ];
+  const items=[
+    {userId:'752908251896479915',key:'recovery_emerald_circlet_north_254',name:'Изумрудный Обруч Севера',rarity:'rare',slot:'ring',quantity:2,bonuses:{luck:3,rare_find:2},description:'Редкий северный обруч, восстановленный владельцу.'},
+    {userId:'752908251896479915',key:'dungeon_manticore_venom_ring',name:'Кольцо Яда Мантикоры',rarity:'epic',slot:'ring',quantity:1,bonuses:{dexterity:6,rare_find:2},description:'Редкая добыча героического Логова Мантикоры.'},
+    {userId:'468683569359880192',key:'dungeon_manticore_hide_armor',name:'Панцирь Мантикоры',rarity:'epic',slot:'armor',quantity:1,bonuses:{hp:24,defense:7},description:'Редкая добыча героического Логова Мантикоры.'},
+    {userId:'219160343467786240',key:'dungeon_manticore_tail_spear',name:'Копьё Хвоста Мантикоры',rarity:'epic',slot:'weapon',quantity:1,bonuses:{strength:8,dexterity:4},description:'Редкая добыча героического Логова Мантикоры.'},
+  ];
+  const seed=db.prepare(`INSERT INTO hero_items(item_key,name,item_type,rarity,description,slot,bonuses_json,lore,is_consumable)
+    VALUES(?,?, 'equipment', ?, ?, ?, ?, ?, 0)
+    ON CONFLICT(item_key) DO UPDATE SET name=excluded.name,item_type='equipment',rarity=excluded.rarity,description=excluded.description,slot=excluded.slot,bonuses_json=excluded.bonuses_json,lore=excluded.lore`);
+  const inv=db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,?,'v19.1.6-recovery')
+    ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=MAX(quantity,excluded.quantity),acquired_from='v19.1.6-recovery'`);
+  const coll=db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,'v19.1.6-recovery')`);
+  db.transaction(()=>{
+    for(const [userId,dust] of dustRewards){
+      db.prepare(`INSERT OR IGNORE INTO players(user_id,username,card_dust) VALUES(?,?,0)`).run(userId,`Recovered ${userId}`);
+      addCardDust(userId,dust,'Возврат награды: героическое Логово Мантикоры');
+    }
+    for(const r of items){
+      seed.run(r.key,r.name,r.rarity,r.description,r.slot,JSON.stringify(r.bonuses),r.description);
+      inv.run(r.userId,r.key,r.quantity||1); coll.run(r.userId,r.key);
+    }
+    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+  })();
+  console.log('[V19.1.6] Награды Логова Мантикоры и два Изумрудных Обруча Севера восстановлены.');
+  return true;
+}
+applyV1916DungeonAndItemRecovery();
+
+async function sendV1916ManticoreRecoveryNotice(client){
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const key='v19.1.6-manticore-recovery-notice-channel-1531291125195866203';
+  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(key)) return;
+  const channel=await client.channels.fetch('1531291125195866203').catch(()=>null);
+  if(!channel?.isTextBased?.()) return;
+  await channel.send({embeds:[{
+    color:0x2563eb,
+    title:'🏆 Награды героического Логова Мантикоры восстановлены',
+    description:[
+      'Участникам прошлого прохождения возвращены указанные в итогах **GS Dust**. По правилам героического подземелья редкая добыча досталась только части группы.',
+      '',
+      '**💎 Редкая добыча:**',
+      '<@752908251896479915> — **Кольцо Яда Мантикоры**',
+      '<@468683569359880192> — **Панцирь Мантикоры**',
+      '<@219160343467786240> — **Копьё Хвоста Мантикоры**',
+      '',
+      'Остальные участники получили положенную пыль. Новые итоги подземелий сразу показывают каждому игроку Dust, опыт и выпавший предмет.'
+    ].join('\n'),
+    footer:{text:'Game Syndicate • Dungeon Reward Recovery V19.1.6'},
+    timestamp:new Date().toISOString(),
+  }]});
+  db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(key);
+}
+module.exports.sendV1916ManticoreRecoveryNotice=sendV1916ManticoreRecoveryNotice;

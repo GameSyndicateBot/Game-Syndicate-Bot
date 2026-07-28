@@ -88,8 +88,9 @@ module.exports = {
         startLuckyDayScheduler(client);
         startAutomaticBackups(client);
         startCaravanScheduler(client);
-        const { sendV1915DungeonRecoveryNotice } = require('../services/caravanService');
+        const { sendV1915DungeonRecoveryNotice, sendV1916ManticoreRecoveryNotice } = require('../services/caravanService');
         await sendV1915DungeonRecoveryNotice(client);
+        await sendV1916ManticoreRecoveryNotice(client);
 
         // Одноразовый праздничный пост Артёму и выдача четырёх паков.
         // Состояние хранится в SQLite, поэтому повторный запуск не дублирует награды и сообщение.

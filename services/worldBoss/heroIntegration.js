@@ -27,9 +27,9 @@ function equipmentBonusesForClass(snapshot, classKey) {
   const stats = snapshot?.classEquipmentBonuses?.[key] || snapshot?.equipmentBonuses || {};
   const profile = CLASS_EQUIPMENT_PROFILES[key] || CLASS_EQUIPMENT_PROFILES.warrior;
   const primaryScore = profile.primary.reduce((sum, stat) => sum + Number(stats[stat] || 0), 0);
-  const damagePercent = clamp(primaryScore / 3.2 + Number(stats.world_boss_damage || 0) * 1.35, 0, 22);
-  const hpPercent = clamp((Number(stats.hp || 0) / 7 + Number(stats.defense || 0) / 4.5) * profile.hpWeight, 0, 18);
-  const resistancePercent = clamp((Number(stats.defense || 0) / 3 + Number(stats.world_boss_resistance || 0) * 1.25) * profile.resistanceWeight, 0, 14);
+  const damagePercent = clamp(primaryScore / 1.45 + Number(stats.world_boss_damage || 0) * 1.75, 0, 35);
+  const hpPercent = clamp((Number(stats.hp || 0) / 4.5 + Number(stats.defense || 0) / 3.2) * profile.hpWeight, 0, 28);
+  const resistancePercent = clamp((Number(stats.defense || 0) / 2.1 + Number(stats.world_boss_resistance || 0) * 1.6) * profile.resistanceWeight, 0, 22);
   return {
     damagePercent: Math.round(damagePercent * 10) / 10,
     hpPercent: Math.round(hpPercent * 10) / 10,
