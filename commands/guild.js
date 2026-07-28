@@ -465,13 +465,13 @@ async function showPets(interaction, notice = '') {
   const text=rows.length?rows.map(r=>{
     const d=COMPANIONS[r.companion_key]||{};
     const bonuses=Object.entries(d.bonuses||{}).map(([k,v])=>`${k==='expedition_success'?'успех экспедиций':k==='rare_find'?'редкая добыча':k==='world_boss_damage'?'урон по боссу':'защита от босса'} +${v}%`).join(' · ');
-    return `${r.active?'🟢':'⚪'} **#${r.id} ${d.icon||'🐾'} ${r.name}** · ${COMPANION_RARITIES[r.rarity]||r.rarity}\n${bonuses||'Без пассивного бонуса'}`;
+    return `${r.active_mount?'🟣':r.active_slot?'🟢':'⚪'} **#${r.id} ${d.icon||(r.companion_kind==='mount'?'🐎':'🐾')} ${r.name}** · ${COMPANION_RARITIES[r.rarity]||r.rarity}\n${bonuses||'Без пассивного бонуса'}`;
   }).join('\n\n'):'Питомцев пока нет. Их можно найти в редких экспедиционных событиях или получить в магазине.';
-  const embed=new EmbedBuilder().setColor(0x38BDF8).setTitle('🐾 Питомцы героя').setDescription([notice,text].filter(Boolean).join('\n\n')).setFooter({text:'Активным может быть только один питомец.'});
+  const embed=new EmbedBuilder().setColor(0x38BDF8).setTitle('🐾 Питомцы героя').setDescription([notice,text].filter(Boolean).join('\n\n')).setFooter({text:'Можно активировать до 3 питомцев и отдельно 1 маунта. Повторный выбор снимает спутника.'});
   const components=[guildNavRow('pets')];
   if(rows.length)components.push(new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder().setCustomId('guild:pets:activate').setPlaceholder('Выбрать активного питомца')
-      .addOptions(rows.slice(0,25).map(r=>({label:`#${r.id} ${r.name}`.slice(0,100),value:String(r.id),emoji:r.active?'🟢':'🐾',description:r.active?'Сейчас активен':'Сделать активным'})))
+      .addOptions(rows.slice(0,25).map(r=>({label:`#${r.id} ${r.name}`.slice(0,100),value:String(r.id),emoji:r.active?'🟢':'🐾',description:r.active_mount?'Активный маунт':r.active_slot?`Активен: слот ${r.active_slot}`:(r.companion_kind==='mount'?'Выбрать маунтом':'Активировать питомца')})))
   ));
   return interaction.reply({embeds:[embed],components,flags:MessageFlags.Ephemeral});
 }
@@ -1267,17 +1267,17 @@ async function handleComponent(interaction) {
   if (action === 'pets' && parts[2] === 'activate') {
     const result = activateCompanion(interaction.user.id, Number(interaction.values?.[0]));
     const rows = listCompanions(interaction.user.id);
-    const notice = result.ok ? `✅ Активный питомец: **${result.companion.name}**.` : '❌ Питомец не найден.';
+    const notice = result.ok ? (result.kind==='mount' ? (result.active ? `✅ Активный маунт: **${result.companion.name}**.` : `✅ Маунт **${result.companion.name}** снят.`) : (result.active ? `✅ Питомец **${result.companion.name}** активирован${result.slot?` в слоте ${result.slot}/3`:''}.` : `✅ Питомец **${result.companion.name}** снят.`)) : (result.reason==='max_active' ? '❌ Уже активно 3 питомца. Сначала сними одного повторным выбором.' : '❌ Питомец не найден.');
     const text = rows.length ? rows.map(r => {
       const d = COMPANIONS[r.companion_key] || {};
       const bonuses = Object.entries(d.bonuses || {}).map(([k,v]) => `${k==='expedition_success'?'успех экспедиций':k==='rare_find'?'редкая добыча':k==='world_boss_damage'?'урон по боссу':'защита от босса'} +${v}%`).join(' · ');
-      return `${r.active?'🟢':'⚪'} **#${r.id} ${d.icon||'🐾'} ${r.name}** · ${COMPANION_RARITIES[r.rarity]||r.rarity}\n${bonuses||'Без пассивного бонуса'}`;
+      return `${r.active_mount?'🟣':r.active_slot?'🟢':'⚪'} **#${r.id} ${d.icon||(r.companion_kind==='mount'?'🐎':'🐾')} ${r.name}** · ${COMPANION_RARITIES[r.rarity]||r.rarity}\n${bonuses||'Без пассивного бонуса'}`;
     }).join('\n\n') : 'Питомцев пока нет.';
-    const embed = new EmbedBuilder().setColor(0x38BDF8).setTitle('🐾 Питомцы героя').setDescription(`${notice}\n\n${text}`).setFooter({text:'Активным может быть только один питомец.'});
+    const embed = new EmbedBuilder().setColor(0x38BDF8).setTitle('🐾 Питомцы героя').setDescription(`${notice}\n\n${text}`).setFooter({text:'Можно активировать до 3 питомцев и отдельно 1 маунта. Повторный выбор снимает спутника.'});
     const components=[guildNavRow('pets')];
     if(rows.length) components.push(new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder().setCustomId('guild:pets:activate').setPlaceholder('Выбрать активного питомца')
-        .addOptions(rows.slice(0,25).map(r=>({label:`#${r.id} ${r.name}`.slice(0,100),value:String(r.id),emoji:r.active?'🟢':'🐾',description:r.active?'Сейчас активен':'Сделать активным'})))
+        .addOptions(rows.slice(0,25).map(r=>({label:`#${r.id} ${r.name}`.slice(0,100),value:String(r.id),emoji:r.active?'🟢':'🐾',description:r.active_mount?'Активный маунт':r.active_slot?`Активен: слот ${r.active_slot}`:(r.companion_kind==='mount'?'Выбрать маунтом':'Активировать питомца')})))
     ));
     return interaction.update({embeds:[embed],components});
   }

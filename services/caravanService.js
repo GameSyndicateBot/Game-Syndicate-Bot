@@ -101,6 +101,75 @@ function ensureTables(){
 }
 ensureTables();
 
+function repairCaravanMountCompanions(){
+  const { grantCustomCompanion, registerCompanionDefinition }=require('../systems/hero/companionService');
+  const rows=db.prepare(`
+    SELECT hi.user_id, hi.item_key, h.name, h.rarity, h.description, h.bonuses_json
+    FROM hero_inventory hi
+    JOIN hero_items h ON h.item_key=hi.item_key
+    WHERE hi.quantity>0 AND h.item_type='mount' AND hi.item_key LIKE 'caravan_mount_%'
+  `).all();
+  for(const row of rows){
+    const data={name:row.name,icon:'🐎',rarity:row.rarity||'common',kind:'mount',description:row.description||'Караванный спутник.',bonuses:JSON.parse(row.bonuses_json||'{}')};
+    registerCompanionDefinition(row.item_key,data);
+    grantCustomCompanion(String(row.user_id),row.item_key,data,'caravan-repair');
+  }
+
+  const manual=[
+    {userId:'290777169431625728',key:'caravan_mount_1361',name:'Королевский Виверн',rarity:'legendary'},
+    {userId:'506371696878551041',key:'caravan_mount_1289',name:'Солнечный Белый Олень',rarity:'common'},
+    {userId:'468683569359880192',key:'caravan_mount_1230',name:'Пустынная Сумеречная Пантера',rarity:'common'},
+    {userId:'752908251896479915',key:'caravan_mount_1315',name:'Костяной Конь',rarity:'rare'},
+  ];
+  const seed=db.prepare(`INSERT INTO hero_items(item_key,name,item_type,rarity,description,slot,bonuses_json,lore,is_consumable)
+    VALUES(?,?, 'mount', ?, ?, NULL, ?, ?, 0)
+    ON CONFLICT(item_key) DO UPDATE SET name=excluded.name,item_type='mount',rarity=excluded.rarity,description=excluded.description,bonuses_json=excluded.bonuses_json,lore=excluded.lore`);
+  const inv=db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,1,'caravan-repair')
+    ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=MAX(quantity,1)`);
+  const coll=db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,'caravan-repair')`);
+  const rename=db.prepare('UPDATE hero_companions SET name=?,rarity=? WHERE user_id=? AND companion_key=?');
+  db.transaction(()=>{
+    for(const row of manual){
+      const rarity=row.rarity;
+      const bonuses=bonusFor('mount',rarity,`repair:${row.userId}:${row.key}`);
+      const data={name:row.name,icon:'🐎',rarity,kind:'mount',description:'Редкий ездовой спутник, полученный у Караванщика.',bonuses};
+      seed.run(row.key,row.name,rarity,data.description,JSON.stringify(bonuses),'Возвращён владельцу после исправления учёта питомцев Караванщика.');
+      inv.run(row.userId,row.key);
+      coll.run(row.userId,row.key);
+      registerCompanionDefinition(row.key,data);
+      grantCustomCompanion(row.userId,row.key,data,'caravan-repair');
+      rename.run(row.name,rarity,row.userId,row.key);
+    }
+  })();
+}
+repairCaravanMountCompanions();
+
+function applyV1913TargetedGearRecovery(){
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const migrationKey='v19.1.3-targeted-gear-recovery';
+  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)) return;
+  const rewards=[
+    {userId:'302797251271458817',key:'recovery_imperial_plate_gloves_north',name:'Императорские Латные перчатки Севера',type:'equipment',rarity:'epic',slot:'gloves',bonuses:{defense:8,strength:5}},
+    {userId:'561961056197672991',key:'recovery_bone_sandals_fallen_king',name:'Костяные Сандалии странника Павшего короля',type:'equipment',rarity:'epic',slot:'boots',bonuses:{defense:5,dexterity:7}},
+    {userId:'561961056197672991',key:'recovery_abyssal_blade_fallen_king',name:'Бездонный Клинок Павшего короля',type:'equipment',rarity:'epic',slot:'weapon',bonuses:{strength:10,rare_find:2}},
+    {userId:'506371696878551041',key:'recovery_gloves_fallen_king',name:'Перчатки Павшего короля',type:'equipment',rarity:'epic',slot:'gloves',bonuses:{defense:6,strength:6}},
+    {userId:'290777169431625728',key:'recovery_epic_hammer_fallen_king',name:'Императорский Молот Павшего короля',type:'equipment',rarity:'epic',slot:'weapon',bonuses:{strength:11,world_boss_damage:2}},
+  ];
+  const seed=db.prepare(`INSERT INTO hero_items(item_key,name,item_type,rarity,description,slot,bonuses_json,lore,is_consumable) VALUES(?,?,?,?,?,?,?,?,0)
+    ON CONFLICT(item_key) DO UPDATE SET name=excluded.name,item_type=excluded.item_type,rarity=excluded.rarity,description=excluded.description,slot=excluded.slot,bonuses_json=excluded.bonuses_json,lore=excluded.lore`);
+  const inv=db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,1,'v19.1.3-recovery') ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=MAX(quantity,1)`);
+  const coll=db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,'v19.1.3-recovery')`);
+  db.transaction(()=>{
+    for(const r of rewards){
+      seed.run(r.key,r.name,r.type,r.rarity,'Возвращённый предмет после исправления наград.',r.slot,JSON.stringify(r.bonuses),'Восстановлен владельцу администрацией Game Syndicate.');
+      inv.run(r.userId,r.key); coll.run(r.userId,r.key);
+    }
+    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+  })();
+  console.log('[V19.1.3] Целевые предметы восстановлены владельцам.');
+}
+applyV1913TargetedGearRecovery();
+
 function createSchedule(dayKey=moscowDay()){
   const rng=seeded(`caravan:${dayKey}:${Date.now()}`);
   const [y,m,d]=dayKey.split('-').map(Number);
@@ -187,6 +256,16 @@ function seedCaravanItem(item){
   db.prepare(`INSERT INTO hero_items(item_key,name,item_type,rarity,description,slot,bonuses_json,lore,is_consumable) VALUES(?,?,?,?,?,?,?,?,0)
   ON CONFLICT(item_key) DO UPDATE SET name=excluded.name,item_type=excluded.item_type,rarity=excluded.rarity,description=excluded.description,slot=excluded.slot,bonuses_json=excluded.bonuses_json,lore=excluded.lore`).run(item.key,item.name,item.type,item.rarity,item.description,item.slot||null,JSON.stringify(item.bonuses||{}),item.lore||'');
 }
+function companionDataFromCaravanItem(item){
+  return {
+    name:item.name,
+    icon:item.icon || (item.type==='mount' ? '🐎' : '🐾'),
+    rarity:item.rarity || 'common',
+    description:item.description || 'Редкий спутник, привезённый Караванщиком.',
+    bonuses:item.bonuses || {},
+    kind:item.type==='mount'?'mount':'pet',
+  };
+}
 function grantPurchased(userId,item){
   if(item.type==='pet'&&String(item.catalogKey||item.key).startsWith('pet:')){
     const { grantCompanion }=require('../systems/hero/companionService');return grantCompanion(userId,String(item.catalogKey||item.key).slice(4),'caravan');
@@ -194,6 +273,10 @@ function grantPurchased(userId,item){
   seedCaravanItem(item);
   db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,1,'caravan') ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+1,acquired_from='caravan'`).run(String(userId),item.key);
   db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,'caravan')`).run(String(userId),item.key);
+  if(item.type==='mount'){
+    const { grantCustomCompanion }=require('../systems/hero/companionService');
+    grantCustomCompanion(String(userId),item.key,companionDataFromCaravanItem(item),'caravan');
+  }
   return true;
 }
 function buyOffer(userId,id){const offer=getOffer(userId,id);if(!isActive())return {ok:false,reason:'closed'};if(!offer||offer.purchased)return {ok:false,reason:'missing'};
