@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.3.0",
+  "version": "19.3.1",
   "private": true,
-  "description": "Game Syndicate V19.3.0: GS Blitz low-latency and duplicate-safe runtime",
+  "description": "Game Syndicate V19.3.1: GS Blitz deterministic round finish and lobby recovery",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

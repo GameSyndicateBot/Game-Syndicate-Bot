@@ -709,7 +709,11 @@ async function resolveRound(game) {
 
         const { correct, eliminated, nobodyCorrect } = game.roundResult;
 
-        void callApi('editMessageReplyMarkup', {
+        // Сначала закрываем кнопки и показываем итог раунда, и только затем
+        // объявляем победителя. Раньше эти запросы шли параллельно, поэтому
+        // сообщение о победителе могло появиться раньше правильного ответа и
+        // визуально создавать ощущение зависшей игры.
+        await callApi('editMessageReplyMarkup', {
             chat_id: game.chatId,
             message_id: game.questionMessageId,
             reply_markup: { inline_keyboard: [] },
@@ -725,16 +729,23 @@ async function resolveRound(game) {
             if (eliminated.length) lines.push(`🔴 Выбыли: <b>${eliminated.length}</b>`);
         }
 
+        if (game.alive.size <= 1) {
+            lines.push('', '🏁 Матч завершён: остался один игрок.');
+        }
+
         if (game.current.explanation) lines.push('', esc(game.current.explanation));
 
-        void callApi('sendMessage', {
+        await callApi('sendMessage', {
             chat_id: game.chatId,
             ...(game.threadId ? { message_thread_id: game.threadId } : {}),
             text: lines.join('\n'),
             parse_mode: 'HTML',
-        }, { optional: true }).catch((error) => console.warn('⚠️ Blitz result message:', error?.message || error));
+        }, { optional: true });
 
         if (game.alive.size <= 1) {
+            game.resolving = false;
+            game.resolvingSince = 0;
+            game.questionDeadlineAt = 0;
             await finishMatch(game);
             return;
         }
@@ -823,7 +834,7 @@ async function finishMatch(game) {
     } finally {
         game.status = 'finished';
         game.finishing = false;
-        later(game, () => resetLobby(game), 1800, 'reset-lobby');
+        later(game, () => resetLobby(game), 700, 'reset-lobby');
     }
 }
 
