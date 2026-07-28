@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.5.5",
+  "version": "19.0.0",
   "private": true,
-  "description": "Game Syndicate V18.5.4: Guildmates UX, Bomb Fix, Mafia Registration, D12 Timer and Discord Emoji Riddles",
+  "description": "Game Syndicate V19.0.0: Странствующий Караванщик — ежедневный персональный магазин на 30 минут",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

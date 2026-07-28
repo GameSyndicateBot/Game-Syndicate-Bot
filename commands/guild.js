@@ -25,6 +25,7 @@ const { getChests, openChest } = require('../systems/hero/materialService');
 const { CHESTS, MATERIALS } = require('../systems/hero/materialData');
 const { listCookRecipes, hydrateCookRecipe, cook } = require('../systems/hero/cookService');
 const { sourceFor, missingRecipeSummary, missingCookSummary, recipeState, cookState, itemBonusLines } = require('../systems/hero/craftingUx');
+const caravan = require('../services/caravanService');
 
 const GUILD_CHANNEL_ID = '1530165282512044032';
 const EXPEDITION_CHANNEL_ID = '1529566430301782017';
@@ -60,14 +61,16 @@ function ensureProfilePreferences() {
 ensureProfilePreferences();
 
 function npcRows() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('guild:blacksmith').setLabel('Кузнец').setEmoji('⚒️').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('guild:alchemist').setLabel('Алхимик').setEmoji('🧪').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('guild:hospital').setLabel('Лекарь').setEmoji('🩺').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('guild:cook').setLabel('Повар').setEmoji('👨‍🍳').setStyle(ButtonStyle.Success),
-    ),
+  const buttons = [
+    new ButtonBuilder().setCustomId('guild:blacksmith').setLabel('Кузнец').setEmoji('⚒️').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('guild:alchemist').setLabel('Алхимик').setEmoji('🧪').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('guild:hospital').setLabel('Лекарь').setEmoji('🩺').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('guild:cook').setLabel('Повар').setEmoji('👨‍🍳').setStyle(ButtonStyle.Success),
   ];
+  if (caravan.isActive()) {
+    buttons.push(new ButtonBuilder().setCustomId('guild:caravan').setLabel('Караванщик').setEmoji('🐪').setStyle(ButtonStyle.Primary));
+  }
+  return [new ActionRowBuilder().addComponents(...buttons)];
 }
 
 function storageExtraRows() {
@@ -860,9 +863,125 @@ async function showChestsHub(interaction, notice=''){
   return interaction.replied||interaction.deferred?interaction.editReply(payload):interaction.reply(payload);
 }
 
+
+function caravanRarityText(key) {
+  const r = caravan.RARITY[key] || caravan.RARITY.common;
+  return `${r.icon} ${r.label}`;
+}
+
+function caravanOfferSummary(offer) {
+  const deal = offer.is_daily_deal ? ` • 🔥 −${offer.discount_percent}%` : '';
+  const status = offer.purchased ? ' • ✅ Куплено' : '';
+  return `${offer.item.icon || '🎁'} **${offer.item.name}**\n${caravanRarityText(offer.rarity)}${deal}${status}\n💎 **${offer.current_price} GS Dust**`;
+}
+
+function caravanMainComponents(offers) {
+  const available = offers.filter(o => !o.purchased);
+  const rows = [];
+  if (available.length) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('guild:caravan:select')
+        .setPlaceholder('Выбери товар Караванщика')
+        .addOptions(available.map(o => ({
+          label: `${o.item.name}`.slice(0, 100),
+          value: String(o.id),
+          emoji: o.item.icon || '🎁',
+          description: `${caravan.RARITY[o.rarity]?.label || o.rarity} • ${o.current_price} GS Dust${o.is_daily_deal ? ` • скидка ${o.discount_percent}%` : ''}`.slice(0, 100),
+        }))),
+    ));
+  }
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:caravan:reservation:cancel').setLabel('Отменить отложенный').setEmoji('⭐').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('guild:npcs').setLabel('К гильдейцам').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+  ));
+  return rows;
+}
+
+async function showCaravan(interaction, notice = '') {
+  if (!caravan.isActive()) {
+    const payload = { content: '🐪 Караванщик уже покинул Гильдию. Он вернётся в случайное время на следующий день.', embeds: [], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:npcs').setLabel('К гильдейцам').setEmoji('↩️').setStyle(ButtonStyle.Secondary))], flags: MessageFlags.Ephemeral };
+    return interaction.replied || interaction.deferred ? interaction.editReply(payload) : interaction.reply(payload);
+  }
+  const hero = getHero(interaction.user.id);
+  if (!hero) {
+    const payload = { content: '❌ Сначала создай героя, чтобы Караванщик подготовил персональные предложения.', flags: MessageFlags.Ephemeral };
+    return interaction.replied || interaction.deferred ? interaction.editReply(payload) : interaction.reply(payload);
+  }
+  const state = caravan.statePublic();
+  const offers = caravan.ensureOffers(interaction.user.id);
+  const [atmosphereIcon, atmosphereText] = state.atmosphere;
+  const balance = getCardDust(interaction.user.id);
+  const description = [
+    notice,
+    `${atmosphereIcon} *${atmosphereText}*`,
+    `⏳ До ухода: **${caravan.formatTimeLeft()}** • 💎 Баланс: **${balance} GS Dust**`,
+    '',
+    ...offers.map((offer, index) => `**${index + 1}.** ${caravanOfferSummary(offer)}`),
+    '',
+    '🤝 На каждый товар доступна одна попытка торга. Цена может снизиться, не измениться или немного вырасти.',
+    '⭐ Можно отложить один товар: он вернётся во время следующего визита и займёт один из пяти слотов.',
+  ].filter(Boolean).join('\n\n');
+  const payload = { embeds: [new EmbedBuilder().setColor(0x7C3AED).setTitle('🐪 Караванщик').setDescription(description).setFooter({ text: 'Ассортимент персональный и не меняется до конца текущего визита.' })], components: caravanMainComponents(offers), flags: MessageFlags.Ephemeral };
+  return interaction.replied || interaction.deferred ? interaction.editReply(payload) : interaction.reply(payload);
+}
+
+async function showCaravanOffer(interaction, offer, notice = '') {
+  if (!offer || offer.purchased) return showCaravan(interaction, notice || '❌ Этот товар уже недоступен.');
+  const bonusLines = formatBonuses(offer.item.bonuses || {});
+  const details = [
+    notice,
+    `${offer.item.icon || '🎁'} **${offer.item.name}**`,
+    `${caravanRarityText(offer.rarity)}${offer.is_daily_deal ? ` • 🔥 Товар дня: скидка ${offer.discount_percent}%` : ''}`,
+    offer.item.description,
+    bonusLines.length ? `**Бонусы:**\n${bonusLines.join('\n')}` : '',
+    offer.item.lore ? `*${offer.item.lore}*` : '',
+    `💎 Цена: **${offer.current_price} GS Dust**${offer.current_price !== offer.base_price ? ` (обычно ${offer.base_price})` : ''}`,
+    `Твой баланс: **${getCardDust(interaction.user.id)} GS Dust**`,
+  ].filter(Boolean).join('\n\n');
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`guild:caravan:buy:${offer.id}`).setLabel('Купить').setEmoji('💎').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`guild:caravan:bargain:${offer.id}`).setLabel(offer.bargained ? 'Торг использован' : 'Поторговаться').setEmoji('🤝').setStyle(ButtonStyle.Primary).setDisabled(Boolean(offer.bargained)),
+    new ButtonBuilder().setCustomId(`guild:caravan:reserve:${offer.id}`).setLabel('Отложить').setEmoji('⭐').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('guild:caravan').setLabel('Назад').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+  );
+  const payload = { embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle('🐪 Предложение Караванщика').setDescription(details)], components: [row], flags: MessageFlags.Ephemeral };
+  return interaction.replied || interaction.deferred ? interaction.editReply(payload) : interaction.update(payload);
+}
+
 async function handleComponent(interaction) {
   const parts = interaction.customId.split(':');
   const action = parts[1];
+
+
+  if (action === 'caravan' && parts.length === 2) return showCaravan(interaction);
+  if (action === 'caravan' && parts[2] === 'select') {
+    const offer = caravan.getOffer(interaction.user.id, Number(interaction.values?.[0]));
+    return showCaravanOffer(interaction, offer);
+  }
+  if (action === 'caravan' && parts[2] === 'buy') {
+    const result = caravan.buyOffer(interaction.user.id, Number(parts[3]));
+    if (result.ok) return showCaravan(interaction, `✅ Куплено: **${result.offer.item.name}** за **${result.offer.current_price} GS Dust**. Осталось: **${result.balance} GS Dust**.`);
+    if (result.reason === 'dust') return showCaravanOffer(interaction, caravan.getOffer(interaction.user.id, Number(parts[3])), `❌ Недостаточно GS Dust. Баланс: **${result.balance}**.`);
+    if (result.reason === 'closed') return showCaravan(interaction, '🐪 Караванщик уже уехал.');
+    return showCaravan(interaction, '❌ Не удалось совершить покупку. Товар мог уже стать недоступен.');
+  }
+  if (action === 'caravan' && parts[2] === 'reserve') {
+    const result = caravan.reserveOffer(interaction.user.id, Number(parts[3]));
+    return showCaravan(interaction, result.ok ? `⭐ Караванщик запомнил **${result.offer.item.name}**. Товар вернётся во время следующего визита.` : '❌ Не удалось отложить товар.');
+  }
+  if (action === 'caravan' && parts[2] === 'reservation' && parts[3] === 'cancel') {
+    const result = caravan.cancelReservation(interaction.user.id);
+    return showCaravan(interaction, result.ok ? '✅ Отложенный товар отменён.' : 'ℹ️ У тебя нет отложенного товара.');
+  }
+  if (action === 'caravan' && parts[2] === 'bargain') {
+    const result = caravan.bargain(interaction.user.id, Number(parts[3]));
+    if (!result.ok) return showCaravanOffer(interaction, result.offer || caravan.getOffer(interaction.user.id, Number(parts[3])), result.reason === 'used' ? 'ℹ️ Ты уже торговался за этот товар.' : '❌ Торг недоступен.');
+    let message = '😐 Караванщик не изменил цену.';
+    if (result.percent < 0) message = `🤝 Удачный торг! Цена снижена на **${Math.abs(result.percent)}%**: ${result.oldPrice} → **${result.newPrice} GS Dust**.`;
+    if (result.percent > 0) message = `😅 Караванщик заметил твой интерес и поднял цену на **${result.percent}%**: ${result.oldPrice} → **${result.newPrice} GS Dust**.`;
+    return showCaravanOffer(interaction, result.offer, message);
+  }
 
   if (action === 'create' && parts.length === 2) {
     if (getHero(interaction.user.id)) {
