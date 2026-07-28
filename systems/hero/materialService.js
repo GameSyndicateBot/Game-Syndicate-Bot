@@ -143,7 +143,7 @@ function openChest(userId, chestKey) {
     const changed = db.prepare('UPDATE hero_chests SET quantity=quantity-1, updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND chest_key=? AND quantity>0').run(userId, chestKey);
     if (!changed.changes) throw new Error('Chest already consumed');
     const dust = int(rng, chest.dust[0], chest.dust[1]);
-    addCardDust(userId, dust);
+    addCardDust(userId, dust, `Открытие сундука: ${chest.name}`);
     const pool = Object.keys(MATERIALS).filter(key => {
       const r = MATERIALS[key].rarity;
       if (chest.rarity === 'common') return r === 'common';

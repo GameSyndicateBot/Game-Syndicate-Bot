@@ -101,12 +101,12 @@ function deleteHero(userId) {
 }
 
 function grantXp(userId, amount) {
-  const hero = getHero(userId); if (!hero) return null;
-  let xp = hero.xp + Math.max(0, Number(amount) || 0), level = hero.level;
-  let levels = 0;
-  while (xp >= xpForNextLevel(level)) { xp -= xpForNextLevel(level); level++; levels++; }
-  db.prepare('UPDATE heroes SET xp=?, level=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?').run(xp, level, userId);
-  if (levels) addHistory(userId, 'level_up', `Герой достиг уровня ${level}.`, { level });
-  return { ...getHero(userId), levelsGained: levels };
+  const hero=getHero(userId); if(!hero)return null;
+  const { grantClassXp }=require('./classProgressService');
+  const progress=grantClassXp(userId,hero.class_key,amount,{completed:false});
+  if(!progress)return null;
+  if(progress.levelsGained) addHistory(userId,'level_up',`Персонаж достиг уровня ${progress.level}.`,{level:progress.level,classKey:hero.class_key});
+  return {...getHero(userId),level:progress.level,xp:progress.xp,levelsGained:progress.levelsGained||0};
 }
+
 module.exports = { getHero, getHeroByNumber, getLatestExpeditionClassKey, createHero, deleteHero, addHistory, getHistory, getInventory, getEquipment, grantXp };

@@ -966,19 +966,31 @@ function getCardDust(userId) {
     return row?.card_dust ?? 0;
 }
 
-function addCardDust(userId, amount) {
+function ensureEconomyLogTableLocal() {
+    db.exec(`CREATE TABLE IF NOT EXISTS economy_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL,asset_type TEXT NOT NULL,asset_key TEXT NOT NULL,
+      asset_name TEXT,delta INTEGER NOT NULL,balance_before INTEGER NOT NULL,balance_after INTEGER NOT NULL,
+      reason TEXT NOT NULL DEFAULT 'system',metadata_json TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ); CREATE INDEX IF NOT EXISTS idx_economy_log_user_created ON economy_log(user_id,created_at DESC,id DESC);`);
+}
+function logDustChange(userId, delta, before, after, reason='GS Dust operation') {
+    ensureEconomyLogTableLocal();
+    db.prepare(`INSERT INTO economy_log(user_id,asset_type,asset_key,asset_name,delta,balance_before,balance_after,reason)
+      VALUES(?,'dust','gs_dust','GS Dust',?,?,?,?,?)`).run(String(userId), Math.trunc(delta), Math.trunc(before), Math.trunc(after), String(reason), null);
+}
+function addCardDust(userId, amount, reason = 'Начисление GS Dust') {
     const safeAmount = Math.max(0, Number(amount) || 0);
-
-    db.prepare(`
-        UPDATE players
-        SET card_dust = COALESCE(card_dust, 0) + ?
-        WHERE user_id = ?
-    `).run(safeAmount, userId);
-
-    return getCardDust(userId);
+    const tx = db.transaction(() => {
+      const before = getCardDust(userId);
+      db.prepare(`UPDATE players SET card_dust = COALESCE(card_dust, 0) + ? WHERE user_id = ?`).run(safeAmount, userId);
+      const after = before + safeAmount;
+      if (safeAmount > 0) logDustChange(userId, safeAmount, before, after, reason);
+      return after;
+    });
+    return tx();
 }
 
-function removeCardDust(userId, amount) {
+function removeCardDust(userId, amount, reason = 'Списание GS Dust') {
     const safeAmount = Math.max(0, Number(amount) || 0);
     const currentDust = getCardDust(userId);
 
@@ -989,16 +1001,13 @@ function removeCardDust(userId, amount) {
         };
     }
 
-    db.prepare(`
-        UPDATE players
-        SET card_dust = COALESCE(card_dust, 0) - ?
-        WHERE user_id = ?
-    `).run(safeAmount, userId);
-
-    return {
-        ok: true,
-        balance: currentDust - safeAmount,
-    };
+    const tx = db.transaction(() => {
+      db.prepare(`UPDATE players SET card_dust = COALESCE(card_dust, 0) - ? WHERE user_id = ?`).run(safeAmount, userId);
+      const after = currentDust - safeAmount;
+      if (safeAmount > 0) logDustChange(userId, -safeAmount, currentDust, after, reason);
+      return after;
+    });
+    return { ok: true, balance: tx() };
 }
 
 

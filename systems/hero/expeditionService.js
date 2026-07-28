@@ -11,6 +11,7 @@ const { consumeContextBuffs, describeBuffKeys } = require('./alchemyService');
 const { normalizeClassKey, isValidClass, ensureClassProgress, grantClassXp, getClassProgress } = require('./classProgressService');
 const { applyExpeditionResult, getRegionEffects } = require('../world/worldService');
 const { rollMinibossEncounter } = require('../world/minibossService');
+const { grantResource } = require('./resourceService');
 
 const EXPEDITION_TACTICS = {
   balanced: { key:'balanced', icon:'⚖️', name:'Сбалансированно', description:'Ровный риск и награда.', success:0, xp:1, dust:1, rare:0, injury:1 },
@@ -374,7 +375,7 @@ function resolveExpedition(userId, { force = false } = {}) {
     }
   }
   ensurePlayer(userId);
-  if (dust > 0) addCardDust(userId, dust);
+  if (dust > 0) addCardDust(userId, dust, `Награда экспедиции #${expedition.id}`);
   const leveledHero = grantXp(userId, xp);
   const classXp = Math.max(10, Math.round(xp * 0.75));
   const classProgress = grantClassXp(userId, expeditionClassKey, classXp, { completed:true });
@@ -391,7 +392,7 @@ function resolveExpedition(userId, { force = false } = {}) {
     for (const material of resourceRewards.materials) {
       const extra = Math.max(0, Math.round(material.quantity * (materialMultiplier - 1)));
       if (extra > 0) {
-        db.prepare(`INSERT INTO hero_materials(user_id,material_key,quantity) VALUES(?,?,?) ON CONFLICT(user_id,material_key) DO UPDATE SET quantity=quantity+excluded.quantity,updated_at=CURRENT_TIMESTAMP`).run(userId, material.key, extra);
+        grantResource(userId, material.key, extra, `expedition:${expedition.id}:multiplier`);
         material.quantity += extra;
       }
     }

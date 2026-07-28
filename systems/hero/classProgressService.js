@@ -51,6 +51,8 @@ function grantClassXp(userId,classKey,amount,{completed=true}={}) {
   if(level>=MAX_CLASS_LEVEL) xp=Math.min(xp,classXpForNextLevel(MAX_CLASS_LEVEL)-1);
   db.prepare(`UPDATE hero_class_progress SET level=?,xp=?,expeditions_completed=expeditions_completed+?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND class_key=?`)
     .run(level,xp,completed?1:0,userId,key);
+  const hero=db.prepare('SELECT class_key FROM heroes WHERE user_id=?').get(userId);
+  if(hero && normalizeClassKey(hero.class_key)===key) db.prepare('UPDATE heroes SET level=?,xp=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?').run(level,xp,userId);
   return {...getClassProgress(userId,key),levelsGained:gained};
 }
 function classWorldBossBonuses(level, classKey = null) {
@@ -111,9 +113,19 @@ function auditClassProgressIntegrity() {
       }
       // Persist every class at Lv.1 for every hero, so Guild, Expeditions and World Boss
       // always read the same row instead of mixing virtual defaults with stored data.
-      const heroes=db.prepare('SELECT user_id FROM heroes').all();
+      const heroes=db.prepare('SELECT user_id,class_key,level,xp FROM heroes').all();
       const stmt=db.prepare('INSERT OR IGNORE INTO hero_class_progress(user_id,class_key,level,xp,expeditions_completed) VALUES(?,?,1,0,0)');
-      for(const hero of heroes) for(const key of Object.keys(HERO_CLASSES)) stmt.run(hero.user_id,key);
+      for(const hero of heroes) {
+        for(const key of Object.keys(HERO_CLASSES)) stmt.run(hero.user_id,key);
+        const mainKey=normalizeClassKey(hero.class_key);
+        const row=db.prepare('SELECT level,xp FROM hero_class_progress WHERE user_id=? AND class_key=?').get(hero.user_id,mainKey);
+        const legacyLevel=Math.max(1,Number(hero.level||1));
+        const classLevel=Math.max(1,Number(row?.level||1));
+        const mergedLevel=Math.max(legacyLevel,classLevel);
+        const mergedXp=legacyLevel>classLevel?Number(hero.xp||0):classLevel>legacyLevel?Number(row?.xp||0):Math.max(Number(hero.xp||0),Number(row?.xp||0));
+        db.prepare('UPDATE hero_class_progress SET level=?,xp=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND class_key=?').run(mergedLevel,mergedXp,hero.user_id,mainKey);
+        db.prepare('UPDATE heroes SET level=?,xp=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?').run(mergedLevel,mergedXp,hero.user_id);
+      }
     });
     tx();
     return true;

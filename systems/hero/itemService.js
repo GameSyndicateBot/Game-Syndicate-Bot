@@ -5,7 +5,7 @@ const { grantResource } = require('./resourceService');
 
 const STAT_KEYS=['hp','strength','defense','dexterity','intelligence','luck','expedition_success','rare_find','world_boss_damage','world_boss_resistance','boss_flat_damage','injury_resistance','class_xp_bonus'];
 function parseBonuses(value){ try{return JSON.parse(value||'{}')||{};}catch(_){return {};} }
-function applyUpgradeToBonuses(bonuses,level=0){const n=Math.max(0,Math.min(10,Number(level)||0));if(!n)return {...bonuses};const out={};for(const [key,value] of Object.entries(bonuses||{})){const numeric=Number(value)||0;if(!numeric){out[key]=value;continue;}const percent=['expedition_success','rare_find','world_boss_damage','world_boss_resistance'].includes(key);out[key]=percent?numeric+Math.floor(n/2):Math.max(numeric,Math.round(numeric*(1+n*0.08)));}return out;}
+function applyUpgradeToBonuses(bonuses,level=0){const n=Math.max(0,Math.min(10,Number(level)||0));if(!n)return {...bonuses};const out={};for(const [key,value] of Object.entries(bonuses||{})){const numeric=Number(value)||0;if(!numeric){out[key]=value;continue;}const percent=['expedition_success','rare_find','world_boss_damage','world_boss_resistance','injury_resistance','class_xp_bonus'].includes(key);out[key]=percent?numeric+Math.ceil(n*0.8):Math.max(numeric,Math.round(numeric*(1+n*0.15)));}return out;}
 function seedItems(){
  const stmt=db.prepare(`INSERT INTO hero_items (item_key,name,item_type,rarity,description,slot,bonuses_json,lore,is_consumable)
  VALUES (@key,@name,@type,@rarity,@description,@slot,@bonuses,@lore,@consumable)

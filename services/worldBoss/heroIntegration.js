@@ -27,9 +27,9 @@ function equipmentBonusesForClass(snapshot, classKey) {
   const stats = snapshot?.classEquipmentBonuses?.[key] || snapshot?.equipmentBonuses || {};
   const profile = CLASS_EQUIPMENT_PROFILES[key] || CLASS_EQUIPMENT_PROFILES.warrior;
   const primaryScore = profile.primary.reduce((sum, stat) => sum + Number(stats[stat] || 0), 0);
-  const damagePercent = clamp(primaryScore / 6 + Number(stats.world_boss_damage || 0), 0, 8);
-  const hpPercent = clamp((Number(stats.hp || 0) / 15 + Number(stats.defense || 0) / 8) * profile.hpWeight, 0, 6);
-  const resistancePercent = clamp((Number(stats.defense || 0) / 5 + Number(stats.world_boss_resistance || 0)) * profile.resistanceWeight, 0, 5);
+  const damagePercent = clamp(primaryScore / 3.2 + Number(stats.world_boss_damage || 0) * 1.35, 0, 22);
+  const hpPercent = clamp((Number(stats.hp || 0) / 7 + Number(stats.defense || 0) / 4.5) * profile.hpWeight, 0, 18);
+  const resistancePercent = clamp((Number(stats.defense || 0) / 3 + Number(stats.world_boss_resistance || 0) * 1.25) * profile.resistanceWeight, 0, 14);
   return {
     damagePercent: Math.round(damagePercent * 10) / 10,
     hpPercent: Math.round(hpPercent * 10) / 10,
@@ -58,11 +58,11 @@ function buildHeroSnapshot(userId) {
 
   // Базовый герой даёт небольшой общий бонус. Экипировка считается отдельно
   // и адаптируется под выбранный в World Boss класс, чтобы не было двойного учёта.
-  const levelDamage = clamp((Number(hero.level || 1) - 1) * 0.16, 0, 4);
-  const statDamage = clamp((Number(hero.strength || 0) + Number(hero.intelligence || 0) + Number(hero.dexterity || 0)) / 36, 0, 3);
-  const damagePercent = clamp(levelDamage + statDamage, 0, 7);
-  const hpPercent = clamp((Number(hero.level || 1) - 1) * 0.1 + Number(hero.max_hp || 0) / 180, 0, 6);
-  const resistancePercent = clamp(Number(hero.defense || 0) / 22, 0, 4);
+  const levelDamage = 0; // отдельный уровень героя больше не влияет на World Boss
+  const statDamage = clamp((Number(hero.strength || 0) + Number(hero.intelligence || 0) + Number(hero.dexterity || 0)) / 24, 0, 8);
+  const damagePercent = clamp(levelDamage + statDamage, 0, 8);
+  const hpPercent = clamp(Number(hero.max_hp || 0) / 95, 0, 10);
+  const resistancePercent = clamp(Number(hero.defense || 0) / 12, 0, 8);
 
   return {
     name: String(hero.name || 'Герой').slice(0, 24),
@@ -106,15 +106,15 @@ function selectedClassBonuses(player) {
 }
 function damageMultiplier(player) {
   const s = parseSnapshot(player), cb = selectedClassBonuses(player);
-  return 1 + clamp(Number(s?.combat?.damagePercent || 0) + cb.mastery.damagePercent + cb.equipment.damagePercent + Number(s?.alchemy?.world_boss_damage || 0), 0, 22) / 100;
+  return 1 + clamp(Number(s?.combat?.damagePercent || 0) + cb.mastery.damagePercent + cb.equipment.damagePercent + Number(s?.alchemy?.world_boss_damage || 0), 0, 55) / 100;
 }
 function hpMultiplier(player) {
   const s = parseSnapshot(player), cb = selectedClassBonuses(player);
-  return 1 + clamp(Number(s?.combat?.hpPercent || 0) + cb.mastery.hpPercent + cb.equipment.hpPercent, 0, 14) / 100;
+  return 1 + clamp(Number(s?.combat?.hpPercent || 0) + cb.mastery.hpPercent + cb.equipment.hpPercent, 0, 42) / 100;
 }
 function resistancePercent(player) {
   const s = parseSnapshot(player), cb = selectedClassBonuses(player);
-  return clamp(Number(s?.combat?.resistancePercent || 0) + cb.mastery.resistancePercent + cb.equipment.resistancePercent + Number(s?.alchemy?.world_boss_resistance || 0), 0, 16);
+  return clamp(Number(s?.combat?.resistancePercent || 0) + cb.mastery.resistancePercent + cb.equipment.resistancePercent + Number(s?.alchemy?.world_boss_resistance || 0), 0, 32);
 }
 function heroSummary(player) {
   const s = parseSnapshot(player);

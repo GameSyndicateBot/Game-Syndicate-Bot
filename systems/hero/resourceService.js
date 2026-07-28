@@ -1,6 +1,7 @@
 const { db } = require('../../database/db');
 const { MATERIALS } = require('./materialData');
 const { ITEMS } = require('./itemData');
+const { logEconomyChange } = require('../../services/economyService');
 
 const RESOURCE_ALIASES = Object.freeze({ herb: 'forest_herbs' });
 function normalizeResourceKey(value) {
@@ -99,18 +100,26 @@ function getResourceMap(userId) {
   return new Map(listResources(userId, { positiveOnly: false }).map(row => [row.key, row.quantity]));
 }
 
-function grantResource(userId, resourceKey, quantity, source = 'system') {
+function grantResource(userId, resourceKey, quantity, source = 'system', metadata = null) {
   migrateLegacyResources();
   const key = normalizeResourceKey(resourceKey);
   const amount = Math.max(0, Math.floor(Number(quantity) || 0));
   if (!key || !amount || !isResourceKey(key)) return null;
-  db.prepare(`
-    INSERT INTO hero_materials(user_id, material_key, quantity, updated_at)
-    VALUES(?,?,?,CURRENT_TIMESTAMP)
-    ON CONFLICT(user_id, material_key)
-    DO UPDATE SET quantity = quantity + excluded.quantity, updated_at = CURRENT_TIMESTAMP
-  `).run(String(userId), key, amount);
-  return { user_id: String(userId), item_key: key, item_type: 'material', quantity: getResourceQuantity(userId, key), acquired_from: source, ...resourceMeta(key) };
+  const meta = resourceMeta(key);
+  const tx = db.transaction(() => {
+    const before = Number(db.prepare('SELECT quantity FROM hero_materials WHERE user_id=? AND material_key=?').get(String(userId), key)?.quantity || 0);
+    db.prepare(`
+      INSERT INTO hero_materials(user_id, material_key, quantity, updated_at)
+      VALUES(?,?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, material_key)
+      DO UPDATE SET quantity = quantity + excluded.quantity, updated_at = CURRENT_TIMESTAMP
+    `).run(String(userId), key, amount);
+    const after = before + amount;
+    logEconomyChange({ userId, assetType:'material', assetKey:key, assetName:meta.name, delta:amount, before, after, reason:source, metadata });
+    return after;
+  });
+  const balance = tx();
+  return { user_id: String(userId), item_key: key, item_type: 'material', quantity: balance, acquired_from: source, ...meta };
 }
 
 function hasResources(userId, requirements, multiplier = 1) {
@@ -137,12 +146,15 @@ function consumeResources(userId, requirements, multiplier = 1) {
   if (missing.length) return { ok: false, missing };
   const tx = db.transaction(() => {
     for (const row of rows) {
+      const before = Number(db.prepare('SELECT quantity FROM hero_materials WHERE user_id=? AND material_key=?').get(String(userId), row.key)?.quantity || 0);
       const changed = db.prepare(`
         UPDATE hero_materials
         SET quantity=quantity-?, updated_at=CURRENT_TIMESTAMP
         WHERE user_id=? AND material_key=? AND quantity>=?
       `).run(row.required, String(userId), row.key, row.required);
       if (!changed.changes) throw new Error(`Insufficient resource: ${row.key}`);
+      const after = before - row.required;
+      logEconomyChange({ userId, assetType:'material', assetKey:row.key, assetName:row.name, delta:-row.required, before, after, reason:'resource_consumption' });
     }
     db.prepare('DELETE FROM hero_materials WHERE user_id=? AND quantity<=0').run(String(userId));
   });
@@ -179,6 +191,7 @@ module.exports = {
   listResources,
   getResourceMap,
   grantResource,
+  add: grantResource,
   hasResources,
   resourceRows,
   consumeResources,
