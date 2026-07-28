@@ -463,27 +463,55 @@ async function resetLobby(game) {
     const gameKey = key(game.chatId, game.threadId);
     clearTimer(gameKey, game);
 
-    const next = makeGame(game.chatId, game.threadId, new Map(game.nextQueue));
+    // Все участники завершившегося матча автоматически переходят в реванш.
+    // Игроки, нажавшие «Играть» во время текущего матча, также сохраняются.
+    const rematchQueue = new Map(game.players || []);
+    for (const [id, player] of game.nextQueue || []) rematchQueue.set(id, player);
+
+    const next = makeGame(game.chatId, game.threadId, rematchQueue);
     next.lobbyMessageId = game.lobbyMessageId;
     games.set(gameKey, next);
 
+    let lobbyReady = false;
     if (next.lobbyMessageId) {
-        const edited = await callApi('editMessageText', {
+        try {
+            await callApi('editMessageText', {
+                chat_id: next.chatId,
+                message_id: next.lobbyMessageId,
+                text: lobbyText(next),
+                parse_mode: 'HTML',
+                reply_markup: lobbyKeyboard(next),
+            }, { ignoreNotModified: true, retries: 1 });
+            setSetting('telegram_blitz_lobby_message_id', String(next.lobbyMessageId));
+            lobbyReady = true;
+        } catch (error) {
+            console.warn('⚠️ Blitz: старое лобби не обновилось, создаю новое:', error?.message || error);
+            next.lobbyMessageId = null;
+        }
+    }
+
+    if (!lobbyReady) {
+        const message = await callApi('sendMessage', {
             chat_id: next.chatId,
-            message_id: next.lobbyMessageId,
+            ...(next.threadId ? { message_thread_id: next.threadId } : {}),
             text: lobbyText(next),
             parse_mode: 'HTML',
             reply_markup: lobbyKeyboard(next),
-        }, { optional: true, ignoreNotModified: true });
-
-        // optional returns null both on harmless no-change and on failure; the existing
-        // pinned lobby is still preferable to creating duplicate pinned messages.
-        setSetting('telegram_blitz_lobby_message_id', String(next.lobbyMessageId));
-    } else {
-        return createLobby(next.chatId, next.threadId);
+        });
+        next.lobbyMessageId = message.message_id;
+        setSetting('telegram_blitz_lobby_message_id', String(message.message_id));
+        await callApi('pinChatMessage', {
+            chat_id: next.chatId,
+            message_id: message.message_id,
+            disable_notification: true,
+        }, { optional: true });
     }
 
-    if (next.queue.size >= MIN_PLAYERS) startCountdown(next);
+    if (next.queue.size >= MIN_PLAYERS) {
+        startCountdown(next);
+    } else {
+        await editLobby(next);
+    }
     return next;
 }
 
