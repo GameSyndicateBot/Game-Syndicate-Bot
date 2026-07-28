@@ -53,6 +53,7 @@ function seeded(seed){let x=hash(seed)||1;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;
 function choose(arr,rng=Math.random){return arr[Math.floor(rng()*arr.length)];}
 function randint(min,max,rng=Math.random){return Math.floor(rng()*(max-min+1))+min;}
 function moscowDay(now=Date.now()){return new Date(now+MOSCOW_OFFSET_MS).toISOString().slice(0,10);}
+function nextMoscowDay(dayKey=moscowDay()){const [y,m,d]=dayKey.split('-').map(Number);return new Date(Date.UTC(y,m-1,d+1)).toISOString().slice(0,10);}
 function iso(ms){return new Date(ms).toISOString();}
 function parseMs(v){return v?new Date(v).getTime():0;}
 
@@ -118,7 +119,17 @@ function createSchedule(dayKey=moscowDay()){
   return getState();
 }
 function getState(){return db.prepare('SELECT * FROM caravan_state WHERE id=1').get()||null;}
-function ensureToday(){const day=moscowDay();let s=getState();if(s&&Date.now()>=parseMs(s.opens_at)&&Date.now()<parseMs(s.closes_at))return s;if(!s||s.day_key!==day)s=createSchedule(day);return s;}
+function ensureToday(){
+  const day=moscowDay();
+  const now=Date.now();
+  let s=getState();
+  if(!s) return createSchedule(day);
+  if(now>=parseMs(s.opens_at)&&now<parseMs(s.closes_at)) return s;
+  if(String(s.day_key)<day) return createSchedule(day);
+  if(String(s.day_key)>day) return s;
+  if(now>=parseMs(s.closes_at)) return createSchedule(nextMoscowDay(day));
+  return s;
+}
 function isActive(now=Date.now()){const s=ensureToday();return now>=parseMs(s.opens_at)&&now<parseMs(s.closes_at);}
 function remainingMs(now=Date.now()){const s=ensureToday();return Math.max(0,parseMs(s.closes_at)-now);}
 function formatTimeLeft(ms=remainingMs()){const min=Math.max(0,Math.ceil(ms/60000));return `${min} мин.`;}
