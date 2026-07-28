@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.0.1",
+  "version": "19.1.1",
   "private": true,
-  "description": "Game Syndicate V19.0.0: Странствующий Караванщик — ежедневный персональный магазин на 30 минут",
+  "description": "Game Syndicate V19.1.1: исправления рынка, обмена и повторок экипировки",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

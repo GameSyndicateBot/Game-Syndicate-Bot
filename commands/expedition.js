@@ -235,6 +235,84 @@ async function refreshExpeditionHubIfNeeded(client) {
   return message;
 }
 
+
+function formatExpeditionHistoryEntry(e, index) {
+  const loc = LOCATIONS[e.location_key];
+  let r = null;
+  try { r = JSON.parse(e.result_json || 'null'); } catch (_) {}
+  const classKey = normalizeClassKey(e.class_key);
+  const cls = HERO_CLASSES[classKey];
+  const started = ts(e.started_at, 'f');
+  const returned = e.returns_at ? ts(e.returns_at, 'f') : null;
+  if (!r) {
+    return `### ${index + 1}. ${loc?.icon || '🗺️'} ${loc?.name || e.location_key}
+👤 **Класс:** ${cls?.icon || '📚'} ${cls?.name || 'Неизвестный класс'}
+⏳ **Статус:** в пути
+🚪 **Начало:** ${started}${returned ? `
+🏁 **Возвращение:** ${returned}` : ''}`;
+  }
+
+  const materials = Array.isArray(r.materials) && r.materials.length
+    ? r.materials.map(m => `${m.icon || '📦'} ${m.name} ×${m.quantity}`).join(', ')
+    : 'нет';
+  const trophies = Array.isArray(r.miniboss?.loot) && r.miniboss.loot.length
+    ? r.miniboss.loot.map(x => `${x.icon || '📦'} ${x.name} ×${x.quantity}`).join(', ')
+    : null;
+  const rewards = [
+    `✨ ${Number(r.xp || 0)} XP героя`,
+    r.classXp ? `${cls?.icon || '📚'} ${r.classXp} XP класса${r.classLevel ? ` → Lv.${r.classLevel}` : ''}` : null,
+    r.dust ? `💠 ${r.dust} GS Dust` : null,
+    r.miniboss?.dust ? `👑 ${r.miniboss.dust} GS Dust за мини-босса` : null,
+    r.dustLost ? `💠 потеряно ${r.dustLost} GS Dust` : null,
+    r.reputation ? `🏅 ${r.reputation} репутации` : null,
+  ].filter(Boolean).join(' · ');
+
+  const finds = [
+    `📦 **Материалы:** ${materials}`,
+    r.item ? `🎁 **Экипировка:** ${r.item.name} [${r.item.rarity}]` : null,
+    trophies ? `🏺 **Трофеи мини-босса:** ${trophies}` : null,
+    r.chest ? `${r.chest.icon || '🎁'} **Сундук:** ${r.chest.name}` : null,
+    r.companion ? `🐾 **Питомец:** ${r.companion.name} [${r.companion.rarity || 'обычный'}]` : null,
+  ].filter(Boolean).join('\n');
+
+  const details = [
+    `🎯 **Тактика:** ${r.tactic?.icon || '⚖️'} ${r.tactic?.name || 'Сбалансированно'}`,
+    Number.isFinite(Number(r.chance)) ? `🎲 **Расчёт:** шанс ${r.chance}% · бросок ${r.roll}` : null,
+    r.event ? `📖 **Событие:** ${r.event}` : null,
+    r.injuryHours ? `🩹 **Ранение:** ${r.injuryHours} ч.` : '❤️ **Ранение:** нет',
+    r.world?.reputationGain ? `🌍 **Регион:** +${r.world.reputationGain} репутации` : null,
+  ].filter(Boolean).join('\n');
+
+  return `### ${index + 1}. ${loc?.icon || '🗺️'} ${loc?.name || e.location_key} — ${outcomeLabel(r.outcome)}
+👤 **Класс:** ${cls?.icon || '📚'} ${cls?.name || 'Неизвестный класс'}
+🕒 **Начало:** ${started}${returned ? `
+🏁 **Завершение:** ${returned}` : ''}
+${details}
+💰 **Награды:** ${rewards || 'нет'}
+${finds}`;
+}
+
+function expeditionHistoryEmbeds(hero, rows) {
+  if (!rows.length) return [new EmbedBuilder().setColor(0x9333EA).setTitle(`📜 Экспедиции: ${hero.name}`).setDescription('Герой ещё не участвовал в экспедициях.')];
+  const entries = rows.map(formatExpeditionHistoryEntry);
+  const pages = [];
+  let current = '';
+  for (const entry of entries) {
+    if ((current + '\n\n' + entry).length > 3900) {
+      pages.push(current);
+      current = entry;
+    } else {
+      current = current ? `${current}\n\n${entry}` : entry;
+    }
+  }
+  if (current) pages.push(current);
+  return pages.slice(0, 10).map((description, i) => new EmbedBuilder()
+    .setColor(0x9333EA)
+    .setTitle(i === 0 ? `📜 Подробная история: ${hero.name}` : `📜 История: ${hero.name} • продолжение`)
+    .setDescription(description)
+    .setFooter({ text: `Показаны последние ${rows.length} экспедиций · страница ${i + 1}/${pages.length}` }));
+}
+
 async function handleComponent(interaction) {
   if (interaction.channelId !== EXPEDITION_CHANNEL_ID) {
     return interaction.reply({ content: `Панель экспедиций доступна только в канале <#${EXPEDITION_CHANNEL_ID}>.`, flags: MessageFlags.Ephemeral });
@@ -363,8 +441,7 @@ ${preview}
 
   if (action === 'history') {
     const rows = getLatestExpeditions(interaction.user.id, 8);
-    const text = rows.length ? rows.map(e => { const loc = LOCATIONS[e.location_key]; let result = 'В пути'; try { const r = JSON.parse(e.result_json || 'null'); if (r) result = outcomeLabel(r.outcome); } catch {} return `${loc?.icon || '🗺️'} **${loc?.name || e.location_key}** • ${HERO_CLASSES[normalizeClassKey(e.class_key)]?.name || 'Класс'} — ${result}\n${ts(e.started_at, 'd')}`; }).join('\n\n') : 'Герой ещё не участвовал в экспедициях.';
-    return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x9333EA).setTitle(`📜 Экспедиции: ${hero.name}`).setDescription(text)], flags: MessageFlags.Ephemeral });
+    return interaction.reply({ embeds: expeditionHistoryEmbeds(hero, rows), flags: MessageFlags.Ephemeral });
   }
 }
 
@@ -453,8 +530,7 @@ ${lockText}`).setFooter({ text: active ? 'Твой герой уже наход�
 
     if (sub === 'history') {
       const rows = getLatestExpeditions(interaction.user.id, 8);
-      const text = rows.length ? rows.map(e => { const loc=LOCATIONS[e.location_key]; let result='В пути'; try { const r=JSON.parse(e.result_json||'null'); if(r) result=outcomeLabel(r.outcome); } catch(_){} return `${loc?.icon||'🗺️'} **${loc?.name||e.location_key}** • ${HERO_CLASSES[normalizeClassKey(e.class_key)]?.name || 'Класс'} — ${result}\n${ts(e.started_at,'d')}`; }).join('\n\n') : 'Герой ещё не участвовал в экспедициях.';
-      return interaction.reply({ embeds:[new EmbedBuilder().setColor(0x9333EA).setTitle(`📜 Экспедиции: ${hero.name}`).setDescription(text)], flags:MessageFlags.Ephemeral });
+      return interaction.reply({ embeds: expeditionHistoryEmbeds(hero, rows), flags:MessageFlags.Ephemeral });
     }
   },
   handleComponent,
