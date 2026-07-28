@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.5.2",
+  "version": "18.5.4",
   "private": true,
-  "description": "Game Syndicate V18.5.2: Economy Audit, Profile Choice, Guild Hub Cleanup",
+  "description": "Game Syndicate V18.5.4: Guildmates UX, Bomb Fix, Mafia Registration, D12 Timer and Discord Emoji Riddles",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

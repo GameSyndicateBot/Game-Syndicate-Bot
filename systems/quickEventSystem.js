@@ -683,7 +683,7 @@ async function buildEvent(client,type,diff){
   if(type==='risk')return {prompt:'Выбери гарантированную награду или испытай удачу.',answers:[]};
   if(type==='dont_press')return {prompt:'Зарегистрируйся. Затем угадай правило раунда: нажать кнопку или не нажимать.',answers:[],phase:'registration',winMode:Math.random()<0.5?'press':'no_press'};
   if(type==='royal_button')return {prompt:'За 2 минуты удерживай трон дольше остальных.',answers:[],holderId:null,holderSince:null,holdTotals:{},lastCaptureAt:{}};
-  if(type==='dice_tournament')return {prompt:'Один бросок D12 на игрока. Через 5 минут победит лучший результат.',answers:[],endsAt:Date.now()+5*60*1000};
+  if(type==='dice_tournament')return {prompt:'Один бросок D12 на игрока. Через 2 минуты победит лучший результат.',answers:[],endsAt:Date.now()+2*60*1000};
   if(type==='reaction')return {prompt:'Напиши «жми» после сигнала',answers:['жми']};
   if(type==='rarity')return rarityMedia();
   if(type==='avatar')return await avatarEvent(client) || {prompt:'Напиши Game Syndicate без ошибок',answers:['game syndicate']};
@@ -1102,7 +1102,7 @@ async function handleDiceTournament(interaction,roundId){
   if(!result.changes){await interaction.reply({content:'❌ У тебя уже был один бросок.',flags: MessageFlags.Ephemeral});return true;}
   markParticipation(roundId,interaction.user.id);await interaction.reply({content:`🎲 Твой результат: **${value}**`,flags: MessageFlags.Ephemeral});
   const board=diceLeaderboard(roundId);const lines=board.map((r,i)=>`${i+1}. <@${r.user_id}> — 🎲 **${r.value}**`);
-  await interaction.message.edit({content:['## 🎲 ТУРНИР D12','Один бросок на игрока. Турнир длится **5 минут**.','','### Текущий топ',...lines].join('\n'),components:multiEventComponents(roundId,'dice_tournament'),allowedMentions:{parse:[]}}).catch(()=>{});return true;
+  await interaction.message.edit({content:['## 🎲 ТУРНИР D12','Один бросок на игрока. На участие даётся **2 минуты**.','','### Текущий топ',...lines].join('\n'),components:multiEventComponents(roundId,'dice_tournament'),allowedMentions:{parse:[]}}).catch(()=>{});return true;
 }
 
 async function getLuckyRollCandidates(channel) {
@@ -1515,6 +1515,14 @@ async function startMafia(channel,roundId){
   if((p.players||[]).length<4){db.prepare("UPDATE quick_event_rounds SET status='expired' WHERE id=?").run(roundId);return channel.send('## 🔫 Mafia Lite отменена\nНужно минимум 4 участника.');}
   p.phase='night';p.alive=[...p.players];p.mafiaId=pick(p.players);p.roundNo=1;p.votes={};
   db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(p),roundId);
+  if(round.message_id){
+    const registrationMessage=await channel.messages.fetch(round.message_id).catch(()=>null);
+    if(registrationMessage)await registrationMessage.edit({
+      content:`## 🔫 MAFIA LITE — регистрация завершена\nУчастников: **${p.players.length}**. Игра начинается, роли отправляются в личные сообщения.`,
+      components:[],
+      allowedMentions:{parse:[]},
+    }).catch(()=>{});
+  }
   for(const id of p.players){const u=await channel.client.users.fetch(id).catch(()=>null);if(u)await u.send(id===p.mafiaId?'🔪 Ты убийца в Mafia Lite. Ночью отправь мне: `убить ID_игрока` или упомяни жертву.':'🙂 Ты мирный в Mafia Lite. Днём голосуй сообщением `голос @игрок`.').catch(()=>{});}
   await channel.send(`## 🌙 Mafia Lite — ночь ${p.roundNo}\nРоли отправлены в ЛС. Убийца выбирает жертву. Ночь длится **45 секунд**.`);
   addRuntimeTimer(roundId,setTimeout(()=>resolveMafiaNight(channel,roundId).catch(console.error),45*1000));
@@ -1646,17 +1654,17 @@ async function postQuickEvent(client){
       risk:'Выбери: гарантированные **35 Dust** или риск ради более крупной награды. Один выбор на игрока.',
       dont_press:'Регистрация длится **20 секунд**. Затем появится загадка: в одном раунде надо нажать кнопку, в другом — не нажимать. Правило скрыто до конца.',
       royal_button:'Ивент длится **2 минуты**. Перехватывай трон и удерживай его суммарно дольше остальных. Повторный клик владельца не считается, захват доступен не чаще раза в секунду.',
-      dice_tournament:'Один бросок **D12** на игрока. Через **5 минут** лучший результат заберёт приз.',
+      dice_tournament:'На бросок даётся **2 минуты**. Каждый игрок может бросить **D12 один раз**, после чего лучший результат заберёт приз.',
       mafia_light:'Регистрация длится **2 минуты**. Минимум 4 игрока. Один убийца, остальные мирные. Роли придут в ЛС.',
     };
     const message=await channel.send({content:`## ${titles[type]}
-${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont_press'?'registration':'active')});
+${descriptions[type]}`,components:multiEventComponents(roundId,type,(type==='dont_press'||type==='mafia_light')?'registration':'active')});
     db.prepare("UPDATE quick_event_rounds SET message_id=?,status='active',activated_at=? WHERE id=?").run(message.id,Date.now(),roundId);
     if(type==='loot_share') addRuntimeTimer(roundId,setTimeout(()=>expireMultiEvent(channel,roundId,'## 💰 ДЕЛЁЖ ДОБЫЧИ — время вышло').catch(console.error),2*60*1000));
     if(type==='risk') addRuntimeTimer(roundId,setTimeout(()=>expireMultiEvent(channel,roundId,'## 🎰 РИСК — время выбора вышло').catch(console.error),90*1000));
     if(type==='dont_press') addRuntimeTimer(roundId,setTimeout(()=>startDontPressTemptation(channel,roundId).catch(console.error),20*1000));
     if(type==='royal_button') addRuntimeTimer(roundId,setTimeout(()=>resolveRoyalButton(channel,roundId).catch(console.error),2*60*1000));
-    if(type==='dice_tournament') addRuntimeTimer(roundId,setTimeout(()=>resolveDiceTournament(channel,roundId).catch(console.error),5*60*1000));
+    if(type==='dice_tournament') addRuntimeTimer(roundId,setTimeout(()=>resolveDiceTournament(channel,roundId).catch(console.error),2*60*1000));
     if(type==='mafia_light') addRuntimeTimer(roundId,setTimeout(()=>startMafia(channel,roundId).catch(console.error),2*60*1000));
     return;
   }
@@ -1741,7 +1749,9 @@ ${descriptions[type]}`,components:multiEventComponents(roundId,type,type==='dont
   const specialTitle={word_hunt:'## 🔎 КТО БЫСТРЕЕ?\nНайди и напиши **5 спрятанных слов** одним сообщением.',movie_guess:'## 🎬 УГАДАЙ ФИЛЬМ\nКакой фильм зашифрован эмодзи?',game_guess:'## 🎮 УГАДАЙ ИГРУ\nКакая игра зашифрована эмодзи?'}[type];
   const content=type==='memory'
     ?'## ⚡ GS Quick Event\nНажми кнопку, запомни последовательность и отправь её в чат.'
-    :(specialTitle||'## ⚡ GS Quick Event\nСобытие начинается!');
+    :type==='emoji_riddle'
+      ?`## 🧩 ПЕРЕВЕДИ ФРАЗУ ПО ЭМОДЗИ\n${event.prompt.replace(/^Переведи фразу по эмодзи:\s*/i,'')}\n\nНапиши расшифрованную фразу в чат.`
+      :(specialTitle||'## ⚡ GS Quick Event\nСобытие начинается!');
   const message=await channel.send({
     content,
     files:[new AttachmentBuilder(card,{name:'gs-quick-event.png'})],
@@ -1779,7 +1789,12 @@ async function handleQuickEventAnswer(message){
     await message.reply({content:`## 🔎 Победа!\n${message.author} первым нашёл минимум **${payload.required||5} слов**: ${found.join(', ')}\nНаграда: **${reward.label}**`,allowedMentions:{repliedUser:false}});return true;
   }
   if(round.type==='bomb'){
-    const allowed=(payload.theme?.words||[]).map(normalize);if(!allowed.includes(answer))return true;
+    // Участники сами следят за соответствием ответа теме. Жёсткий словарь
+    // отбрасывал корректные названия игр и редкие ответы.
+    const raw=String(message.content||'').trim();
+    const hasLetters=/[a-zа-яё]/i.test(raw);
+    const looksUnsafe=/https?:\/\/|discord\.gg\/|<@|<#[0-9]+>|@everyone|@here/i.test(raw);
+    if(!hasLetters || raw.length<2 || raw.length>80 || looksUnsafe)return true;
     payload.used=payload.used||[];if(payload.used.includes(answer))return true;
     payload.used.push(answer);payload.players=[...new Set([...(payload.players||[]),message.author.id])];payload.lastUserId=message.author.id;
     db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(payload),round.id);

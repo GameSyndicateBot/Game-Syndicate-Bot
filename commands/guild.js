@@ -67,9 +67,6 @@ function npcRows() {
       new ButtonBuilder().setCustomId('guild:hospital').setLabel('Лекарь').setEmoji('🩺').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('guild:cook').setLabel('Повар').setEmoji('👨‍🍳').setStyle(ButtonStyle.Success),
     ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
-    ),
   ];
 }
 
@@ -902,7 +899,7 @@ async function handleComponent(interaction) {
   }
 
   if (action === 'home') return interaction.update({ content:'🏰 **Гильдия героев**\nВыберите нужный раздел. Это личное меню видно только вам.', embeds:[], components:hubRows() });
-  if (action === 'npcs') return interaction.update({ content:`## 🏰 Гильдейцы\nВыбери нужного мастера Гильдии.`, embeds:[], components:npcRows() });
+  if (action === 'npcs') return interaction.reply({ content:`## 🏰 Гильдейцы\nВыбери нужного мастера Гильдии.`, components:npcRows(), flags:MessageFlags.Ephemeral });
   if (action === 'economylog') { const command=interaction.client.commands.get('economylog'); return command?.execute ? command.execute(interaction) : interaction.reply({content:'❌ Журнал временно недоступен.',flags:MessageFlags.Ephemeral}); }
   if (action === 'profile' && parts[2] === 'displayclass') {
     const classKey=interaction.values?.[0];
