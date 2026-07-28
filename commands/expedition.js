@@ -61,7 +61,7 @@ function locationChoiceRows(world) {
 }
 function durationMenu(locationKey,classKey) {
   const now=new Date();
-  const options=[2,4,8].map(hours=>{const w=expeditionWindow(now,hours);return {label:`${hours} часа${hours===2?'':'ов'}`.replace('4 часов','4 часа'),value:String(hours),emoji:hours===2?'🕑':hours===4?'🕓':'🕗',description:w.fits?`Доступно до World Boss · награды x${hours===2?'0.6':hours===4?'1.0':'1.8'}`:`Недоступно: не успеет до World Boss`,default:false};});
+  const options=[2,4,8].map(hours=>{const w=expeditionWindow(now,hours);const hourLabel=hours===2?'2 часа':hours===4?'4 часа':'8 часов';return {label:hourLabel,value:String(hours),emoji:hours===2?'🕑':hours===4?'🕓':'🕗',description:w.fits?`Доступно до World Boss · награды x${hours===2?'0.6':hours===4?'1.0':'1.8'}`:`Недоступно: не успеет до World Boss`,default:false};});
   const allowed=options.filter((_,i)=>expeditionWindow(now,[2,4,8][i]).fits);
   if(!allowed.length)return null;
   return new StringSelectMenuBuilder().setCustomId(`expedition:duration:${locationKey}:${classKey}`).setPlaceholder('Выбери длительность похода').addOptions(allowed);

@@ -13,12 +13,12 @@ function isUpgradeable(item) {
 }
 function getUpgradeCost(item, targetLevel) {
   const rarity = RARITY_MULTIPLIER[item.rarity] || 1;
-  const dust = Math.round((60 + targetLevel * targetLevel * 22) * rarity / 5) * 5;
+  const dust = Math.round((110 + targetLevel * targetLevel * 42) * rarity / 5) * 5;
   const materials = {};
-  materials.iron_ingot = Math.max(1, Math.ceil(targetLevel * rarity));
-  if (targetLevel >= 4) materials.crystal = Math.max(1, Math.ceil((targetLevel - 3) * rarity / 2));
-  if (targetLevel >= 7) materials.essence = Math.max(1, Math.ceil((targetLevel - 6) * rarity / 2));
-  if (targetLevel >= 9) materials.void_crystal = Math.max(1, Math.ceil((targetLevel - 8) * rarity / 2));
+  materials.iron_ingot = Math.max(3, Math.ceil(targetLevel * rarity * 2.2));
+  if (targetLevel >= 4) materials.crystal = Math.max(1, Math.ceil((targetLevel - 3) * rarity));
+  if (targetLevel >= 7) materials.essence = Math.max(1, Math.ceil((targetLevel - 6) * rarity));
+  if (targetLevel >= 9) materials.void_crystal = Math.max(1, Math.ceil((targetLevel - 8) * rarity));
   return { dust, materials };
 }
 function materialRows(userId, requirements) { return resourceRows(userId, requirements); }
@@ -32,7 +32,7 @@ function getUpgradeInfo(userId, inventoryId) {
   const cost = getUpgradeCost(item,targetLevel);
   const materials = materialRows(userId,cost.materials);
   const dust = getCardDust(userId);
-  return { ok:true, item, level, targetLevel, chance:CHANCES[targetLevel], dust, cost:{...cost,materials}, canAfford:dust>=cost.dust && materials.every(m=>m.owned>=m.required) };
+  const beforeMultiplier=1+level*0.08,afterMultiplier=1+targetLevel*0.08; const previewText=`множитель бонусов ×${beforeMultiplier.toFixed(2)} → ×${afterMultiplier.toFixed(2)} (+8% к базовым бонусам предмета)`; return { ok:true, item, level, targetLevel, chance:CHANCES[targetLevel], dust, previewText, cost:{...cost,materials}, canAfford:dust>=cost.dust && materials.every(m=>m.owned>=m.required) };
 }
 function secureRoll(userId, inventoryId, targetLevel) {
   const value = crypto.createHash('sha256').update(`${crypto.randomUUID()}:${Date.now()}:${userId}:${inventoryId}:${targetLevel}`).digest().readUInt32BE(0);

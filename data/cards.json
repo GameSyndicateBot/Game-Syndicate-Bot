@@ -1561,5 +1561,185 @@
       "class": "assets/cards/boss_pack/080_class.jpg"
     },
     "image": "assets/cards/boss_pack/080_class.jpg"
+  },
+  {
+    "id": 2081,
+    "code": "B-081",
+    "name": "Око Бездны",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта мирового босса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/081_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/081_boss.jpg"
+  },
+  {
+    "id": 2082,
+    "code": "B-082",
+    "name": "Повелитель Цепей",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта мирового босса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/082_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/082_boss.jpg"
+  },
+  {
+    "id": 2083,
+    "code": "B-083",
+    "name": "Зеркальный Лорд",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта мирового босса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/083_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/083_boss.jpg"
+  },
+  {
+    "id": 2084,
+    "code": "B-084",
+    "name": "Мать Драконов",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта мирового босса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/084_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/084_boss.jpg"
+  },
+  {
+    "id": 2085,
+    "code": "B-085",
+    "name": "Хранитель Времени",
+    "type": "boss",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "boss",
+    "description": "Специальная карта мирового босса из коллекции Boss Pack.",
+    "drop_rarities": [
+      "boss"
+    ],
+    "images": {
+      "boss": "assets/cards/boss_pack/085_boss.jpg"
+    },
+    "image": "assets/cards/boss_pack/085_boss.jpg"
+  },
+  {
+    "id": 2086,
+    "code": "B-086",
+    "name": "Наблюдатель Бездны",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта миньона из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/086_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/086_minion.jpg"
+  },
+  {
+    "id": 2087,
+    "code": "B-087",
+    "name": "Скованный Страж",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта миньона из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/087_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/087_minion.jpg"
+  },
+  {
+    "id": 2088,
+    "code": "B-088",
+    "name": "Зеркальная Копия",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта миньона из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/088_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/088_minion.jpg"
+  },
+  {
+    "id": 2089,
+    "code": "B-089",
+    "name": "Детёныш Дракона",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта миньона из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/089_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/089_minion.jpg"
+  },
+  {
+    "id": 2090,
+    "code": "B-090",
+    "name": "Временной Дубликат",
+    "type": "minion",
+    "role": "Boss Pack",
+    "series": "BOSS2026",
+    "collection": "boss_pack",
+    "base_rarity": "minion",
+    "description": "Специальная карта миньона из коллекции Boss Pack.",
+    "drop_rarities": [
+      "minion"
+    ],
+    "images": {
+      "minion": "assets/cards/boss_pack/090_minion.jpg"
+    },
+    "image": "assets/cards/boss_pack/090_minion.jpg"
   }
 ]

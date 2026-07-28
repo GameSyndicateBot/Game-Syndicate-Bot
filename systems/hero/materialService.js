@@ -12,9 +12,17 @@ function seeded(seed) {
 function int(rng, min, max) { return Math.floor(rng() * (max - min + 1)) + min; }
 function pick(rng, list) { return list[Math.floor(rng() * list.length)]; }
 
-function grantMaterial(userId, materialKey, quantity) {
-  return grantResource(userId, materialKey, quantity, 'material-reward');
+function grantMaterial(userId, materialKey, quantity, source = 'material-reward') {
+  const amount = Math.max(0, Math.floor(Number(quantity) || 0));
+  if (!amount) return null;
+  const granted = grantResource(userId, materialKey, amount, source);
+  if (!granted) return null;
+  // В наградах показываем именно полученное количество, а не общий остаток.
+  // Раньше поле quantity содержало итоговый баланс, из-за чего игрокам казалось,
+  // что старые ресурсы были заменены наградой сундука.
+  return { ...granted, quantity: amount, totalQuantity: Number(granted.quantity) || amount };
 }
+
 function getMaterials(userId) {
   return listResources(userId);
 }
@@ -51,7 +59,32 @@ function applyOneTimeChestGrant() {
   catch (error) { console.error('[Chests] One-time grant failed:', error); }
 }
 
+
 applyOneTimeChestGrant();
+
+// V18.4.9 hotfix: проверка баланса игрока после неверного отображения награды сундука.
+// Сообщение «+60 трав / +22 экстракта» показывало итоговый баланс, а не размер дропа.
+// Не начисляем ресурсы повторно; только гарантируем, что подтверждённый остаток не ниже 60/22.
+function applyChestDisplayReconciliation() {
+  const userId = '1080729129915256843';
+  const grantKey = 'chest-total-vs-reward-display-reconciliation-v1849';
+  if (db.prepare('SELECT 1 FROM system_one_time_grants WHERE grant_key=?').get(grantKey)) return;
+  const tx = db.transaction(() => {
+    const ensureMinimum = db.prepare(`
+      INSERT INTO hero_materials(user_id,material_key,quantity,updated_at)
+      VALUES(?,?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id,material_key) DO UPDATE SET
+        quantity=MAX(quantity,excluded.quantity), updated_at=CURRENT_TIMESTAMP
+    `);
+    ensureMinimum.run(userId, 'forest_herbs', 60);
+    ensureMinimum.run(userId, 'herb_extract', 22);
+    db.prepare('INSERT INTO system_one_time_grants(grant_key,user_id) VALUES(?,?)').run(grantKey,userId);
+  });
+  try { tx(); console.log(`[Chests] Reconciled minimum resource balances for ${userId}: forest_herbs>=60, herb_extract>=22`); }
+  catch (error) { console.error('[Chests] Resource reconciliation failed:', error); }
+}
+
+applyChestDisplayReconciliation();
 
 function expeditionMaterialRewards(userId, locationKey, difficulty, outcome, sourceId) {
   if (outcome === 'fail') return { materials: [], chest: null };
@@ -65,7 +98,7 @@ function expeditionMaterialRewards(userId, locationKey, difficulty, outcome, sou
     const qty = int(rng, 1, Math.max(2, Number(difficulty) + (outcome === 'great' ? 2 : 0)));
     grouped.set(key, (grouped.get(key) || 0) + qty);
   }
-  const materials = [...grouped.entries()].map(([key, qty]) => grantMaterial(userId, key, qty)).filter(Boolean);
+  const materials = [...grouped.entries()].map(([key, qty]) => grantMaterial(userId, key, qty, `expedition:${sourceId}`)).filter(Boolean);
   let chest = null;
   const chance = outcome === 'great' ? 0.62 : outcome === 'success' ? 0.24 : 0.08;
   if (rng() < chance) {
@@ -99,14 +132,14 @@ function openChest(userId, chestKey) {
       if (MATERIALS[key].rarity === 'epic' && rng() > 0.20) key = 'crystal';
       grouped.set(key, (grouped.get(key) || 0) + int(rng, 1, chest.rarity === 'common' ? 3 : 5));
     }
-    const materials = [...grouped.entries()].map(([key, qty]) => grantMaterial(userId, key, qty)).filter(Boolean);
+    const materials = [...grouped.entries()].map(([key, qty]) => grantMaterial(userId, key, qty, `chest:${chestKey}`)).filter(Boolean);
     let item = null;
     if (rng() < chest.itemChance) {
       const tier = chest.rarity === 'legendary' || chest.rarity === 'boss' ? 5 : chest.rarity === 'epic' ? 4 : chest.rarity === 'rare' ? 3 : 2;
       const itemPool = EXPEDITION_LOOT[tier] || EXPEDITION_LOOT[1] || [];
       if (itemPool.length) item = grantItem(userId, pick(rng, itemPool), 1, `chest:${chestKey}`);
     }
-    const rewards = { dust, materials: materials.map(m => ({ key:m.key, quantity:m.quantity })), item: item ? { key:item.item_key, name:item.name, rarity:item.rarity } : null };
+    const rewards = { dust, materials: materials.map(m => ({ key:m.key, quantity:m.quantity, totalQuantity:m.totalQuantity })), item: item ? { key:item.item_key, name:item.name, rarity:item.rarity } : null };
     db.prepare('INSERT INTO hero_chest_openings (user_id,chest_key,rewards_json) VALUES (?,?,?)').run(userId, chestKey, JSON.stringify(rewards));
     return rewards;
   });

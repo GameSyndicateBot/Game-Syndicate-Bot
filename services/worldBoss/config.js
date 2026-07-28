@@ -39,6 +39,11 @@ const MINIONS = {
   2057:{provoking:true,damageType:'physical',name:'Ледяной Голем',maxHp:230,damage:[28,38],miss:10},
   2058:{damageType:'magic',name:'Драконье Яйцо',maxHp:200,damage:[0,0],miss:0},
   2059:{provoking:true,damageType:'physical',name:'Дракончик',maxHp:180,damage:[34,48],miss:15},
+  2086:{damageType:'magic',name:'Наблюдатель Бездны',dark:true,maxHp:220,damage:[35,45],miss:10,special:'extend_abyss_seal'},
+  2087:{provoking:true,damageType:'magic',name:'Скованный Страж',dark:true,maxHp:220,damage:[30,45],miss:10,special:'stun_25'},
+  2088:{damageType:'magic',name:'Зеркальная Копия',dark:true,maxHp:235,damage:[35,50],miss:10,special:'reflect_20'},
+  2089:{damageType:'magic',name:'Детёныш Дракона',maxHp:300,damage:[40,60],miss:10,special:'burn_20'},
+  2090:{damageType:'magic',name:'Временной Дубликат',maxHp:220,damage:[30,45],miss:10,special:'time_strike_25'},
 };
 
 const BOSSES = [
@@ -50,6 +55,11 @@ const BOSSES = [
   {cardId:2042,attackTypes:[['physical',35],['magic',65]],name:'Костяной Император',baseHp:1800,damage:[32,48],miss:12,abilityMiss:18,physicalResist:22,magicResist:8,undead:true,dark:true,minions:[2054,2055],summonEvery:3,mechanic:'decay_curse'},
   {cardId:2043,attackTypes:[['physical',20],['magic',80]],name:'Ледяной Левиафан',baseHp:1650,damage:[30,45],miss:12,abilityMiss:18,physicalResist:15,magicResist:20,minions:[2056,2057],summonEvery:3,mechanic:'ice_shackles'},
   {cardId:2044,attackTypes:[['physical',60],['magic',40]],name:'Багровый Дракон',baseHp:2100,damage:[40,55],miss:12,abilityMiss:18,physicalResist:20,magicResist:15,minions:[2058,2059],summonEvery:3,mechanic:'dragon_eggs'},
+  {cardId:2081,attackTypes:[['physical',10],['magic',90]],name:'Око Бездны',baseHp:3000,damage:[90,120],miss:10,abilityMiss:15,physicalResist:10,magicResist:25,dark:true,minions:[2086],summonEvery:3,mechanic:'abyss_gaze'},
+  {cardId:2082,attackTypes:[['physical',20],['magic',80]],name:'Повелитель Цепей',baseHp:3200,damage:[85,115],miss:10,abilityMiss:15,physicalResist:15,magicResist:20,dark:true,minions:[2087],summonEvery:3,mechanic:'chain_mastery'},
+  {cardId:2083,attackTypes:[['physical',15],['magic',85]],name:'Зеркальный Лорд',baseHp:2100,damage:[70,95],miss:10,abilityMiss:15,physicalResist:10,magicResist:20,dark:true,minions:[2088],summonEvery:2,mechanic:'mirror_reflection'},
+  {cardId:2084,attackTypes:[['physical',35],['magic',65]],name:'Мать Драконов',baseHp:2400,damage:[80,110],miss:10,abilityMiss:15,physicalResist:18,magicResist:18,minions:[2089],summonEvery:2,mechanic:'dragon_birth'},
+  {cardId:2085,attackTypes:[['physical',10],['magic',90]],name:'Хранитель Времени',baseHp:2700,damage:[90,120],miss:10,abilityMiss:15,physicalResist:12,magicResist:24,minions:[2090],summonEvery:3,mechanic:'time_loop'},
 ];
 
 module.exports={CLASSES,MINIONS,BOSSES};
