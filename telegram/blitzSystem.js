@@ -3,15 +3,20 @@ const { QUESTIONS, CATEGORY_MAP } = require('./blitzQuestions');
 
 const MIN_PLAYERS = 2;
 const LOBBY_SECONDS = 10;
-const QUESTION_SECONDS = 7;
+const QUESTION_SECONDS = 10;
 const BETWEEN_MS = 2200;
 const MAX_ROUNDS = 25;
 const API_RETRIES = 3;
-const RECOVERY_DELAY_MS = 3000;
+const RECOVERY_DELAY_MS = 2500;
+const WATCHDOG_INTERVAL_MS = 2000;
+const WATCHDOG_GRACE_MS = 4000;
+const RESOLVING_STUCK_MS = 15000;
+const API_CALL_TIMEOUT_MS = 9000;
 
 let api = null;
 const games = new Map();
 const timers = new Map();
+let watchdog = null;
 
 function threadOf(message) {
     return message.message_thread_id ? Number(message.message_thread_id) : null;
@@ -39,21 +44,31 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function clearTimer(gameKey) {
+function clearTimer(gameKey, game = null) {
     const timer = timers.get(gameKey);
     if (timer) clearTimeout(timer);
     timers.delete(gameKey);
+    if (game) {
+        game.transitionDueAt = 0;
+        game.transitionLabel = null;
+    }
 }
 
 function later(game, fn, ms, label = 'transition') {
     const gameKey = key(game.chatId, game.threadId);
-    clearTimer(gameKey);
+    clearTimer(gameKey, game);
     const generation = game.generation;
+    const token = `${generation}:${Date.now()}:${Math.random()}`;
+    game.transitionToken = token;
+    game.transitionDueAt = Date.now() + ms;
+    game.transitionLabel = label;
 
-    timers.set(gameKey, setTimeout(async () => {
-        timers.delete(gameKey);
+    const handle = setTimeout(async () => {
         const active = games.get(gameKey);
-        if (!active || active !== game || active.generation !== generation) return;
+        if (!active || active !== game || active.generation !== generation || game.transitionToken !== token) return;
+        timers.delete(gameKey);
+        game.transitionDueAt = 0;
+        game.transitionLabel = null;
 
         try {
             await fn();
@@ -61,7 +76,8 @@ function later(game, fn, ms, label = 'transition') {
             console.error(`❌ Blitz ${label}:`, error?.stack || error?.message || error);
             await recoverGame(game, label, error);
         }
-    }, ms));
+    }, ms);
+    timers.set(gameKey, handle);
 }
 
 async function callApi(method, payload, options = {}) {
@@ -70,7 +86,10 @@ async function callApi(method, payload, options = {}) {
 
     for (let attempt = 1; attempt <= retries; attempt += 1) {
         try {
-            return await api(method, payload);
+            return await Promise.race([
+                api(method, payload),
+                new Promise((_, reject) => setTimeout(() => reject(new Error(`Telegram API timeout: ${method}`)), API_CALL_TIMEOUT_MS)),
+            ]);
         } catch (error) {
             lastError = error;
             const description = String(error?.description || error?.message || '');
@@ -92,7 +111,7 @@ function initDb() {
             user_id TEXT PRIMARY KEY,
             display_name TEXT NOT NULL,
             username TEXT,
-            rating INTEGER NOT NULL DEFAULT 1000,
+            rating INTEGER NOT NULL DEFAULT 0,
             wins INTEGER NOT NULL DEFAULT 0,
             games INTEGER NOT NULL DEFAULT 0,
             correct_answers INTEGER NOT NULL DEFAULT 0,
@@ -113,7 +132,37 @@ function initDb() {
             started_at TEXT DEFAULT CURRENT_TIMESTAMP,
             finished_at TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS telegram_blitz_migrations(
+            migration_key TEXT PRIMARY KEY,
+            applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
     `);
+
+    // V19.2.6: единоразово начинаем новый сезон рейтинга с нуля.
+    // История игр и точность сохраняются, но победы/очки/серии обнуляются,
+    // чтобы рейтинг строго соответствовал правилу: 1 победа = 1 очко.
+    const resetKey = 'v19_2_6_zero_rating_season';
+    const alreadyReset = db.prepare(`
+        SELECT 1 FROM telegram_blitz_migrations WHERE migration_key = ?
+    `).get(resetKey);
+    if (!alreadyReset) {
+        const resetSeason = db.transaction(() => {
+            db.prepare(`
+                UPDATE telegram_blitz_players
+                SET rating = 0,
+                    wins = 0,
+                    win_streak = 0,
+                    best_streak = 0,
+                    updated_at = CURRENT_TIMESTAMP
+            `).run();
+            db.prepare(`
+                INSERT INTO telegram_blitz_migrations(migration_key) VALUES(?)
+            `).run(resetKey);
+        });
+        resetSeason();
+        console.log('✅ GS Blitz: рейтинг и победы всех игроков обнулены для нового сезона');
+    }
 }
 initDb();
 
@@ -200,8 +249,15 @@ function makeGame(chatId, threadId, carryQueue = new Map()) {
         questionMessageId: null,
         matchId: null,
         current: null,
+        roundResult: null,
         resolving: false,
+        resolvingSince: 0,
         finishing: false,
+        questionDeadlineAt: 0,
+        transitionDueAt: 0,
+        transitionLabel: null,
+        transitionToken: null,
+        watchdogRecovering: false,
         generation: Date.now() + Math.random(),
     };
 }
@@ -323,9 +379,20 @@ async function beginMatch(game) {
 }
 
 function nextQuestion(game) {
-    let pool = QUESTIONS.filter((question) => question.category === game.category && !game.used.has(question.id));
+    // Раунды постепенно усложняются: лёгкие вопросы больше не используются.
+    const desiredDifficulty = game.round >= 4 ? 3 : 2;
+    let pool = QUESTIONS.filter((question) =>
+        question.category === game.category
+        && question.difficulty >= desiredDifficulty
+        && !game.used.has(question.id)
+    );
     if (!pool.length) {
         game.used.clear();
+        pool = QUESTIONS.filter((question) =>
+            question.category === game.category && question.difficulty >= desiredDifficulty
+        );
+    }
+    if (!pool.length) {
         pool = QUESTIONS.filter((question) => question.category === game.category);
     }
     const question = sample(pool);
@@ -343,6 +410,7 @@ async function askQuestion(game) {
 
     game.round += 1;
     game.answers.clear();
+    game.roundResult = null;
     game.resolving = false;
     game.current = nextQuestion(game);
 
@@ -370,45 +438,56 @@ async function askQuestion(game) {
     });
 
     game.questionMessageId = message.message_id;
+    game.questionDeadlineAt = Date.now() + QUESTION_SECONDS * 1000;
     later(game, () => resolveRound(game), QUESTION_SECONDS * 1000, `round-${game.round}`);
 }
 
 async function resolveRound(game) {
     if (game.status !== 'playing' || game.resolving) return;
     game.resolving = true;
-    clearTimer(key(game.chatId, game.threadId));
+    clearTimer(key(game.chatId, game.threadId), game);
+    game.resolvingSince = Date.now();
 
     try {
-        const correct = [];
-        const eliminated = [];
+        // Результат раунда фиксируется только один раз. Если Telegram даст ошибку
+        // уже после обновления БД, повторное восстановление не начислит очки дважды.
+        if (!game.roundResult) {
+            const correct = [];
+            const eliminated = [];
 
-        for (const id of game.alive) {
-            const answer = game.answers.get(id);
-            if (answer !== undefined) {
-                db.prepare(`
-                    UPDATE telegram_blitz_players
-                    SET total_answers = total_answers + 1
-                    WHERE user_id = ?
-                `).run(id);
-            }
+            const commitRound = db.transaction(() => {
+                for (const id of game.alive) {
+                    const answer = game.answers.get(id);
+                    if (answer !== undefined) {
+                        db.prepare(`
+                            UPDATE telegram_blitz_players
+                            SET total_answers = total_answers + 1
+                            WHERE user_id = ?
+                        `).run(id);
+                    }
 
-            if (answer === game.current.correctIndex) {
-                correct.push(id);
-                changeRating(id, 2);
-                db.prepare(`
-                    UPDATE telegram_blitz_players
-                    SET correct_answers = correct_answers + 1
-                    WHERE user_id = ?
-                `).run(id);
-            } else {
-                eliminated.push(id);
-            }
+                    if (answer === game.current.correctIndex) {
+                        correct.push(id);
+                        db.prepare(`
+                            UPDATE telegram_blitz_players
+                            SET correct_answers = correct_answers + 1
+                            WHERE user_id = ?
+                        `).run(id);
+                    } else {
+                        eliminated.push(id);
+                    }
+                }
+
+                const nobodyCorrect = correct.length === 0;
+                if (!nobodyCorrect) {
+                    for (const id of eliminated) game.alive.delete(id);
+                }
+                game.roundResult = { correct, eliminated, nobodyCorrect };
+            });
+            commitRound();
         }
 
-        const nobodyCorrect = correct.length === 0;
-        if (!nobodyCorrect) {
-            for (const id of eliminated) game.alive.delete(id);
-        }
+        const { correct, eliminated, nobodyCorrect } = game.roundResult;
 
         await callApi('editMessageReplyMarkup', {
             chat_id: game.chatId,
@@ -441,9 +520,12 @@ async function resolveRound(game) {
         }
 
         game.resolving = false;
+        game.resolvingSince = 0;
+        game.questionDeadlineAt = 0;
         later(game, () => askQuestion(game), BETWEEN_MS, `between-round-${game.round}`);
     } catch (error) {
         game.resolving = false;
+        game.resolvingSince = 0;
         throw error;
     }
 }
@@ -451,7 +533,8 @@ async function resolveRound(game) {
 async function finishMatch(game) {
     if (game.finishing || game.status === 'finished') return;
     game.finishing = true;
-    clearTimer(key(game.chatId, game.threadId));
+    clearTimer(key(game.chatId, game.threadId), game);
+    game.questionDeadlineAt = 0;
 
     let winnerId = game.alive.size === 1 ? [...game.alive][0] : null;
     if (!winnerId && game.alive.size > 1) winnerId = [...game.alive][0] || null;
@@ -459,14 +542,15 @@ async function finishMatch(game) {
     try {
         if (winnerId) {
             const player = game.players.get(winnerId);
-            const bonus = 20 + Math.max(0, (game.players.size - 1) * 2);
-            changeRating(winnerId, bonus);
+            const bonus = 1;
 
             db.prepare(`
                 UPDATE telegram_blitz_players
-                SET wins = wins + 1,
+                SET rating = rating + 1,
+                    wins = wins + 1,
                     win_streak = win_streak + 1,
-                    best_streak = MAX(best_streak, win_streak + 1)
+                    best_streak = MAX(best_streak, win_streak + 1),
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = ?
             `).run(winnerId);
 
@@ -484,8 +568,8 @@ async function finishMatch(game) {
                     '🏆 <b>Победитель GS Blitz</b>',
                     '',
                     `👑 ${esc(player?.name || winnerId)}`,
-                    `⭐ +${bonus} рейтинга за победу`,
-                    `📈 Рейтинг: <b>${row.rating}</b>`,
+                    `⭐ +${bonus} очко за победу`,
+                    `📈 Очки: <b>${row.rating}</b>`,
                     `🔥 Серия побед: <b>${row.win_streak}</b>`,
                 ].join('\n'),
                 parse_mode: 'HTML',
@@ -510,12 +594,14 @@ async function finishMatch(game) {
 
 async function recoverGame(game, stage, error) {
     const active = games.get(key(game.chatId, game.threadId));
-    if (!active || active !== game) return;
+    if (!active || active !== game || game.watchdogRecovering) return;
+    game.watchdogRecovering = true;
 
     console.error(`🔄 Blitz recovery at ${stage}:`, error?.message || error);
 
     if (game.status === 'playing') {
         game.resolving = false;
+        game.resolvingSince = 0;
         await callApi('sendMessage', {
             chat_id: game.chatId,
             ...(game.threadId ? { message_thread_id: game.threadId } : {}),
@@ -523,21 +609,26 @@ async function recoverGame(game, stage, error) {
         }, { optional: true, retries: 1 });
 
         later(game, async () => {
+            game.watchdogRecovering = false;
             if (game.status !== 'playing') return;
             if (game.alive.size <= 1) await finishMatch(game);
+            else if (game.current && game.questionDeadlineAt && Date.now() >= game.questionDeadlineAt) await resolveRound(game);
             else await askQuestion(game);
         }, RECOVERY_DELAY_MS, 'auto-recovery');
         return;
     }
 
     if (game.status === 'countdown') {
-        later(game, () => beginMatch(game), RECOVERY_DELAY_MS, 'countdown-recovery');
+        later(game, async () => { game.watchdogRecovering = false; await beginMatch(game); }, RECOVERY_DELAY_MS, 'countdown-recovery');
         return;
     }
 
     if (game.status === 'finished') {
-        later(game, () => createLobby(game.chatId, game.threadId), RECOVERY_DELAY_MS, 'lobby-recovery');
+        later(game, async () => { game.watchdogRecovering = false; await createLobby(game.chatId, game.threadId); }, RECOVERY_DELAY_MS, 'lobby-recovery');
+        return;
     }
+
+    game.watchdogRecovering = false;
 }
 
 async function join(callback) {
@@ -665,7 +756,7 @@ async function top(chatId, threadId) {
         '🏆 <b>Топ GS Blitz</b>',
         '',
         ...(rows.length
-            ? rows.map((row, index) => `${index + 1}. ${esc(row.display_name)} — <b>${row.rating}</b> ⭐ | побед: ${row.wins}`)
+            ? rows.map((row, index) => `${index + 1}. ${esc(row.display_name)} — <b>${row.rating}</b> 🏆`)
             : ['Пока никто не сыграл.']),
     ].join('\n');
 
@@ -691,7 +782,7 @@ async function stats(chatId, threadId, user) {
             '📊 <b>Статистика GS Blitz</b>',
             '',
             `Игрок: ${esc(row.display_name)}`,
-            `⭐ Рейтинг: <b>${row.rating}</b>`,
+            `🏆 Очки: <b>${row.rating}</b>`,
             `🏆 Победы: <b>${row.wins}</b>`,
             `🎮 Игры: <b>${row.games}</b>`,
             `✅ Правильные ответы: <b>${row.correct_answers}</b>`,
@@ -750,8 +841,52 @@ async function handleCallback(callback) {
     return false;
 }
 
+function startWatchdog() {
+    if (watchdog) return;
+    watchdog = setInterval(() => {
+        const now = Date.now();
+        for (const game of games.values()) {
+            if (game.watchdogRecovering) continue;
+            const gameKey = key(game.chatId, game.threadId);
+            const hasTimer = timers.has(gameKey);
+
+            // Потерянный или зависший переход автоматически восстанавливается.
+            if (game.transitionDueAt && now > game.transitionDueAt + WATCHDOG_GRACE_MS) {
+                console.warn(`🐕 Blitz watchdog: просрочен ${game.transitionLabel || 'transition'} в ${gameKey}`);
+                clearTimer(gameKey, game);
+                void recoverGame(game, `watchdog-${game.transitionLabel || 'transition'}`, new Error('transition timeout'));
+                continue;
+            }
+
+            if (game.status === 'playing' && game.resolving && game.resolvingSince && now > game.resolvingSince + RESOLVING_STUCK_MS) {
+                console.warn(`🐕 Blitz watchdog: resolveRound завис в ${gameKey}`);
+                game.resolving = false;
+                game.resolvingSince = 0;
+                void recoverGame(game, 'watchdog-resolving', new Error('round resolving timeout'));
+                continue;
+            }
+
+            if (!hasTimer && !game.transitionDueAt) {
+                if (game.status === 'countdown') {
+                    void recoverGame(game, 'watchdog-countdown-missing', new Error('countdown timer missing'));
+                } else if (game.status === 'playing') {
+                    if (game.questionDeadlineAt && now >= game.questionDeadlineAt) {
+                        void resolveRound(game).catch((error) => recoverGame(game, 'watchdog-round-missing', error));
+                    } else if (!game.resolving) {
+                        void recoverGame(game, 'watchdog-playing-missing', new Error('playing timer missing'));
+                    }
+                } else if (game.status === 'finished') {
+                    void recoverGame(game, 'watchdog-lobby-missing', new Error('new lobby timer missing'));
+                }
+            }
+        }
+    }, WATCHDOG_INTERVAL_MS);
+    watchdog.unref?.();
+}
+
 async function init(telegramApi) {
     api = telegramApi;
+    startWatchdog();
     const chatId = getSetting('telegram_blitz_chat_id');
     if (!chatId) return;
 

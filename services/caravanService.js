@@ -451,6 +451,42 @@ function applyV1916DungeonAndItemRecovery(){
 }
 applyV1916DungeonAndItemRecovery();
 
+// V19.2.4 — разовый возврат Кольца Яда Мантикоры игроку 752908251896479915.
+// Без публичного уведомления и без записи в журнал наград.
+function applyV1924ManticoreRingReturn(){
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const migrationKey='v19.2.4-return-manticore-ring-752908251896479915';
+  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)) return false;
+
+  const userId='752908251896479915';
+  const itemKey='dungeon_manticore_venom_ring';
+  db.transaction(()=>{
+    db.prepare(`INSERT INTO hero_items(item_key,name,item_type,rarity,description,slot,bonuses_json,lore,is_consumable)
+      VALUES(?,?,'equipment',?,?,?,?,?,0)
+      ON CONFLICT(item_key) DO UPDATE SET
+        name=excluded.name,item_type='equipment',rarity=excluded.rarity,
+        description=excluded.description,slot=excluded.slot,
+        bonuses_json=excluded.bonuses_json,lore=excluded.lore`).run(
+          itemKey,
+          'Кольцо Яда Мантикоры',
+          'epic',
+          'Редкая добыча героического Логова Мантикоры.',
+          'ring',
+          JSON.stringify({dexterity:6,rare_find:2}),
+          'Редкая добыча героического Логова Мантикоры.'
+        );
+    db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from)
+      VALUES(?,?,1,'v19.2.4-return')
+      ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+1`).run(userId,itemKey);
+    db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from)
+      VALUES(?,?,'v19.2.4-return')`).run(userId,itemKey);
+    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+  })();
+  console.log('[V19.2.4] Кольцо Яда Мантикоры возвращено игроку 752908251896479915.');
+  return true;
+}
+applyV1924ManticoreRingReturn();
+
 async function sendV1916ManticoreRecoveryNotice(client){
   db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
   const key='v19.1.6-manticore-recovery-notice-channel-1531291125195866203';

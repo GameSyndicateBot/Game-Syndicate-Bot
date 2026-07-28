@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.2.3",
+  "version": "19.2.7",
   "private": true,
-  "description": "Game Syndicate V19.2.3: GS Blitz anti-freeze, API retries and automatic match recovery",
+  "description": "Game Syndicate V19.2.7: expanded GS Blitz, 24 categories and 7200 questions",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
