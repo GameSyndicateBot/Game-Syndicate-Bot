@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.2.7",
+  "version": "19.3.0",
   "private": true,
-  "description": "Game Syndicate V19.2.7: expanded GS Blitz, 24 categories and 7200 questions",
+  "description": "Game Syndicate V19.3.0: GS Blitz low-latency and duplicate-safe runtime",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

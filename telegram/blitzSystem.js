@@ -4,19 +4,23 @@ const { QUESTIONS, CATEGORY_MAP } = require('./blitzQuestions');
 const MIN_PLAYERS = 2;
 const LOBBY_SECONDS = 10;
 const QUESTION_SECONDS = 10;
-const BETWEEN_MS = 2200;
+const BETWEEN_MS = 900;
 const MAX_ROUNDS = 25;
-const API_RETRIES = 3;
+const API_RETRIES = 2;
 const RECOVERY_DELAY_MS = 2500;
 const WATCHDOG_INTERVAL_MS = 2000;
 const WATCHDOG_GRACE_MS = 4000;
 const RESOLVING_STUCK_MS = 15000;
-const API_CALL_TIMEOUT_MS = 9000;
+const API_CALL_TIMEOUT_MS = 4500;
+const RECENT_QUESTION_LIMIT_PER_CATEGORY = 200;
+const RECENT_CATEGORY_LIMIT_PER_CHAT = 8;
+const NEAR_DUPLICATE_THRESHOLD = 0.72;
 
 let api = null;
 const games = new Map();
 const timers = new Map();
 let watchdog = null;
+const recentQuestionCache = new Map();
 
 function threadOf(message) {
     return message.message_thread_id ? Number(message.message_thread_id) : null;
@@ -42,6 +46,137 @@ function sample(items) {
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeQuestionText(text) {
+    return String(text || '')
+        .toLowerCase()
+        .replace(/\[вариант\s+\d+\]/gi, '')
+        .replace(/[«»“”„'"`]/g, '')
+        .replace(/[^a-zа-яё0-9]+/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function questionSignature(question) {
+    return `${question.category}:${normalizeQuestionText(question.text)}`;
+}
+
+function tokenSet(text) {
+    return new Set(normalizeQuestionText(text).split(' ').filter((token) => token.length > 2));
+}
+
+function similarity(left, right) {
+    const a = tokenSet(left);
+    const b = tokenSet(right);
+    if (!a.size || !b.size) return 0;
+    let common = 0;
+    for (const token of a) if (b.has(token)) common += 1;
+    return common / Math.max(a.size, b.size);
+}
+
+function getRecentQuestions(category) {
+    if (recentQuestionCache.has(category)) return recentQuestionCache.get(category);
+    const rows = db.prepare(`
+        SELECT signature, question_text
+        FROM telegram_blitz_question_history
+        WHERE category = ?
+        ORDER BY id DESC
+        LIMIT ?
+    `).all(category, RECENT_QUESTION_LIMIT_PER_CATEGORY);
+    recentQuestionCache.set(category, rows);
+    return rows;
+}
+
+function rememberQuestion(game, question) {
+    const signature = questionSignature(question);
+    const recent = getRecentQuestions(question.category);
+    recent.unshift({ signature, question_text: question.text });
+    if (recent.length > RECENT_QUESTION_LIMIT_PER_CATEGORY) recent.length = RECENT_QUESTION_LIMIT_PER_CATEGORY;
+    game.pendingQuestionHistory.push({
+        category: question.category,
+        signature,
+        questionText: question.text,
+    });
+}
+
+function flushQuestionHistory(game) {
+    if (!game.pendingQuestionHistory?.length) return;
+    const rows = game.pendingQuestionHistory.splice(0);
+    const insert = db.prepare(`
+        INSERT INTO telegram_blitz_question_history(category, signature, question_text)
+        VALUES(?, ?, ?)
+    `);
+    const trim = db.prepare(`
+        DELETE FROM telegram_blitz_question_history
+        WHERE category = ? AND id NOT IN (
+            SELECT id FROM telegram_blitz_question_history
+            WHERE category = ?
+            ORDER BY id DESC
+            LIMIT ?
+        )
+    `);
+    const commit = db.transaction(() => {
+        for (const row of rows) insert.run(row.category, row.signature, row.questionText);
+        for (const category of new Set(rows.map((row) => row.category))) {
+            trim.run(category, category, RECENT_QUESTION_LIMIT_PER_CATEGORY);
+        }
+    });
+    commit();
+}
+
+function isRecentOrSimilar(question, game) {
+    const signature = questionSignature(question);
+    if (game.usedSignatures.has(signature)) return true;
+
+    for (const usedText of game.usedQuestionTexts) {
+        if (similarity(question.text, usedText) >= NEAR_DUPLICATE_THRESHOLD) return true;
+    }
+
+    for (const recent of getRecentQuestions(question.category)) {
+        if (recent.signature === signature) return true;
+        if (similarity(question.text, recent.question_text) >= NEAR_DUPLICATE_THRESHOLD) return true;
+    }
+    return false;
+}
+
+function recentCategories(chatId, threadId) {
+    return db.prepare(`
+        SELECT category
+        FROM telegram_blitz_category_history
+        WHERE chat_id = ? AND thread_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+    `).all(String(chatId), Number(threadId || 0), RECENT_CATEGORY_LIMIT_PER_CHAT)
+        .map((row) => row.category);
+}
+
+function chooseCategory(game) {
+    const categories = [...new Set(QUESTIONS.map((question) => question.category))];
+    const recent = new Set(recentCategories(game.chatId, game.threadId));
+    const fresh = categories.filter((category) => !recent.has(category));
+    return sample(fresh.length ? fresh : categories);
+}
+
+function rememberCategory(game, category) {
+    db.prepare(`
+        INSERT INTO telegram_blitz_category_history(chat_id, thread_id, category)
+        VALUES(?, ?, ?)
+    `).run(String(game.chatId), Number(game.threadId || 0), category);
+
+    db.prepare(`
+        DELETE FROM telegram_blitz_category_history
+        WHERE chat_id = ? AND thread_id = ? AND id NOT IN (
+            SELECT id FROM telegram_blitz_category_history
+            WHERE chat_id = ? AND thread_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+        )
+    `).run(
+        String(game.chatId), Number(game.threadId || 0),
+        String(game.chatId), Number(game.threadId || 0),
+        RECENT_CATEGORY_LIMIT_PER_CHAT
+    );
 }
 
 function clearTimer(gameKey, game = null) {
@@ -81,7 +216,10 @@ function later(game, fn, ms, label = 'transition') {
 }
 
 async function callApi(method, payload, options = {}) {
-    const retries = Number.isInteger(options.retries) ? options.retries : API_RETRIES;
+    const nonIdempotent = method === 'sendMessage' || method === 'answerCallbackQuery';
+    const retries = Number.isInteger(options.retries)
+        ? options.retries
+        : (options.optional || nonIdempotent ? 1 : API_RETRIES);
     let lastError;
 
     for (let attempt = 1; attempt <= retries; attempt += 1) {
@@ -137,6 +275,28 @@ function initDb() {
             migration_key TEXT PRIMARY KEY,
             applied_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS telegram_blitz_question_history(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            question_text TEXT NOT NULL,
+            asked_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS telegram_blitz_category_history(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id TEXT NOT NULL,
+            thread_id INTEGER NOT NULL DEFAULT 0,
+            category TEXT NOT NULL,
+            used_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_blitz_question_history_category_id
+        ON telegram_blitz_question_history(category, id DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_blitz_category_history_chat_id
+        ON telegram_blitz_category_history(chat_id, thread_id, id DESC);
     `);
 
     // V19.2.6: единоразово начинаем новый сезон рейтинга с нуля.
@@ -244,11 +404,16 @@ function makeGame(chatId, threadId, carryQueue = new Map()) {
         answers: new Map(),
         round: 0,
         used: new Set(),
+        usedSignatures: new Set(),
+        usedQuestionTexts: [],
         category: null,
         lobbyMessageId: null,
         questionMessageId: null,
         matchId: null,
         current: null,
+        preparedQuestions: [],
+        pendingQuestionHistory: [],
+        playerStatsDelta: new Map(),
         roundResult: null,
         resolving: false,
         resolvingSince: 0,
@@ -294,6 +459,34 @@ async function createLobby(chatId, threadId) {
     return game;
 }
 
+async function resetLobby(game) {
+    const gameKey = key(game.chatId, game.threadId);
+    clearTimer(gameKey, game);
+
+    const next = makeGame(game.chatId, game.threadId, new Map(game.nextQueue));
+    next.lobbyMessageId = game.lobbyMessageId;
+    games.set(gameKey, next);
+
+    if (next.lobbyMessageId) {
+        const edited = await callApi('editMessageText', {
+            chat_id: next.chatId,
+            message_id: next.lobbyMessageId,
+            text: lobbyText(next),
+            parse_mode: 'HTML',
+            reply_markup: lobbyKeyboard(next),
+        }, { optional: true, ignoreNotModified: true });
+
+        // optional returns null both on harmless no-change and on failure; the existing
+        // pinned lobby is still preferable to creating duplicate pinned messages.
+        setSetting('telegram_blitz_lobby_message_id', String(next.lobbyMessageId));
+    } else {
+        return createLobby(next.chatId, next.threadId);
+    }
+
+    if (next.queue.size >= MIN_PLAYERS) startCountdown(next);
+    return next;
+}
+
 async function setup(message, isAdmin) {
     if (!isAdmin) {
         await callApi('sendMessage', {
@@ -319,6 +512,10 @@ async function setup(message, isAdmin) {
 function startCountdown(game) {
     if (game.status !== 'lobby' || game.queue.size < MIN_PLAYERS) return;
     game.status = 'countdown';
+    if (!game.category || !game.preparedQuestions.length) {
+        game.category = chooseCategory(game);
+        buildQuestionQueue(game);
+    }
     void editLobby(game);
 
     void callApi('sendMessage', {
@@ -351,11 +548,15 @@ async function beginMatch(game) {
     game.alive = new Set(game.players.keys());
     game.round = 0;
     game.used.clear();
+    game.usedSignatures.clear();
+    game.usedQuestionTexts.length = 0;
     game.resolving = false;
     game.finishing = false;
 
-    const categories = [...new Set(QUESTIONS.map((question) => question.category))];
-    game.category = sample(categories);
+    if (!game.category) game.category = chooseCategory(game);
+    if (!game.preparedQuestions.length) buildQuestionQueue(game);
+    if (!game.preparedQuestions.length) throw new Error(`Не удалось подготовить вопросы для категории ${game.category}`);
+    rememberCategory(game, game.category);
 
     const result = db.prepare(`
         INSERT INTO telegram_blitz_matches(chat_id, thread_id, category, player_count)
@@ -378,26 +579,56 @@ async function beginMatch(game) {
     await askQuestion(game);
 }
 
-function nextQuestion(game) {
-    // Раунды постепенно усложняются: лёгкие вопросы больше не используются.
-    const desiredDifficulty = game.round >= 4 ? 3 : 2;
-    let pool = QUESTIONS.filter((question) =>
-        question.category === game.category
-        && question.difficulty >= desiredDifficulty
-        && !game.used.has(question.id)
-    );
-    if (!pool.length) {
-        game.used.clear();
-        pool = QUESTIONS.filter((question) =>
-            question.category === game.category && question.difficulty >= desiredDifficulty
+function buildQuestionQueue(game) {
+    const selected = [];
+    const selectedTexts = [];
+    const usedIds = new Set();
+    const recent = getRecentQuestions(game.category);
+
+    for (let round = 1; round <= MAX_ROUNDS; round += 1) {
+        const desiredDifficulty = round >= 4 ? 3 : 2;
+        let pool = QUESTIONS.filter((question) =>
+            question.category === game.category &&
+            question.difficulty >= desiredDifficulty &&
+            !usedIds.has(question.id) &&
+            !recent.some((item) => item.signature === questionSignature(question)) &&
+            !recent.some((item) => similarity(question.text, item.question_text) >= NEAR_DUPLICATE_THRESHOLD) &&
+            !selectedTexts.some((text) => similarity(question.text, text) >= NEAR_DUPLICATE_THRESHOLD)
         );
+
+        if (!pool.length) {
+            pool = QUESTIONS.filter((question) =>
+                question.category === game.category &&
+                question.difficulty >= desiredDifficulty &&
+                !usedIds.has(question.id) &&
+                !selectedTexts.some((text) => similarity(question.text, text) >= NEAR_DUPLICATE_THRESHOLD)
+            );
+        }
+
+        if (!pool.length) {
+            pool = QUESTIONS.filter((question) =>
+                question.category === game.category && !usedIds.has(question.id)
+            );
+        }
+
+        const question = sample(pool);
+        if (!question) break;
+        usedIds.add(question.id);
+        selectedTexts.push(question.text);
+        selected.push(question);
     }
-    if (!pool.length) {
-        pool = QUESTIONS.filter((question) => question.category === game.category);
-    }
-    const question = sample(pool);
-    if (!question) throw new Error(`Нет вопросов для категории ${game.category}`);
+
+    game.preparedQuestions = selected;
+}
+
+function nextQuestion(game) {
+    const question = game.preparedQuestions.shift();
+    if (!question) throw new Error(`Закончилась подготовленная очередь вопросов для категории ${game.category}`);
+
     game.used.add(question.id);
+    game.usedSignatures.add(questionSignature(question));
+    game.usedQuestionTexts.push(question.text);
+    rememberQuestion(game, question);
     return question;
 }
 
@@ -423,7 +654,7 @@ async function askQuestion(game) {
         `⚡ <b>Раунд ${game.round}</b>`,
         `Категория: ${CATEGORY_MAP[game.category]}`,
         '',
-        `❓ ${esc(game.current.text)}`,
+        `❓ ${esc(String(game.current.text).replace(/\s*\[вариант\s+\d+\]\s*$/i, ''))}`,
         '',
         `⏳ На ответ: ${QUESTION_SECONDS} секунд`,
         `👥 В игре: ${game.alive.size}`,
@@ -455,41 +686,30 @@ async function resolveRound(game) {
             const correct = [];
             const eliminated = [];
 
-            const commitRound = db.transaction(() => {
-                for (const id of game.alive) {
-                    const answer = game.answers.get(id);
-                    if (answer !== undefined) {
-                        db.prepare(`
-                            UPDATE telegram_blitz_players
-                            SET total_answers = total_answers + 1
-                            WHERE user_id = ?
-                        `).run(id);
-                    }
+            for (const id of game.alive) {
+                const answer = game.answers.get(id);
+                const delta = game.playerStatsDelta.get(id) || { total: 0, correct: 0 };
+                if (answer !== undefined) delta.total += 1;
 
-                    if (answer === game.current.correctIndex) {
-                        correct.push(id);
-                        db.prepare(`
-                            UPDATE telegram_blitz_players
-                            SET correct_answers = correct_answers + 1
-                            WHERE user_id = ?
-                        `).run(id);
-                    } else {
-                        eliminated.push(id);
-                    }
+                if (answer === game.current.correctIndex) {
+                    correct.push(id);
+                    delta.correct += 1;
+                } else {
+                    eliminated.push(id);
                 }
+                game.playerStatsDelta.set(id, delta);
+            }
 
-                const nobodyCorrect = correct.length === 0;
-                if (!nobodyCorrect) {
-                    for (const id of eliminated) game.alive.delete(id);
-                }
-                game.roundResult = { correct, eliminated, nobodyCorrect };
-            });
-            commitRound();
+            const nobodyCorrect = correct.length === 0;
+            if (!nobodyCorrect) {
+                for (const id of eliminated) game.alive.delete(id);
+            }
+            game.roundResult = { correct, eliminated, nobodyCorrect };
         }
 
         const { correct, eliminated, nobodyCorrect } = game.roundResult;
 
-        await callApi('editMessageReplyMarkup', {
+        void callApi('editMessageReplyMarkup', {
             chat_id: game.chatId,
             message_id: game.questionMessageId,
             reply_markup: { inline_keyboard: [] },
@@ -507,12 +727,12 @@ async function resolveRound(game) {
 
         if (game.current.explanation) lines.push('', esc(game.current.explanation));
 
-        await callApi('sendMessage', {
+        void callApi('sendMessage', {
             chat_id: game.chatId,
             ...(game.threadId ? { message_thread_id: game.threadId } : {}),
             text: lines.join('\n'),
             parse_mode: 'HTML',
-        });
+        }, { optional: true }).catch((error) => console.warn('⚠️ Blitz result message:', error?.message || error));
 
         if (game.alive.size <= 1) {
             await finishMatch(game);
@@ -540,6 +760,21 @@ async function finishMatch(game) {
     if (!winnerId && game.alive.size > 1) winnerId = [...game.alive][0] || null;
 
     try {
+        const flushStats = db.transaction(() => {
+            for (const [id, delta] of game.playerStatsDelta.entries()) {
+                db.prepare(`
+                    UPDATE telegram_blitz_players
+                    SET total_answers = total_answers + ?,
+                        correct_answers = correct_answers + ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                `).run(delta.total, delta.correct, id);
+            }
+        });
+        flushStats();
+        game.playerStatsDelta.clear();
+        flushQuestionHistory(game);
+
         if (winnerId) {
             const player = game.players.get(winnerId);
             const bonus = 1;
@@ -588,7 +823,7 @@ async function finishMatch(game) {
     } finally {
         game.status = 'finished';
         game.finishing = false;
-        later(game, () => createLobby(game.chatId, game.threadId), 4000, 'new-lobby');
+        later(game, () => resetLobby(game), 1800, 'reset-lobby');
     }
 }
 
@@ -602,19 +837,24 @@ async function recoverGame(game, stage, error) {
     if (game.status === 'playing') {
         game.resolving = false;
         game.resolvingSince = 0;
-        await callApi('sendMessage', {
-            chat_id: game.chatId,
-            ...(game.threadId ? { message_thread_id: game.threadId } : {}),
-            text: '⚠️ Telegram временно задержал игру. GS Blitz автоматически продолжит через несколько секунд.',
-        }, { optional: true, retries: 1 });
+
+        const remaining = game.current && game.questionDeadlineAt
+            ? Math.max(0, game.questionDeadlineAt - Date.now())
+            : 0;
+
+        if (game.current && remaining > 0) {
+            game.watchdogRecovering = false;
+            later(game, () => resolveRound(game), remaining, `recovered-round-${game.round}`);
+            return;
+        }
 
         later(game, async () => {
             game.watchdogRecovering = false;
             if (game.status !== 'playing') return;
             if (game.alive.size <= 1) await finishMatch(game);
-            else if (game.current && game.questionDeadlineAt && Date.now() >= game.questionDeadlineAt) await resolveRound(game);
+            else if (game.current) await resolveRound(game);
             else await askQuestion(game);
-        }, RECOVERY_DELAY_MS, 'auto-recovery');
+        }, Math.min(RECOVERY_DELAY_MS, 800), 'auto-recovery');
         return;
     }
 
@@ -624,7 +864,7 @@ async function recoverGame(game, stage, error) {
     }
 
     if (game.status === 'finished') {
-        later(game, async () => { game.watchdogRecovering = false; await createLobby(game.chatId, game.threadId); }, RECOVERY_DELAY_MS, 'lobby-recovery');
+        later(game, async () => { game.watchdogRecovering = false; await resetLobby(game); }, 800, 'lobby-recovery');
         return;
     }
 
