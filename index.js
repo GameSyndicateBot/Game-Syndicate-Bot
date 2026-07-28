@@ -179,7 +179,12 @@ client.on('interactionCreate', async interaction => {
                 const command = client.commands.get('game');
                 if (command?.handleModal) return await command.handleModal(interaction);
             }
-            if (interaction.customId.startsWith('guild:create:modal:')) {
+            // Все модальные окна Гильдии (создание героя, рынок, обмены,
+            // заказы и продажа экипировки) обрабатываются одной командой.
+            // Раньше сюда пропускались только guild:create:modal:*, поэтому
+            // guild:market:exchangeqty оставался без ответа и Discord показывал
+            // «Что-то пошло не так». 
+            if (interaction.customId.startsWith('guild:')) {
                 const command = client.commands.get('guild');
                 if (command?.handleModal) return await command.handleModal(interaction);
             }

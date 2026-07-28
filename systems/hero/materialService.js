@@ -86,6 +86,31 @@ function applyChestDisplayReconciliation() {
 
 applyChestDisplayReconciliation();
 
+// V18.4.9 FINAL hotfix: подтверждённая ручная корректировка баланса игрока.
+// Значения устанавливаются РОВНО один раз, затем будущие награды снова
+// прибавляются обычным grantResource. Новый marker нужен, потому что старая
+// сверка могла уже отметить только минимумы 60/22 как выполненные.
+function applyConfirmedChestCompensation() {
+  const userId = '1080729129915256843';
+  const grantKey = 'confirmed-chest-balance-110-42-v1849-final';
+  if (db.prepare('SELECT 1 FROM system_one_time_grants WHERE grant_key=?').get(grantKey)) return;
+  const tx = db.transaction(() => {
+    const setExact = db.prepare(`
+      INSERT INTO hero_materials(user_id,material_key,quantity,updated_at)
+      VALUES(?,?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id,material_key) DO UPDATE SET
+        quantity=excluded.quantity, updated_at=CURRENT_TIMESTAMP
+    `);
+    setExact.run(userId, 'forest_herbs', 110);
+    setExact.run(userId, 'herb_extract', 42);
+    db.prepare('INSERT INTO system_one_time_grants(grant_key,user_id) VALUES(?,?)').run(grantKey,userId);
+  });
+  try { tx(); console.log(`[Chests] Confirmed balance applied for ${userId}: forest_herbs=110, herb_extract=42`); }
+  catch (error) { console.error('[Chests] Confirmed balance compensation failed:', error); }
+}
+
+applyConfirmedChestCompensation();
+
 function expeditionMaterialRewards(userId, locationKey, difficulty, outcome, sourceId) {
   if (outcome === 'fail') return { materials: [], chest: null };
   const rng = seeded(`materials:${userId}:${locationKey}:${sourceId}`);
