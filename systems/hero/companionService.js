@@ -89,15 +89,21 @@ function listCompanions(userId) {
   const uid = String(userId);
   return db.prepare(`
     SELECT hc.*,
-      CASE WHEN ap.companion_id IS NOT NULL OR am.companion_id IS NOT NULL THEN 1 ELSE 0 END AS active,
+      CASE WHEN ap.companion_id IS NOT NULL OR am.companion_id IS NOT NULL THEN 1 ELSE 0 END AS is_selected,
       ap.slot_no AS active_slot,
       CASE WHEN am.companion_id IS NOT NULL THEN 1 ELSE 0 END AS active_mount
     FROM hero_companions hc
     LEFT JOIN hero_active_companions ap ON ap.user_id=hc.user_id AND ap.companion_id=hc.id
     LEFT JOIN hero_active_mounts am ON am.user_id=hc.user_id AND am.companion_id=hc.id
     WHERE hc.user_id=?
-    ORDER BY active_mount DESC, active DESC, active_slot ASC, hc.rarity DESC, hc.id ASC
-  `).all(uid).map(row => ({ ...row, companion_kind: inferCompanionKind(row) }));
+    ORDER BY active_mount DESC, is_selected DESC, active_slot ASC, hc.rarity DESC, hc.id ASC
+  `).all(uid).map(row => ({
+    ...row,
+    // Не полагаемся на старую колонку hero_companions.active: источником истины
+    // являются отдельные таблицы активных питомцев и маунта.
+    active: Number(row.is_selected) === 1,
+    companion_kind: inferCompanionKind(row),
+  }));
 }
 
 function syncLegacyActive(userId) {

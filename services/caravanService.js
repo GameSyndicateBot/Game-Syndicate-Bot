@@ -1,4 +1,4 @@
-const { db, getCardDust, removeCardDust } = require('../database/db');
+const { db, getCardDust, removeCardDust, addCardDust } = require('../database/db');
 const { COMPANIONS } = require('../systems/hero/companionData');
 
 const GUILD_CHANNEL_ID = '1530165282512044032';
@@ -170,6 +170,46 @@ function applyV1913TargetedGearRecovery(){
 }
 applyV1913TargetedGearRecovery();
 
+
+function applyV1914DungeonRewardRecovery(){
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const migrationKey='v19.1.4-heroic-giant-tomb-reward-recovery';
+  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)) return;
+  const dustRewards=[
+    ['759026090038657034',250],
+    ['506371696878551041',198],
+    ['561961056197672991',217],
+    ['752908251896479915',221],
+    ['290777169431625728',237],
+    ['614389501955014667',229],
+    ['680859156046938158',212],
+  ];
+  const rareRewards=[
+    {userId:'759026090038657034',key:'dungeon_giant_tomb_signet',name:'Печать Гробницы Великана',rarity:'rare',slot:'ring',bonuses:{strength:3,luck:3}},
+    {userId:'614389501955014667',key:'dungeon_giant_bone_cuirass',name:'Костяной Панцирь Великана',rarity:'epic',slot:'armor',bonuses:{hp:30,defense:7}},
+    {userId:'680859156046938158',key:'dungeon_tomb_guard_hammer',name:'Молот Стража Гробницы',rarity:'epic',slot:'weapon',bonuses:{strength:9,world_boss_damage:2}},
+  ];
+  const seed=db.prepare(`INSERT INTO hero_items(item_key,name,item_type,rarity,description,slot,bonuses_json,lore,is_consumable) VALUES(?,?, 'equipment', ?, ?, ?, ?, ?, 0)
+    ON CONFLICT(item_key) DO UPDATE SET name=excluded.name,rarity=excluded.rarity,description=excluded.description,slot=excluded.slot,bonuses_json=excluded.bonuses_json,lore=excluded.lore`);
+  const inv=db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,1,'v19.1.4-dungeon-recovery') ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=MAX(quantity,1)`);
+  const coll=db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,'v19.1.4-dungeon-recovery')`);
+  db.transaction(()=>{
+    for(const [userId,dust] of dustRewards){
+      db.prepare(`INSERT OR IGNORE INTO players(user_id,username,card_dust) VALUES(?,?,0)`).run(userId,`Recovered ${userId}`);
+      addCardDust(userId,dust,'Возврат награды: героическая Гробница Великана');
+    }
+    for(const r of rareRewards){
+      seed.run(r.key,r.name,r.rarity,'Редкая добыча героического подземелья.',r.slot,JSON.stringify(r.bonuses),'Найдена в Гробнице Великана и восстановлена после исправления системы наград.');
+      inv.run(r.userId,r.key); coll.run(r.userId,r.key);
+    }
+    const { grantCompanion }=require('../systems/hero/companionService');
+    grantCompanion('290777169431625728','gray_wolf','v19.1.4-recovery');
+    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+  })();
+  console.log('[V19.1.4] Награды Гробницы Великана, редкие предметы и Серый Волк восстановлены.');
+}
+applyV1914DungeonRewardRecovery();
+
 function createSchedule(dayKey=moscowDay()){
   const rng=seeded(`caravan:${dayKey}:${Date.now()}`);
   const [y,m,d]=dayKey.split('-').map(Number);
@@ -299,3 +339,77 @@ let timer=null,lastActive=null;
 function startCaravanScheduler(client){if(timer)return timer;ensureToday();const tick=async()=>{const s=ensureToday(),active=isActive();if(active&&!s.announced){db.prepare('UPDATE caravan_state SET announced=1 WHERE id=1').run();await announce(client,s);await refreshHub(client);}if(lastActive===true&&!active)await refreshHub(client);lastActive=active;};tick().catch(console.error);timer=setInterval(()=>tick().catch(console.error),CHECK_MS);timer.unref?.();console.log('🐪 Caravan scheduler started');return timer;}
 
 module.exports={RARITY,CATALOG,ATMOSPHERE,ensureToday,isActive,remainingMs,formatTimeLeft,statePublic,ensureOffers,getOffer,reserveOffer,cancelReservation,bargain,buyOffer,getCardDust,startCaravanScheduler};
+
+// V19.1.5 — точечная коррекция предметов и публичный отчёт о восстановлении данжа.
+function applyV1915TargetedCorrections(){
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const migrationKey='v19.1.5-targeted-item-corrections';
+  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)) return false;
+
+  const seed=db.prepare(`INSERT INTO hero_items(item_key,name,item_type,rarity,description,slot,bonuses_json,lore,is_consumable)
+    VALUES(?,?, 'equipment', ?, ?, ?, ?, ?, 0)
+    ON CONFLICT(item_key) DO UPDATE SET name=excluded.name,item_type='equipment',rarity=excluded.rarity,description=excluded.description,slot=excluded.slot,bonuses_json=excluded.bonuses_json,lore=excluded.lore`);
+  const inv=db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,1,'v19.1.5-correction')
+    ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=MAX(quantity,1),acquired_from='v19.1.5-correction'`);
+  const coll=db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,'v19.1.5-correction')`);
+
+  function removeItem(userId,itemKey){
+    const rows=db.prepare('SELECT id FROM hero_inventory WHERE user_id=? AND item_key=?').all(userId,itemKey);
+    for(const row of rows){
+      db.prepare('DELETE FROM hero_equipment WHERE user_id=? AND inventory_id=?').run(userId,row.id);
+      db.prepare('DELETE FROM hero_class_equipment WHERE user_id=? AND inventory_id=?').run(userId,row.id);
+    }
+    db.prepare('DELETE FROM hero_inventory WHERE user_id=? AND item_key=?').run(userId,itemKey);
+  }
+  function give(r){
+    seed.run(r.key,r.name,r.rarity,r.description||'Предмет скорректирован администрацией Game Syndicate.',r.slot,JSON.stringify(r.bonuses),r.lore||'Исправленная версия предмета.');
+    inv.run(r.userId,r.key); coll.run(r.userId,r.key);
+  }
+
+  db.transaction(()=>{
+    // 302797251271458817: заменить ошибочные эпические перчатки и выдать талисман.
+    removeItem('302797251271458817','recovery_imperial_plate_gloves_north');
+    give({userId:'302797251271458817',key:'correction_abyssal_wanderer_talisman',name:'Бездонный Талисман Странника',rarity:'epic',slot:'amulet',bonuses:{hp:10,intelligence:5}});
+    give({userId:'302797251271458817',key:'correction_imperial_plate_gloves_north_rare',name:'Императорские Латные перчатки Севера',rarity:'rare',slot:'gloves',bonuses:{strength:3,dexterity:3}});
+
+    // 561961056197672991: заменить ошибочные эпические сандалии и перчатки.
+    removeItem('561961056197672991','recovery_bone_sandals_fallen_king');
+    removeItem('561961056197672991','recovery_gloves_fallen_king');
+    // На случай, если ошибочные перчатки ранее оказались у 506371696878551041.
+    removeItem('506371696878551041','recovery_gloves_fallen_king');
+    give({userId:'561961056197672991',key:'correction_bone_sandals_fallen_king_rare',name:'Костяные Сандалии странника Павшего короля',rarity:'rare',slot:'boots',bonuses:{dexterity:5,expedition_success:2}});
+    give({userId:'561961056197672991',key:'correction_gloves_fallen_king_rare',name:'Перчатки Павшего короля',rarity:'rare',slot:'gloves',bonuses:{strength:3,dexterity:3}});
+
+    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+  })();
+  console.log('[V19.1.5] Ошибочные версии экипировки заменены корректными.');
+  return true;
+}
+applyV1915TargetedCorrections();
+
+async function sendV1915DungeonRecoveryNotice(client){
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const key='v19.1.5-dungeon-recovery-notice-channel-1531291125195866203';
+  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(key)) return;
+  const channel=await client.channels.fetch('1531291125195866203').catch(()=>null);
+  if(!channel?.isTextBased?.()) return;
+  await channel.send({embeds:[{
+    color:0x7c3aed,
+    title:'🏆 Награды героической Гробницы Великана восстановлены',
+    description:[
+      'После проверки прошлого прохождения участникам возвращены потерянные **GS Dust**, а редкая добыча распределена между частью группы по изначальной логике героического подземелья.',
+      '',
+      '**💎 Редкая добыча:**',
+      '<@759026090038657034> — **Печать Гробницы Великана**',
+      '<@614389501955014667> — **Костяной Панцирь Великана**',
+      '<@680859156046938158> — **Молот Стража Гробницы**',
+      '',
+      'Остальные участники получили положенную пыль и опыт. Дальнейшие итоги подземелий будут прямо показывать, кто получил Dust, а кому выпал редкий предмет.'
+    ].join('\n'),
+    footer:{text:'Game Syndicate • Dungeon Reward Recovery V19.1.5'},
+    timestamp:new Date().toISOString(),
+  }]});
+  db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(key);
+}
+
+module.exports.sendV1915DungeonRecoveryNotice=sendV1915DungeonRecoveryNotice;

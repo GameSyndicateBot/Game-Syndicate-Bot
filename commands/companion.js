@@ -19,7 +19,7 @@ module.exports={data:new SlashCommandBuilder().setName('companion').setDescripti
   const rows=listCompanions(interaction.user.id);
   const pets=rows.filter(r=>r.companion_kind!=='mount');
   const mounts=rows.filter(r=>r.companion_kind==='mount');
-  const format=r=>`${r.active_mount?'🟣 Маунт':r.active_slot?`🟢 Слот ${r.active_slot}`:'⚪'} **#${r.id} ${(COMPANIONS[r.companion_key]?.icon)||(r.companion_kind==='mount'?'🐎':'🐾')} ${r.name}** · ${RARITY_LABELS[r.rarity]||r.rarity}\n${bonusText(r)}`;
+  const format=r=>{const kind=r.companion_kind==='mount'?'🐎 МАУНТ':'🐾 ПИТОМЕЦ';const state=r.active_mount?'🟣 АКТИВЕН':r.active_slot?`🟢 АКТИВЕН · слот ${r.active_slot}`:'⚪ Не активен';return `**${kind}** · ${state}\n**#${r.id} ${(COMPANIONS[r.companion_key]?.icon)||(r.companion_kind==='mount'?'🐎':'🐾')} ${r.name}** · ${RARITY_LABELS[r.rarity]||r.rarity}\n${bonusText(r)}`;};
   const text=[`**Активные питомцы:** до ${MAX_ACTIVE_PETS}\n**Активный маунт:** 1 отдельный слот`,pets.length?'\n### 🐾 Питомцы\n'+pets.map(format).join('\n\n'):'\nПитомцев пока нет.',mounts.length?'\n### 🐎 Маунты\n'+mounts.map(format).join('\n\n'):''].join('\n');
   return interaction.reply({embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle('🐾 Питомцы и маунты героя').setDescription(text.slice(0,4000)).setFooter({text:'Повторный выбор активного спутника снимает его. Маунт не занимает слот питомца.'})],flags:MessageFlags.Ephemeral});
  }};
