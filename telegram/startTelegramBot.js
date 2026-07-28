@@ -18,6 +18,66 @@ const crocodile = require('../crocodileSystem');
 const gsCall = require('./gsCallSystem');
 const blitz = require('./blitzSystem');
 
+
+const TELEGRAM_COMMANDS = [
+    { command: 'gs', description: 'призвать участников группы' },
+    { command: 'gsregister', description: 'изменить личный эмодзи для GS-созыва' },
+    { command: 'game', description: 'создать игровое лобби' },
+    { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' },
+    { command: 'setleavelog', description: 'назначить тему логов выходов' },
+    { command: 'setcrocodile', description: 'назначить тему Крокодила' },
+    { command: 'crocodile', description: 'начать игру Крокодил' },
+    { command: 'croctop', description: 'топ игроков Крокодила' },
+    { command: 'crocstats', description: 'личная статистика Крокодила' },
+    { command: 'crocstop', description: 'остановить текущий раунд' },
+    { command: 'crocreset', description: 'сбросить зависшие раунды' },
+    { command: 'setblitz', description: 'назначить постоянный чат GS Blitz' },
+    { command: 'blitztop', description: 'топ рейтинга GS Blitz' },
+    { command: 'blitzstats', description: 'личная статистика GS Blitz' },
+    { command: 'blitzreset', description: 'перезапустить лобби GS Blitz' },
+];
+
+async function syncTelegramCommands(api) {
+    const scopes = [
+        { type: 'default' },
+        { type: 'all_private_chats' },
+        { type: 'all_group_chats' },
+        { type: 'all_chat_administrators' },
+    ];
+    const languages = [null, 'ru', 'uk', 'en'];
+    let updated = 0;
+
+    for (const scope of scopes) {
+        for (const languageCode of languages) {
+            const payload = { commands: TELEGRAM_COMMANDS, scope };
+            if (languageCode) payload.language_code = languageCode;
+            try {
+                await api('setMyCommands', payload);
+                updated += 1;
+            } catch (error) {
+                console.error(
+                    `⚠️ Telegram commands sync failed: scope=${scope.type} language=${languageCode || 'default'}:`,
+                    error.message,
+                );
+            }
+        }
+    }
+
+    try {
+        const registered = await api('getMyCommands', { scope: { type: 'all_group_chats' } });
+        const names = registered.map(item => `/${item.command}`);
+        const required = ['/setblitz', '/blitztop', '/blitzstats', '/blitzreset'];
+        const missing = required.filter(command => !names.includes(command));
+        if (missing.length > 0) {
+            console.error(`❌ Telegram command verification failed. Missing: ${missing.join(', ')}`);
+        } else {
+            console.log(`✅ Telegram commands synchronized: ${registered.length} commands, ${updated} scope/language sets`);
+        }
+    } catch (error) {
+        console.error('⚠️ Telegram command verification failed:', error.message);
+    }
+}
+
 const drafts = new Map();
 let pollingStarted = false;
 let updateOffset = 0;
@@ -891,27 +951,7 @@ async function startTelegramBot(client) {
     gsCall.setDiscordClient(client);
 
     await api('deleteWebhook', { drop_pending_updates: false }).catch(() => null);
-    await api('setMyCommands', {
-        commands: [
-            { command: 'gs', description: 'призвать участников группы' },
-            { command: 'gsregister', description: 'изменить личный эмодзи для GS-созыва' },
-            { command: 'game', description: 'создать игровое лобби' },
-            { command: 'setgatherchannel', description: 'назначить Telegram game-lobby' },
-            { command: 'setleavelog', description: 'назначить тему логов выходов' },
-            { command: 'setcrocodile', description: 'назначить тему Крокодила' },
-            { command: 'crocodile', description: 'начать игру Крокодил' },
-            { command: 'croctop', description: 'топ игроков Крокодила' },
-            { command: 'crocstats', description: 'личная статистика Крокодила' },
-            { command: 'crocstop', description: 'остановить текущий раунд' },
-            { command: 'crocreset', description: 'сбросить зависшие раунды' },
-            { command: 'setblitz', description: 'назначить постоянный чат GS Blitz' },
-            { command: 'blitztop', description: 'топ рейтинга GS Blitz' },
-            { command: 'blitzstats', description: 'личная статистика GS Blitz' },
-            { command: 'blitzreset', description: 'перезапустить лобби GS Blitz' },
-        ],
-    }).catch(error => {
-        console.error('⚠️ Не удалось установить команды Telegram:', error.message);
-    });
+    await syncTelegramCommands(api);
 
     crocodile.init(api);
     await blitz.init(api);
