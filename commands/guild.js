@@ -1088,13 +1088,31 @@ async function handleComponent(interaction) {
 async function handleModal(interaction) {
   const parts = interaction.customId.split(':');
   if (interaction.customId === 'guild:profile:rename:modal') {
-    const name=interaction.fields.getTextInputValue('new_name').trim();
-    if(name.length<2||name.length>24) return interaction.reply({content:'❌ Имя должно содержать от 2 до 24 символов.',flags:MessageFlags.Ephemeral});
-    const payment=removeCardDust(interaction.user.id,200,'Смена имени героя');
-    if(!payment?.ok) return interaction.reply({content:`❌ Недостаточно GS Dust. Нужно **200**, баланс: **${payment?.balance||0}**.`,flags:MessageFlags.Ephemeral});
-    try { db.prepare('UPDATE heroes SET name=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?').run(name,interaction.user.id); }
-    catch(error){ addCardDust(interaction.user.id,200,'Возврат за неудачную смену имени'); return interaction.reply({content:'❌ Не удалось изменить имя. Dust возвращён.',flags:MessageFlags.Ephemeral}); }
-    return interaction.reply({content:`✅ Имя героя изменено на **${name}**. Списано **200 GS Dust**.`,flags:MessageFlags.Ephemeral});
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const name = interaction.fields.getTextInputValue('new_name').trim().replace(/\s+/g, ' ');
+    if (name.length < 2 || name.length > 24) {
+      return interaction.editReply({ content: '❌ Имя должно содержать от 2 до 24 символов.' });
+    }
+    const hero = getHero(interaction.user.id);
+    if (!hero) return interaction.editReply({ content: '❌ Сначала создай героя.' });
+
+    try {
+      const result = db.transaction(() => {
+        const payment = removeCardDust(interaction.user.id, 200, 'Смена имени героя');
+        if (!payment?.ok) return { ok: false, reason: 'dust', balance: payment?.balance || 0 };
+        const updated = db.prepare('UPDATE heroes SET name=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?')
+          .run(name, interaction.user.id);
+        if (!updated.changes) throw new Error('Hero rename updated zero rows');
+        return { ok: true };
+      })();
+      if (!result.ok) {
+        return interaction.editReply({ content: `❌ Недостаточно GS Dust. Нужно **200**, баланс: **${result.balance}**.` });
+      }
+      return interaction.editReply({ content: `✅ Имя героя изменено на **${name}**. Списано **200 GS Dust**.` });
+    } catch (error) {
+      console.error('[Guild Rename]', interaction.user.id, error);
+      return interaction.editReply({ content: '❌ Не удалось изменить имя. Dust не списан. Ошибка записана в лог.' });
+    }
   }
   if(parts[0]==='guild'&&parts[1]==='market'){
     const kind=parts[2];

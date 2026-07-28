@@ -1776,9 +1776,27 @@ async function handleQuickEventAnswer(message){
     if(p.phase==='night'&&p.mafiaId===message.author.id){const target=message.mentions.users.first()?.id||String(message.content||'').match(/\d{15,22}/)?.[0];if(target&&p.alive?.includes(target)&&target!==p.mafiaId){p.nightVictimId=target;db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(p),mafia.id);await message.reply('🔪 Жертва выбрана.');}return true;}return false;
   }
   if(message.channel.id!==CHANNEL_ID)return false;
-  const round=db.prepare("SELECT * FROM quick_event_rounds WHERE channel_id=? AND status='active' ORDER BY id DESC LIMIT 1").get(CHANNEL_ID);if(!round)return false;
-  if(Date.now()-(round.activated_at||round.created_at)>ACTIVE_TTL_MS)return false;
-  
+  const activeRounds = db.prepare(`
+    SELECT * FROM quick_event_rounds
+    WHERE channel_id=? AND status='active'
+    ORDER BY COALESCE(activated_at,created_at) DESC,id DESC
+  `).all(message.channel.id);
+  if (!activeRounds.length) return false;
+  const round = activeRounds[0];
+  // Защита от «призрачных» раундов после рестарта или старого таймера:
+  // в одном канале обрабатывается только самый новый активный Quick Event.
+  if (activeRounds.length > 1) {
+    const staleIds = activeRounds.slice(1).map(r => r.id);
+    const placeholders = staleIds.map(() => '?').join(',');
+    db.prepare(`UPDATE quick_event_rounds SET status='expired',solved_at=? WHERE id IN (${placeholders})`)
+      .run(Date.now(), ...staleIds);
+  }
+  if (Date.now() - (round.activated_at || round.created_at) > ACTIVE_TTL_MS) {
+    db.prepare("UPDATE quick_event_rounds SET status='expired',solved_at=? WHERE id=? AND status='active'")
+      .run(Date.now(), round.id);
+    return false;
+  }
+
   const answer=normalize(message.content);if(!answer)return false;markParticipation(round.id,message.author.id);
   const payload=JSON.parse(round.payload_json||'{}');
   if(round.type==='word_hunt'){
@@ -1810,7 +1828,17 @@ async function handleQuickEventAnswer(message){
   }
   const attempts=db.prepare('SELECT COUNT(*) count FROM quick_event_attempts WHERE round_id=? AND user_id=?').get(round.id,message.author.id)?.count??0;if(attempts>=MAX_ATTEMPTS)return true;
   const inserted=db.prepare('INSERT OR IGNORE INTO quick_event_attempts(round_id,user_id,normalized_answer,created_at) VALUES(?,?,?,?)').run(round.id,message.author.id,answer,Date.now());if(!inserted.changes)return true;
-  const accepted=JSON.parse(round.answers_json).map(normalize);if(!accepted.includes(answer))return true;
+  const accepted=JSON.parse(round.answers_json).map(normalize);
+  let isAccepted=accepted.includes(answer);
+  // Для анаграммы дополнительно сверяем набор букв. Это страхует от
+  // рассинхронизации answers_json и текста карточки после обновлений.
+  if(!isAccepted && round.type==='unscramble'){
+    const promptLetters=normalize(round.prompt).replace(/\s/g,'').split('').sort().join('');
+    const answerLetters=answer.replace(/\s/g,'').split('').sort().join('');
+    isAccepted=promptLetters.length>1 && promptLetters===answerLetters && accepted.some(a=>a.replace(/\s/g,'').length===answer.replace(/\s/g,'').length);
+  }
+  if(!isAccepted)return true;
+  await message.react('✅').catch(()=>{});
   const won=db.prepare("UPDATE quick_event_rounds SET status='solved',winner_id=?,solved_at=? WHERE id=? AND status='active'").run(message.author.id,Date.now(),round.id);if(!won.changes)return true;
   const normalPayload=JSON.parse(round.payload_json||'{}');const tier=normalPayload.tier||'normal';const reward=grantReward(message.author,pickReward(round.difficulty,tier),round.id);db.prepare('UPDATE quick_event_rounds SET reward_type=?,reward_amount=?,reward_details=? WHERE id=?').run(reward.type,reward.amount,reward.details,round.id);
   const quickStats=recordQuickEventWin(message.author.id,round.type,round.id);

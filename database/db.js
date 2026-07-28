@@ -975,7 +975,7 @@ function ensureEconomyLogTableLocal() {
 }
 function logDustChange(userId, delta, before, after, reason='GS Dust operation') {
     ensureEconomyLogTableLocal();
-    db.prepare(`INSERT INTO economy_log(user_id,asset_type,asset_key,asset_name,delta,balance_before,balance_after,reason)
+    db.prepare(`INSERT INTO economy_log(user_id,asset_type,asset_key,asset_name,delta,balance_before,balance_after,reason,metadata_json)
       VALUES(?,'dust','gs_dust','GS Dust',?,?,?,?,?)`).run(String(userId), Math.trunc(delta), Math.trunc(before), Math.trunc(after), String(reason), null);
 }
 function addCardDust(userId, amount, reason = 'Начисление GS Dust') {

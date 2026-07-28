@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "18.5.4",
+  "version": "18.5.5",
   "private": true,
   "description": "Game Syndicate V18.5.4: Guildmates UX, Bomb Fix, Mafia Registration, D12 Timer and Discord Emoji Riddles",
   "main": "index.js",
