@@ -121,6 +121,22 @@ client.once('clientReady', () => {
         console.error('[RPG State Recovery] Ошибка запуска:', error);
     }
 
+    // V19.6.2 — единоразовые проверяемые восстановления по заявке владельца.
+    try {
+        const { applyTargetedRecoveryV1962 } = require('./services/targetedRecoveryV1962');
+        applyTargetedRecoveryV1962();
+    } catch (error) {
+        console.error('[V19.6.2 Targeted Recovery] Ошибка:', error);
+    }
+
+    // V19.6.2 Extra — единоразовое восстановление 8-часовой экспедиции для 759026090038657034.
+    try {
+        const { applyTargetedRecoveryV1962Extra } = require('./services/targetedRecoveryV1962Extra');
+        applyTargetedRecoveryV1962Extra();
+    } catch (error) {
+        console.error('[V19.6.2 Extra Recovery] Ошибка:', error);
+    }
+
     // Repeat the safe check every minute. This covers expeditions that finish
     // while the bot is already running and survives missed UI refreshes.
     setInterval(() => {

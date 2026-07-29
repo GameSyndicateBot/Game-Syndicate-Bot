@@ -12,7 +12,7 @@ const RECOVERY_DELAY_MS = 2500;
 const WATCHDOG_INTERVAL_MS = 3000;
 const WATCHDOG_GRACE_MS = 4000;
 const RESOLVING_STUCK_MS = 15000;
-const API_CALL_TIMEOUT_MS = 6500;
+const API_CALL_TIMEOUT_MS = 12000;
 const RECENT_QUESTION_LIMIT_PER_CATEGORY = 200;
 const RECENT_CATEGORY_LIMIT_PER_CHAT = 8;
 const NEAR_DUPLICATE_THRESHOLD = 0.72;
@@ -357,6 +357,22 @@ function initDb() {
         });
         repairRatings();
         console.log('✅ GS Blitz V19.4.4: очки всех игроков синхронизированы с победами');
+    }
+
+    // V19.6.2: восстановление 30 кубков участнику @disshxw.
+    const disshxwKey = 'v19_6_2_restore_disshxw_30_cups';
+    if (!db.prepare('SELECT 1 FROM telegram_blitz_migrations WHERE migration_key=?').get(disshxwKey)) {
+        db.transaction(() => {
+            db.prepare(`
+                UPDATE telegram_blitz_players
+                SET wins=30, rating=30, updated_at=CURRENT_TIMESTAMP
+                WHERE LOWER(COALESCE(username,''))='disshxw'
+                   OR LOWER(COALESCE(display_name,''))='@disshxw'
+                   OR LOWER(COALESCE(display_name,''))='disshxw'
+            `).run();
+            db.prepare('INSERT INTO telegram_blitz_migrations(migration_key) VALUES(?)').run(disshxwKey);
+        })();
+        console.log('✅ GS Blitz V19.6.2: @disshxw восстановлено 30 кубков.');
     }
 }
 initDb();
@@ -827,12 +843,16 @@ async function resolveRound(game) {
 
         if (game.current.explanation) lines.push('', esc(game.current.explanation));
 
-        await callApi('sendMessage', {
+        // Telegram иногда подтверждает запрос позже нашего timeout. Итог раунда
+        // не должен блокировать переход к следующему вопросу: пробуем отправить
+        // несколько раз, а при сетевой ошибке продолжаем матч и оставляем запись в логе.
+        const resultMessage = await callApi('sendMessage', {
             chat_id: game.chatId,
             ...(game.threadId ? { message_thread_id: game.threadId } : {}),
             text: lines.join('\n'),
             parse_mode: 'HTML',
-        }, { retries: 2 });
+        }, { retries: 3, optional: true });
+        if (!resultMessage) console.warn(`⚠️ Blitz: итог раунда ${game.round} не подтверждён Telegram, матч продолжен.`);
 
         if (game.alive.size <= 1) {
             game.resolving = false;
