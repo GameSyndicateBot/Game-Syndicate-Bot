@@ -3,15 +3,16 @@ const { QUESTIONS, CATEGORY_MAP } = require('./blitzQuestions');
 
 const MIN_PLAYERS = 2;
 const LOBBY_SECONDS = 10;
+const SOLO_QUEUE_TIMEOUT_MS = 60 * 1000;
 const QUESTION_SECONDS = 10;
 const BETWEEN_MS = 900;
 const MAX_ROUNDS = 25;
 const API_RETRIES = 2;
 const RECOVERY_DELAY_MS = 2500;
-const WATCHDOG_INTERVAL_MS = 2000;
+const WATCHDOG_INTERVAL_MS = 3000;
 const WATCHDOG_GRACE_MS = 4000;
 const RESOLVING_STUCK_MS = 15000;
-const API_CALL_TIMEOUT_MS = 4500;
+const API_CALL_TIMEOUT_MS = 6500;
 const RECENT_QUESTION_LIMIT_PER_CATEGORY = 200;
 const RECENT_CATEGORY_LIMIT_PER_CHAT = 8;
 const NEAR_DUPLICATE_THRESHOLD = 0.72;
@@ -457,8 +458,28 @@ function makeGame(chatId, threadId, carryQueue = new Map()) {
         transitionLabel: null,
         transitionToken: null,
         watchdogRecovering: false,
+        soloJoinedAt: carryQueue.size === 1 ? Date.now() : 0,
         generation: Date.now() + Math.random(),
     };
+}
+
+
+function armSoloQueueExpiry(game){
+    if(game.status!=='lobby'||game.queue.size!==1)return;
+    game.soloJoinedAt=Date.now();
+    later(game,async()=>{
+        if(game.status!=='lobby'||game.queue.size!==1)return;
+        const only=[...game.queue.values()][0];
+        game.queue.clear();
+        game.soloJoinedAt=0;
+        await editLobby(game);
+        await callApi('sendMessage',{
+            chat_id:game.chatId,
+            ...(game.threadId?{message_thread_id:game.threadId}:{}),
+            text:`⌛ ${only?.name?esc(only.name):'Игрок'} удалён из очереди: за 1 минуту никто больше не присоединился.`,
+            parse_mode:'HTML',
+        },{optional:true,retries:0});
+    },SOLO_QUEUE_TIMEOUT_MS,'solo-queue-expiry');
 }
 
 async function createLobby(chatId, threadId) {
@@ -1004,6 +1025,7 @@ async function join(callback) {
 
     await editLobby(game);
 
+    if (game.status === 'lobby' && game.queue.size === 1) armSoloQueueExpiry(game);
     if (game.status === 'lobby' && game.queue.size >= MIN_PLAYERS) startCountdown(game);
     if (game.status === 'countdown' && game.queue.size < MIN_PLAYERS) {
         clearTimer(key(game.chatId, game.threadId));

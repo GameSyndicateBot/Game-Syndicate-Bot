@@ -1,4 +1,4 @@
-const { listResources, getResourceQuantity, grantResource, consumeResources } = require('../systems/hero/resourceService');
+const { listResources, getResourceQuantity, grantResource, consumeResources, normalizeResourceKey, resourceMeta } = require('../systems/hero/resourceService');
 const {
   SlashCommandBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
   StringSelectMenuBuilder, UserSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags,
@@ -30,6 +30,21 @@ const guildMerchant = require('../services/guildMerchantService');
 
 const GUILD_CHANNEL_ID = '1530165282512044032';
 const EXPEDITION_CHANNEL_ID = '1529566430301782017';
+
+function transferMarketMaterial(fromUserId,toUserId,rawKey,rawQuantity,reason='market_exchange'){
+  const materialKey=normalizeResourceKey(rawKey);
+  const quantity=Math.max(1,Math.floor(Number(rawQuantity)||0));
+  const owned=Number(db.prepare('SELECT quantity FROM hero_materials WHERE user_id=? AND material_key=?').get(String(fromUserId),materialKey)?.quantity||0);
+  if(owned<quantity)throw new Error('materials');
+  const removed=db.prepare('UPDATE hero_materials SET quantity=quantity-?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND material_key=? AND quantity>=?')
+    .run(quantity,String(fromUserId),materialKey,quantity);
+  if(removed.changes!==1)throw new Error('materials');
+  db.prepare('DELETE FROM hero_materials WHERE user_id=? AND material_key=? AND quantity<=0').run(String(fromUserId),materialKey);
+  db.prepare(`INSERT INTO hero_materials(user_id,material_key,quantity,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id,material_key) DO UPDATE SET quantity=quantity+excluded.quantity,updated_at=CURRENT_TIMESTAMP`)
+    .run(String(toUserId),materialKey,quantity);
+  return {key:materialKey,quantity,name:resourceMeta(materialKey).name,reason};
+}
 const HUB_MARKER = '🏰 **ГИЛЬДИЯ ГЕРОЕВ • GAME SYNDICATE**';
 
 function hubRows() {
@@ -1269,8 +1284,7 @@ async function handleComponent(interaction) {
         if(!claimExchangeLot(id,takerId))throw new Error('closed');
 
         if(lot.want_type==='material'){
-          if(!consumeResources(takerId,{[lot.want_key]:Number(lot.want_qty)}).ok)throw new Error('materials');
-          grantResource(lot.creator_id,lot.want_key,Number(lot.want_qty),'market_exchange_received');
+          transferMarketMaterial(takerId,lot.creator_id,lot.want_key,lot.want_qty,'market_exchange_wanted');
         }else if(lot.want_type==='dust'){
           const payment=removeCardDust(takerId,Number(lot.want_qty),`Обмен №${id}`);
           if(!payment?.ok)throw new Error('dust');
@@ -1287,7 +1301,13 @@ async function handleComponent(interaction) {
           giveEquipmentTrade(lot.creator_id,removed.key,removed.upgrade||0);
         }else throw new Error('want_type');
 
-        if(lot.offer_type==='material')grantResource(takerId,lot.offer_key,Number(lot.offer_qty),'market_exchange_received');
+        if(lot.offer_type==='material'){
+          // Материал создателя уже лежит в эскроу, поэтому здесь только выдаём его принимающему.
+          const key=normalizeResourceKey(lot.offer_key),qty=Math.max(1,Math.floor(Number(lot.offer_qty)||0));
+          db.prepare(`INSERT INTO hero_materials(user_id,material_key,quantity,updated_at) VALUES(?,?,?,CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id,material_key) DO UPDATE SET quantity=quantity+excluded.quantity,updated_at=CURRENT_TIMESTAMP`)
+            .run(takerId,key,qty);
+        }
         else if(lot.offer_type==='dust')addCardDust(takerId,Number(lot.offer_qty),`Обмен №${id}`);
         else if(lot.offer_type==='companion'){
           const data=JSON.parse(lot.offer_data||'{}');

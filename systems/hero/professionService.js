@@ -153,8 +153,14 @@ function changeProfession(userId,key){
   if(current.profession_key===key) return {ok:false,reason:'same',current};
   const payment=removeCardDust(userId,PROFESSION_CHANGE_COST);
   if(!payment.ok) return {ok:false,reason:'dust',required:PROFESSION_CHANGE_COST,balance:payment.balance};
-  db.prepare(`UPDATE hero_professions SET profession_key=?,level=1,xp=0,work_count=0,energy=?,energy_updated_at=CURRENT_TIMESTAMP,specialization_key=NULL,updated_at=CURRENT_TIMESTAMP WHERE user_id=?`)
-    .run(key,BASE_ENERGY_MAX,userId);
+  // Смена профессии не восстанавливает энергию: сохраняем фактический запас
+  // после синхронизации регенерации и только ограничиваем его максимумом 1 уровня.
+  const preservedEnergy=Math.min(BASE_ENERGY_MAX,Math.max(0,Number(current.energy)||0));
+  const preservedUpdatedAt=current.energy_updated_at
+    ? new Date(current.energy_updated_at).toISOString().replace('T',' ').replace('Z','')
+    : new Date().toISOString().replace('T',' ').replace('Z','');
+  db.prepare(`UPDATE hero_professions SET profession_key=?,level=1,xp=0,work_count=0,energy=?,energy_updated_at=?,specialization_key=NULL,updated_at=CURRENT_TIMESTAMP WHERE user_id=?`)
+    .run(key,preservedEnergy,preservedUpdatedAt,userId);
   return {ok:true,row:getProfession(userId),spent:PROFESSION_CHANGE_COST,balance:payment.balance};
 }
 function processProfessionMaterial(userId,batches=1){

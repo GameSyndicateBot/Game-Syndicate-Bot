@@ -15,7 +15,10 @@ function getUpgradeCost(item, targetLevel) {
   const rarity = RARITY_MULTIPLIER[item.rarity] || 1;
   const dust = Math.round((110 + targetLevel * targetLevel * 42) * rarity / 5) * 5;
   const materials = {};
-  materials.iron_ingot = Math.max(3, Math.ceil(targetLevel * rarity * 2.2));
+  const itemText=`${item.item_key||''} ${item.name||''}`.toLowerCase();
+  const isBow=/лук|арбалет|bow|crossbow/.test(itemText);
+  // Луки и арбалеты улучшаются досками, остальное кузнечное снаряжение — слитками.
+  materials[isBow ? 'board' : 'iron_ingot'] = Math.max(3, Math.ceil(targetLevel * rarity * 2.2));
   if (targetLevel >= 4) materials.crystal = Math.max(1, Math.ceil((targetLevel - 3) * rarity));
   if (targetLevel >= 7) materials.essence = Math.max(1, Math.ceil((targetLevel - 6) * rarity));
   if (targetLevel >= 9) materials.void_crystal = Math.max(1, Math.ceil((targetLevel - 8) * rarity));

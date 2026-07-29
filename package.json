@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.6.0",
+  "version": "19.6.1",
   "private": true,
   "description": "Game Syndicate V19.6.0: weekly lottery, expedition map and RPG achievements",
   "main": "index.js",
