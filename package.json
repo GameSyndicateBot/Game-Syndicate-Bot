@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.5.3",
+  "version": "19.6.0",
   "private": true,
-  "description": "Game Syndicate V19.5.1: combat bag, food, potions, battle scrolls and herbalist expansion",
+  "description": "Game Syndicate V19.6.0: weekly lottery, expedition map and RPG achievements",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

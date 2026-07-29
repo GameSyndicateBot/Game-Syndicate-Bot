@@ -1,6 +1,7 @@
 const { startQuickEventScheduler } = require('../systems/quickEventSystem');
 const { startScheduler: startWorldBossScheduler } = require('../services/worldBoss/worldBossSystem');
 const { startLuckyDayScheduler } = require('../services/luckyDay');
+const { startScheduler: startWeeklyLotteryScheduler } = require('../services/weeklyLottery');
 const { startAutomaticBackups } = require('../services/automaticBackups');
 const { startCaravanScheduler } = require('../services/caravanService');
 const { db, getOrCreatePlayer, updatePlayer } = require('../database/db');
@@ -86,6 +87,7 @@ module.exports = {
         startQuickEventScheduler(client);
         startWorldBossScheduler(client);
         startLuckyDayScheduler(client);
+        startWeeklyLotteryScheduler(client);
         startAutomaticBackups(client);
         startCaravanScheduler(client);
         const { sendV1915DungeonRecoveryNotice, sendV1916ManticoreRecoveryNotice } = require('../services/caravanService');

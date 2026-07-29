@@ -264,6 +264,11 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
+            if (interaction.customId.startsWith('lottery:')) {
+                const command = client.commands.get('lottery');
+                if (command?.handleComponent) return await command.handleComponent(interaction);
+            }
+
             if (interaction.customId.startsWith('daily_')) {
                 const command = client.commands.get('daily');
                 if (command?.handleComponent) {
