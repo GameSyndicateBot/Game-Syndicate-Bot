@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlags, AttachmentBuilder, Acti
 const { getHero } = require('../systems/hero/heroService');
 const { getEffectiveHero } = require('../systems/hero/itemService');
 const { LOCATIONS } = require('../systems/hero/expeditionData');
-const { getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, availableExpeditionDurations, activeWorldBoss, getWorldStats, getWorldActivity, EXPEDITION_TACTICS, getExpeditionTactic, rewardPreview } = require('../systems/hero/expeditionService');
+const { getDailyWorld, getDailyLocations, getExpeditionStartPreview, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, availableExpeditionDurations, activeWorldBoss, getWorldStats, getWorldActivity, EXPEDITION_TACTICS, getExpeditionTactic, rewardPreview } = require('../systems/hero/expeditionService');
 const { createExpeditionHubCard } = require('../images/hero/createExpeditionHubCard');
 const { HERO_CLASSES } = require('../systems/hero/heroData');
 const { getAllClassProgress, getClassProgress, normalizeClassKey } = require('../systems/hero/classProgressService');
@@ -13,6 +13,10 @@ function ts(value, style = 'R') { return `<t:${Math.floor(new Date(value).getTim
 function stars(n) { return '★'.repeat(n) + '☆'.repeat(5 - n); }
 function outcomeLabel(key) { return ({ great:'🌟 Великолепный успех', success:'✅ Успех', partial:'⚠️ Частичный успех', fail:'❌ Провал' })[key] || key; }
 function noHero() { return { content: '❌ Сначала создай героя в постоянном **Guild Hub**.', flags: MessageFlags.Ephemeral }; }
+
+function offeredLocation(guildId, locationKey) {
+  return getDailyLocations(guildId || 'global').find(location => location.key === locationKey) || null;
+}
 
 
 async function checkExpeditionAchievements(interaction) {
@@ -333,7 +337,7 @@ async function handleComponent(interaction) {
 
   if (action === 'start') {
     const locationKey = parts[2];
-    const location = LOCATIONS[locationKey];
+    const location = offeredLocation(interaction.guildId, locationKey);
     const progress = getAllClassProgress(interaction.user.id);
     const menu = new StringSelectMenuBuilder().setCustomId(`expedition:class:${locationKey}`).setPlaceholder('Выбери класс для этой экспедиции')
       .addOptions(progress.map(row => { const c=HERO_CLASSES[row.class_key]; return { label:`${c.name} • Lv.${row.level}`, value:row.class_key, emoji:c.icon, description:`Опыт ${row.xp} • прокачивается только выбранный класс` }; }));
@@ -350,7 +354,7 @@ async function handleComponent(interaction) {
   if (action === 'class') {
     const locationKey=parts[2];
     const classKey=normalizeClassKey(interaction.values?.[0]);
-    const location=LOCATIONS[locationKey];
+    const location=offeredLocation(interaction.guildId, locationKey);
     const menu=durationMenu(locationKey,classKey);
     if(!menu)return interaction.update({content:`❌ До следующего World Boss недостаточно времени даже для 2-часовой экспедиции.`,embeds:[],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('expedition:locations').setLabel('Вернуться к локациям').setEmoji('⬅️').setStyle(ButtonStyle.Secondary))]});
     return interaction.update({embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(`⏳ ${location?.name || 'Длительность экспедиции'}`).setDescription(`Класс: **${HERO_CLASSES[classKey]?.icon || ''} ${HERO_CLASSES[classKey]?.name || classKey}**
@@ -364,8 +368,11 @@ async function handleComponent(interaction) {
 
   if (action === 'duration') {
     const locationKey=parts[2], classKey=normalizeClassKey(parts[3]), durationHours=Number(interaction.values?.[0]||4);
-    const location=LOCATIONS[locationKey], effective=getEffectiveHero(hero);
-    const chances=Object.values(EXPEDITION_TACTICS).map(t=>({t,chance:Math.round(computeSuccessChance(effective,location,{},t.key)),preview:rewardPreview(location,t.key,durationHours)}));
+    const location=offeredLocation(interaction.guildId, locationKey);
+    const chances=Object.values(EXPEDITION_TACTICS).map(t=>{
+      const exact=getExpeditionStartPreview(interaction.user.id, locationKey, interaction.guildId || 'global', t.key);
+      return {t,chance:Number(exact.chance||0),preview:rewardPreview(location,t.key,durationHours)};
+    });
     const tacticMenu=new StringSelectMenuBuilder().setCustomId(`expedition:tactic:${locationKey}:${classKey}:${durationHours}`).setPlaceholder('Выбери тактику героя').addOptions(chances.map(({t,chance,preview})=>({label:`${t.name} — ${chance}%`,value:t.key,emoji:t.icon,description:`XP ${preview.heroXp[0]}–${preview.heroXp[1]} · класс ${preview.classXp[0]}–${preview.classXp[1]} · Dust ${preview.dust[0]}–${preview.dust[1]}`.slice(0,100)})));
     const preview=chances.map(({t,chance,preview:p})=>`${t.icon} **${t.name}: ${chance}%**
 ✨ Герой: **${p.heroXp[0]}–${p.heroXp[1]} XP** · 📚 Класс: **${p.classXp[0]}–${p.classXp[1]} XP** · 💠 **${p.dust[0]}–${p.dust[1]} Dust**`).join('\n\n');
@@ -401,7 +408,7 @@ ${preview}
     return interaction.reply({
       embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`)
         .setDescription(`**${hero.name}** отправился в **${result.location.name}** как **${HERO_CLASSES[result.expedition.class_key]?.icon || ''} ${HERO_CLASSES[result.expedition.class_key]?.name || result.expedition.class_key}**.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**\n\nДлительность: **${Number(result.expedition.duration_hours||4)} ч.**\nВозвращение ${ts(result.expedition.returns_at)}. После этого нажми **«Забрать результат»**.`)
-        .addFields({ name: 'Опасность', value: stars(result.location.difficulty), inline: true }, { name: 'Шанс успеха', value: `${Number(result.chance || Math.round(computeSuccessChance(getEffectiveHero(hero), result.location, {}, tactic.key)))}%`, inline: true })],
+        .addFields({ name: 'Опасность', value: stars(result.location.difficulty), inline: true }, { name: 'Шанс успеха', value: `${Number(result.chance)}%`, inline: true })],
       flags: MessageFlags.Ephemeral,
     });
   }

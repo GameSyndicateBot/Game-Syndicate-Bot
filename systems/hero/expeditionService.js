@@ -7,7 +7,7 @@ const { EXPEDITION_LOOT, RARITY_ORDER } = require('./itemData');
 const { grantItem, getEffectiveHero, getEquipmentBonuses } = require('./itemService');
 const { grantCompanion } = require('./companionService');
 const { expeditionMaterialRewards } = require('./materialService');
-const { consumeContextBuffs, describeBuffKeys } = require('./alchemyService');
+const { consumeContextBuffs, describeBuffKeys, getBuffBonuses } = require('./alchemyService');
 const { normalizeClassKey, isValidClass, ensureClassProgress, grantClassXp, getClassProgress } = require('./classProgressService');
 const { applyExpeditionResult, getRegionEffects } = require('../world/worldService');
 const { rollMinibossEncounter } = require('../world/minibossService');
@@ -173,6 +173,23 @@ function hasActiveDungeon(userId) {
   } catch (_) { return false; }
 }
 
+
+function getExpeditionStartPreview(userId, locationKey, guildId = 'global', tacticKey = 'balanced') {
+  const hero = getHero(userId);
+  if (!hero) return { ok:false, reason:'no_hero' };
+  const location = getDailyLocations(guildId).find(l => l.key === locationKey);
+  if (!location) return { ok:false, reason:'not_offered' };
+  const effectiveHero = getEffectiveHero(hero);
+  const alchemyBonuses = getBuffBonuses(userId, 'expedition') || {};
+  const worldEffects = getRegionEffects(guildId || 'global', location.region);
+  const bonuses = {
+    ...alchemyBonuses,
+    expedition_success: (Number(alchemyBonuses.expedition_success) || 0) + Number(worldEffects.success || 0),
+  };
+  const chance = Math.round(computeSuccessChance(effectiveHero, location, bonuses, tacticKey));
+  return { ok:true, hero:effectiveHero, location, bonuses, worldEffects, chance };
+}
+
 function startExpedition(userId, locationKey, guildId = 'global', classKey = null, tacticKey = 'balanced', durationHours = 4) {
   const hero = getHero(userId);
   if (!hero) return { ok: false, reason: 'no_hero' };
@@ -195,10 +212,14 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
   const window = expeditionWindow(new Date(), testMode ? 1/60 : durationHours);
   if (!testMode && !window.fits) return { ok: false, reason: 'boss_window', nextBossAt: window.nextBoss.toISOString() };
   const returnsAt = new Date(Date.now() + durationMs).toISOString();
+  // Calculate the exact chance from the same daily-location snapshot and the same active bonuses
+  // that were shown in the confirmation menu. Only after that do we consume the buffs.
+  const preview = getExpeditionStartPreview(userId, locationKey, guildId, tacticKey);
+  if (!preview.ok) return preview;
   const alchemy = consumeContextBuffs(userId, 'expedition');
-  const worldEffectsAtStart = getRegionEffects(guildId || 'global', location.region);
-  const effectiveHero = getEffectiveHero(hero);
-  const startChance = Math.round(computeSuccessChance(effectiveHero, location, { ...(alchemy.bonuses || {}), expedition_success:(Number(alchemy.bonuses?.expedition_success)||0)+Number(worldEffectsAtStart.success||0) }, tacticKey));
+  const worldEffectsAtStart = preview.worldEffects;
+  const effectiveHero = preview.hero;
+  const startChance = preview.chance;
   const buffPayload = { bonuses: alchemy.bonuses || {}, consumed: alchemy.consumed || [], effects: describeBuffKeys(alchemy.consumed || []), successChance:startChance, worldEffects:{ success:Number(worldEffectsAtStart.success||0), eventKey:worldEffectsAtStart.event?.key||null } };
   const heroSnapshot = {
     name: effectiveHero.name, level: effectiveHero.level, hp: effectiveHero.hp, max_hp: effectiveHero.max_hp,
@@ -518,4 +539,4 @@ function applyTargetedExpeditionRepairs() {
 }
 applyTargetedExpeditionRepairs();
 
-module.exports = { EXPEDITION_TACTICS, getExpeditionTactic, durationModifiers, rewardPreview, todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, availableExpeditionDurations, activeWorldBoss};
+module.exports = { getExpeditionStartPreview, EXPEDITION_TACTICS, getExpeditionTactic, durationModifiers, rewardPreview, todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, availableExpeditionDurations, activeWorldBoss};
