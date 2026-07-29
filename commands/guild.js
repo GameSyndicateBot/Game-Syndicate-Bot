@@ -62,17 +62,22 @@ function ensureProfilePreferences() {
 ensureProfilePreferences();
 
 function npcRows() {
-  const buttons = [
+  const firstRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('guild:blacksmith').setLabel('Кузнец').setEmoji('⚒️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('guild:alchemist').setLabel('Алхимик').setEmoji('🧪').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('guild:hospital').setLabel('Лекарь').setEmoji('🩺').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId('guild:cook').setLabel('Повар').setEmoji('👨‍🍳').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId('guild:merchant').setLabel('Торговец').setEmoji('💰').setStyle(ButtonStyle.Primary),
-  ];
+  );
+
+  const rows = [firstRow];
   if (caravan.isActive()) {
-    buttons.push(new ButtonBuilder().setCustomId('guild:caravan').setLabel('Караванщик').setEmoji('🐪').setStyle(ButtonStyle.Primary));
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guild:caravan').setLabel('Караванщик').setEmoji('🐪').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+    ));
   }
-  return [new ActionRowBuilder().addComponents(...buttons)];
+  return rows;
 }
 
 function storageExtraRows() {

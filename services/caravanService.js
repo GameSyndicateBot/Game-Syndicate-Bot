@@ -244,6 +244,40 @@ function remainingMs(now=Date.now()){const s=ensureToday();return Math.max(0,par
 function formatTimeLeft(ms=remainingMs()){const min=Math.max(0,Math.ceil(ms/60000));return `${min} мин.`;}
 function statePublic(){const s=ensureToday();return {...s,active:isActive(),remainingMs:remainingMs(),atmosphere:ATMOSPHERE[s.atmosphere_index]||ATMOSPHERE[0]};}
 
+
+// V19.3.4 — разовый восстановительный визит 29.07.2026.
+// Нужен потому, что активный Караванщик добавлял шестую кнопку в один ActionRow,
+// Discord отклонял компоненты и меню Гильдейцев отвечало «Произошла ошибка».
+function applyV1934CaravanRecoveryVisit(){
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const recoveryDay='2026-07-29';
+  const migrationKey='v19.3.4-caravan-recovery-visit-2026-07-29';
+  if(moscowDay()!==recoveryDay) return false;
+  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)) return false;
+
+  const now=Date.now();
+  const opens=Math.floor(now/60000)*60000;
+  const closes=opens+VISIT_MS;
+  const rng=seeded(`caravan-recovery:${recoveryDay}`);
+  const atmosphereIndex=randint(0,ATMOSPHERE.length-1,rng);
+
+  db.transaction(()=>{
+    db.prepare(`INSERT INTO caravan_state(id,day_key,opens_at,closes_at,atmosphere_index,announced,updated_at)
+      VALUES(1,?,?,?,?,0,CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        day_key=excluded.day_key,
+        opens_at=excluded.opens_at,
+        closes_at=excluded.closes_at,
+        atmosphere_index=excluded.atmosphere_index,
+        announced=0,
+        updated_at=CURRENT_TIMESTAMP`).run(recoveryDay,iso(opens),iso(closes),atmosphereIndex);
+    db.prepare('DELETE FROM caravan_offers WHERE day_key=?').run(recoveryDay);
+    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+  })();
+  console.log('[V19.3.4] Караванщик повторно запущен на 30 минут после исправления меню Гильдейцев.');
+  return true;
+}
+
 function rollRarity(rng){let r=rng()*100;for(const [key,v] of Object.entries(RARITY)){r-=v.weight;if(r<=0)return key;}return 'common';}
 function priceFor(rarity,rng){const x=RARITY[rarity];return Math.round(randint(x.min,x.max,rng)/10)*10;}
 function recentKeys(userId){return new Set(db.prepare(`SELECT item_key FROM caravan_history WHERE user_id=? AND created_at>=datetime('now','-30 days')`).all(userId).map(x=>String(x.item_key).replace(/_(common|rare|epic|legendary|mythic|exclusive)$/,'')));}
@@ -338,7 +372,7 @@ async function refreshHub(client){try{const guild=require('../commands/guild');i
 let timer=null,lastActive=null;
 function startCaravanScheduler(client){if(timer)return timer;ensureToday();const tick=async()=>{const s=ensureToday(),active=isActive();if(active&&!s.announced){db.prepare('UPDATE caravan_state SET announced=1 WHERE id=1').run();await announce(client,s);await refreshHub(client);}if(lastActive===true&&!active)await refreshHub(client);lastActive=active;};tick().catch(console.error);timer=setInterval(()=>tick().catch(console.error),CHECK_MS);timer.unref?.();console.log('🐪 Caravan scheduler started');return timer;}
 
-module.exports={RARITY,CATALOG,ATMOSPHERE,ensureToday,isActive,remainingMs,formatTimeLeft,statePublic,ensureOffers,getOffer,reserveOffer,cancelReservation,bargain,buyOffer,getCardDust,startCaravanScheduler};
+module.exports={RARITY,CATALOG,ATMOSPHERE,ensureToday,isActive,remainingMs,formatTimeLeft,statePublic,ensureOffers,getOffer,reserveOffer,cancelReservation,bargain,buyOffer,getCardDust,startCaravanScheduler,applyV1934CaravanRecoveryVisit};
 
 // V19.1.5 — точечная коррекция предметов и публичный отчёт о восстановлении данжа.
 function applyV1915TargetedCorrections(){

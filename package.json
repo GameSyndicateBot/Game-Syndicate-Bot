@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.3.3",
+  "version": "19.3.4",
   "private": true,
-  "description": "Game Syndicate V19.3.3: GS Blitz empty lobby after match",
+  "description": "Game Syndicate V19.3.4: Caravan guild menu fix and recovery visit",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
