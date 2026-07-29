@@ -46,8 +46,11 @@ const SPECIALIZATIONS = Object.freeze({
 const WORK_TABLES = Object.freeze({
   herbalist: [
     { key:'forest_herbs', min:2, max:4, chance:1, tier:'common' },
-    { key:'culinary_herbs', min:1, max:3, chance:.72, tier:'uncommon' },
-    { key:'moon_blossom', min:1, max:1, chance:.12, tier:'rare' },
+    { key:'culinary_herbs', min:1, max:3, chance:.70, tier:'uncommon' },
+    { key:'forest_mushrooms', min:1, max:2, chance:.35, tier:'uncommon' },
+    { key:'wild_berries', min:1, max:3, chance:.40, tier:'uncommon' },
+    { key:'grain', min:1, max:2, chance:.25, tier:'uncommon' },
+    { key:'moon_blossom', min:1, max:1, chance:.10, tier:'rare' },
   ],
   miner: [
     { key:'iron_ore', min:2, max:4, chance:1, tier:'common' },

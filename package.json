@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.4.7",
+  "version": "19.5.0",
   "private": true,
-  "description": "Game Syndicate V19.4.7: exact expedition chance consistency fix",
+  "description": "Game Syndicate V19.5.0: combat bag, food, potions, battle scrolls and herbalist expansion",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

@@ -12,6 +12,8 @@ const { CLASSES, MINIONS, BOSSES } = require('./config');
 const { createWorldBossBattleCard, cardFile } = require('../../images/worldBoss/createWorldBossBattleCard');
 const { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, hpMultiplier, resistancePercent, heroSummary, selectedClassBonuses } = require('./heroIntegration');
 const { consumeContextBuffs, describeBuffKeys } = require('../../systems/hero/alchemyService');
+const { getInventory } = require('../../systems/hero/itemService');
+const { ITEMS } = require('../../systems/hero/itemData');
 const GAME_CHANNELS = require('../../config/gameChannels');
 
 const CHANNEL_ID = GAME_CHANNELS.worldBoss;
@@ -193,6 +195,7 @@ function buttons(b) {
     new ButtonBuilder().setCustomId(`wb_log_${b.id}`).setLabel('Журнал').setEmoji('📖').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`wb_summons_${b.id}`).setLabel('Мои призывы').setEmoji('🤖').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`wb_enemies_${b.id}`).setLabel('Враги').setEmoji('👾').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`wb_bag_${b.id}`).setLabel('Сумка').setEmoji('🎒').setStyle(ButtonStyle.Primary),
   ));
   return rows;
 }
@@ -500,7 +503,7 @@ function pickDamageType(profile, fallback = 'physical') {
 }
 function damageTarget(id, target, amount, damageType = 'physical') {
   const e = effects(target); let d = Math.max(0, Math.round(amount * playerResistanceMultiplier(target, damageType)));
-  if (e.guardianUltRounds > 0) d = Math.round(d * 0.6); else if (e.guardRounds > 0) d = Math.round(d * 0.5); if (e.rageTurns > 0 || e.bloodRageTurns > 0) d = Math.round(d * 1.25); if (e.partyGuardRounds > 0) d = Math.round(d * Number(e.partyGuardMultiplier || 0.8));
+  if (e.guardianUltRounds > 0) d = Math.round(d * 0.6); else if (e.guardRounds > 0) d = Math.round(d * 0.5); if (e.combatResistanceTurns > 0) d = Math.round(d * (1 - Number(e.combatResistance || 0))); if (e.guildFeastActive) d = Math.round(d * 0.90); if (e.rageTurns > 0 || e.bloodRageTurns > 0) d = Math.round(d * 1.25); if (e.partyGuardRounds > 0) d = Math.round(d * Number(e.partyGuardMultiplier || 0.8));
   let shield = Number(e.shield || 0), absorbed = 0; const hadShield = shield > 0;
   if (shield) { absorbed = Math.min(shield, d); shield -= absorbed; d -= absorbed; e.shield = shield; const shieldOwner=String(e.shieldOwner||''); if(absorbed>0 && shieldOwner){ db.prepare('UPDATE world_boss_players SET damage_taken=damage_taken+? WHERE battle_id=? AND user_id=?').run(absorbed,id,shieldOwner); } if(shield<=0) delete e.shieldOwner; updateEffects(id, target.user_id, e); }
   const hp = Math.max(0, target.hp - d), diedNow = target.status === 'alive' && target.hp > 0 && hp <= 0;
@@ -590,7 +593,7 @@ function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null
   saveState(b,state);
   return {dealt,target:b.boss_name,minion:false};
 }
-function applyDamageBuff(p, base) { const e = effects(p); let d = base * damageMultiplier(p); if (p.class_key === 'berserker') { const missing = 1 - (p.hp / Math.max(1, p.max_hp)); d *= 1 + Math.min(0.5, missing * 0.6); } if (e.bloodRageTurns > 0) d *= 2; if (e.rageTurns > 0) d *= 1.4; if (e.damageBuffTurns > 0) d *= 1 + Number(e.damageBuff || 0); if (e.groupDamageRounds > 0) d *= 1 + Number(e.groupDamage || 0); if (e.doubleNext) { d *= 2; e.doubleNext = false; updateEffects(p.battle_id, p.user_id, e); } return Math.round(d); }
+function applyDamageBuff(p, base) { const e = effects(p); let d = base * damageMultiplier(p); if (p.class_key === 'berserker') { const missing = 1 - (p.hp / Math.max(1, p.max_hp)); d *= 1 + Math.min(0.5, missing * 0.6); } if (e.bloodRageTurns > 0) d *= 2; if (e.rageTurns > 0) d *= 1.4; if (e.damageBuffTurns > 0) d *= 1 + Number(e.damageBuff || 0); if (e.combatDamageTurns > 0) d *= 1 + Number(e.combatDamage || 0); if (e.guildFeastActive) d *= 1.10; if (e.groupDamageRounds > 0) d *= 1 + Number(e.groupDamage || 0); if (e.doubleNext) { d *= 2; e.doubleNext = false; updateEffects(p.battle_id, p.user_id, e); } return Math.round(d); }
 function healPlayer(id, healerId, target, amount) { const te = effects(target); const penalty = Number(te.healingPenaltyTurns || 0) > 0 ? clamp(Number(te.healingPenalty || 0.30), 0, 0.8) : 0; const adjusted = Math.max(0, Math.round(Number(amount || 0) * (1 - penalty))); const nh = Math.min(target.max_hp, target.hp + adjusted), actual = nh - target.hp; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(nh, id, target.user_id); if (actual > 0) db.prepare('UPDATE world_boss_players SET healing_done=healing_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(actual, actual, id, healerId); return actual; }
 function validTargets(id, kind) { const ps = battlePlayers(id); return kind === 'dead' ? ps.filter(x => x.status === 'dead') : ps.filter(x => x.status === 'alive'); }
 function actionTargets(id, player, action, kind) { let list = validTargets(id, kind); if (player.class_key === 'cleric' && action === 'skill') list = list.filter(x => x.user_id !== player.user_id); return list; }
@@ -1385,7 +1388,7 @@ async function bossTurn(id) {
   saveState(b, state);
   for (const p of battlePlayers(id)) {
     const e = effects(p);
-    for (const k of ['guardRounds','guardianUltRounds','tauntRounds','interceptRounds','groupDamageRounds','partyGuardRounds','healingPenaltyTurns','bossControlImmunityTurns']) if (e[k] > 0) e[k]--;
+    for (const k of ['guardRounds','guardianUltRounds','tauntRounds','interceptRounds','groupDamageRounds','partyGuardRounds','healingPenaltyTurns','bossControlImmunityTurns','combatDamageTurns','combatResistanceTurns']) if (e[k] > 0) e[k]--;
     updateEffects(id, p.user_id, e);
   }
 }
@@ -1520,6 +1523,64 @@ async function finish(id, win) {
 
 function scheduleRegular() { setTimeout(() => { try { require('../../systems/quickEventSystem').postQuickEvent(clientRef).catch(console.error); } catch (e) { console.error(e); } }, 5000).unref?.(); }
 
+
+const COMBAT_BAG = Object.freeze({
+  food: {
+    travel_stew:{icon:'🍲',name:'Походное рагу',text:'восстанавливает 35 HP'},
+    hunters_meal:{icon:'🍖',name:'Ужин охотника',text:'+15% урона на 2 хода'},
+    guild_feast:{icon:'🥧',name:'Гильдейский пирог',text:'+20% Max HP, +10% урона, -10% входящего урона и +10% лечения до конца боя'},
+  },
+  potion: {
+    healing_potion_small:{icon:'❤️',name:'Малое зелье лечения',text:'восстанавливает 30 HP'},
+    healing_potion_large:{icon:'💖',name:'Большое зелье лечения',text:'восстанавливает 75 HP'},
+    healing_potion_supreme:{icon:'🌟',name:'Зелье полного восстановления',text:'восстанавливает 140 HP'},
+    war_elixir:{icon:'⚔️',name:'Эликсир боевого транса',text:'+20% урона на 3 хода'},
+    stone_skin_elixir:{icon:'🪨',name:'Эликсир каменной кожи',text:'-20% входящего урона на 3 хода'},
+  },
+  scroll: {
+    rage_scroll:{icon:'🔥',name:'Свиток ярости',text:'+20% урона на 3 хода'},
+    defense_scroll:{icon:'🛡️',name:'Свиток защиты',text:'-20% входящего урона на 3 хода'},
+    fire_scroll:{icon:'🔥',name:'Свиток Огня',text:'90 магического урона'},
+    ice_scroll:{icon:'❄️',name:'Свиток Льда',text:'55 урона и -20 ярости босса'},
+    lightning_scroll:{icon:'⚡',name:'Свиток Молнии',text:'130 магического урона'},
+    barrier_scroll:{icon:'🛡️',name:'Свиток Барьера',text:'щит 70 HP'},
+    blessing_scroll:{icon:'✨',name:'Свиток Благословения',text:'+15% урона и -10% входящего урона на 3 хода'},
+    weakening_scroll:{icon:'☠️',name:'Свиток Ослабления',text:'следующая атака босса -20% урона'},
+    cleanse_scroll:{icon:'🌀',name:'Свиток Очищения',text:'снимает проклятия и блокировки'},
+  },
+});
+function combatBagCategory(itemKey){for(const [category,items] of Object.entries(COMBAT_BAG))if(items[itemKey])return category;return null;}
+function consumeHeroInventoryItem(userId,itemKey){
+  const tx=db.transaction(()=>{const row=db.prepare('SELECT id,quantity FROM hero_inventory WHERE user_id=? AND item_key=?').get(String(userId),itemKey);if(!row||Number(row.quantity)<1)throw new Error('missing');if(Number(row.quantity)===1)db.prepare('DELETE FROM hero_inventory WHERE id=?').run(row.id);else db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=?').run(row.id);});
+  try{tx();return true;}catch(_){return false;}
+}
+function bagMenu(id,userId,category){
+  const owned=getInventory(userId,{type:'consumable',limit:100}).filter(x=>combatBagCategory(x.item_key)===category&&Number(x.quantity)>0);
+  if(!owned.length)return null;
+  return new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`wb_baguse_${category}_${id}`).setPlaceholder(category==='food'?'Выберите еду':category==='potion'?'Выберите зелье':'Выберите боевой свиток').addOptions(owned.slice(0,25).map(x=>{const m=COMBAT_BAG[category][x.item_key];return {label:`${m.name} ×${x.quantity}`,value:x.item_key,emoji:m.icon,description:m.text.slice(0,100)};})));
+}
+function battleTurnToken(b){return `${b.round_no}:${b.turn_index}`;}
+function activeConsumableText(e){const rows=[];if(e.guildFeastActive)rows.push('🥧 Гильдейский пирог — до конца боя');if(e.combatDamageTurns>0)rows.push(`⚔️ Усиление урона — ${e.combatDamageTurns} ход.`);if(e.combatResistanceTurns>0)rows.push(`🛡️ Снижение урона — ${e.combatResistanceTurns} ход.`);if(e.shield>0)rows.push(`🛡️ Щит — ${e.shield} HP`);return rows.length?rows.join('\n'):'Нет активных эффектов от расходников.';}
+function useCombatBagItem(b,p,itemKey,category){
+  const meta=COMBAT_BAG[category]?.[itemKey];if(!meta)return {ok:false,reason:'invalid'};
+  const e=effects(p), token=battleTurnToken(b), limitKey=`bag_${category}_token`;
+  if(e[limitKey]===token)return {ok:false,reason:'limit'};
+  if(!consumeHeroInventoryItem(p.user_id,itemKey))return {ok:false,reason:'missing'};
+  const st=stateOf(b);let text='';
+  if(itemKey==='travel_stew'){const heal=Math.min(35,p.max_hp-p.hp);db.prepare('UPDATE world_boss_players SET hp=MIN(max_hp,hp+35),healing_done=healing_done+? WHERE battle_id=? AND user_id=?').run(heal,b.id,p.user_id);text=`восстанавливает **${heal} HP**`;}
+  else if(itemKey==='hunters_meal'){e.combatDamage=Math.max(Number(e.combatDamage||0),.15);e.combatDamageTurns=Math.max(Number(e.combatDamageTurns||0),2);text='даёт **+15% урона на 2 хода**';}
+  else if(itemKey==='guild_feast'){if(!e.guildFeastActive){const bonus=Math.max(1,Math.round(p.max_hp*.20));db.prepare('UPDATE world_boss_players SET max_hp=max_hp+?,hp=hp+? WHERE battle_id=? AND user_id=?').run(bonus,bonus,b.id,p.user_id);e.guildFeastActive=true;e.healingBonus=Math.max(Number(e.healingBonus||0),.10);}text='даёт **+20% Max HP, +10% урона, -10% входящего урона и +10% лечения до конца боя**';}
+  else if(['healing_potion_small','healing_potion_large','healing_potion_supreme'].includes(itemKey)){const amount={healing_potion_small:30,healing_potion_large:75,healing_potion_supreme:140}[itemKey],heal=Math.min(amount,p.max_hp-p.hp);db.prepare('UPDATE world_boss_players SET hp=MIN(max_hp,hp+?),healing_done=healing_done+? WHERE battle_id=? AND user_id=?').run(amount,heal,b.id,p.user_id);text=`восстанавливает **${heal} HP**`;}
+  else if(itemKey==='war_elixir'||itemKey==='rage_scroll'){e.combatDamage=Math.max(Number(e.combatDamage||0),.20);e.combatDamageTurns=Math.max(Number(e.combatDamageTurns||0),3);text='даёт **+20% урона на 3 хода**';}
+  else if(itemKey==='stone_skin_elixir'||itemKey==='defense_scroll'){e.combatResistance=Math.max(Number(e.combatResistance||0),.20);e.combatResistanceTurns=Math.max(Number(e.combatResistanceTurns||0),3);text='даёт **-20% входящего урона на 3 хода**';}
+  else if(itemKey==='fire_scroll'||itemKey==='ice_scroll'||itemKey==='lightning_scroll'){const amount={fire_scroll:90,ice_scroll:55,lightning_scroll:130}[itemKey];const r=hurtEnemy(b,st,amount,'magic',p.class_key);db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,b.id,p.user_id);if(itemKey==='ice_scroll')st.rage=Math.max(0,Number(st.rage||0)-20);saveState(b,st);text=`наносит **${r.dealt} магического урона**${itemKey==='ice_scroll'?' и снижает ярость босса на **20**':''}`;}
+  else if(itemKey==='barrier_scroll'){e.shield=Number(e.shield||0)+70;text='создаёт **щит 70 HP**';}
+  else if(itemKey==='blessing_scroll'){e.combatDamage=Math.max(Number(e.combatDamage||0),.15);e.combatDamageTurns=Math.max(Number(e.combatDamageTurns||0),3);e.combatResistance=Math.max(Number(e.combatResistance||0),.10);e.combatResistanceTurns=Math.max(Number(e.combatResistanceTurns||0),3);text='даёт **+15% урона и -10% входящего урона на 3 хода**';}
+  else if(itemKey==='weakening_scroll'){st.bossWeaken=Math.max(Number(st.bossWeaken||0),.20);st.bossWeakenRounds=Math.max(Number(st.bossWeakenRounds||0),1);saveState(b,st);text='ослабляет следующую атаку босса на **20%**';}
+  else if(itemKey==='cleanse_scroll'){for(const k of ['skillSilencedTurns','ultSilencedTurns','damageCurseTurns','decayCurseTurns','healingPenaltyTurns'])delete e[k];text='снимает **боевые проклятия и блокировки**';}
+  e[limitKey]=token;updateEffects(b.id,p.user_id,e);addLog(b,`${meta.icon} <@${p.user_id}> использует **${meta.name}**: ${text}.`);return {ok:true,text:`${meta.icon} **${meta.name}** ${text}.\n\nОсновное действие хода по-прежнему доступно.`};
+}
+
 async function handle(interaction) {
   if ((!interaction.isButton() && !interaction.isStringSelectMenu()) || !interaction.customId.startsWith('wb_')) return false;
   init(); const idMatch = interaction.customId.match(/_(\d+)$/), id = idMatch ? Number(idMatch[1]) : 0, b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
@@ -1626,6 +1687,18 @@ ${own.map((x, i) => `**${x.icon || '▫️'} ${x.name}${own.length > 1 ? ` #${i 
 ${enemyText}
 
 Может призывать: ${(boss?.minions || []).map(mid => MINIONS[mid]?.name).filter(Boolean).join(', ') || '—'}`, files, flags: MessageFlags.Ephemeral });
+  }
+  if (interaction.customId === `wb_bag_${id}`) {
+    if (b.status !== 'active') return interaction.reply({content:'🎒 Боевая сумка доступна только во время боя.',flags:MessageFlags.Ephemeral});
+    const current=currentPlayer(b).p;if(!current||current.user_id!==uid)return interaction.reply({content:'⏳ Использовать боевые расходники можно только во время своего хода.',flags:MessageFlags.Ephemeral});
+    const rows=[];for(const cat of ['food','potion','scroll']){const menu=bagMenu(id,uid,cat);if(menu)rows.push(menu);}
+    const ef=effects(p);return interaction.reply({content:`## 🎒 Боевая сумка\nЗа ход: **1 еда + 1 зелье + 1 свиток**. Они не тратят атаку, способность или ульту.\n\n### Активные эффекты\n${activeConsumableText(ef)}${rows.length?'':'\n\nПодходящих расходников в инвентаре нет.'}`,components:rows,flags:MessageFlags.Ephemeral});
+  }
+  const bagUse=interaction.customId.match(/^wb_baguse_(food|potion|scroll)_\d+$/);
+  if(interaction.isStringSelectMenu()&&bagUse){
+    const freshBattle=db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='active'").get(id);const freshPlayer=db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id,uid);if(!freshBattle||!freshPlayer)return interaction.reply({content:'Бой уже завершён.',flags:MessageFlags.Ephemeral});
+    const current=currentPlayer(freshBattle).p;if(!current||current.user_id!==uid)return interaction.reply({content:'⏳ Сейчас не твой ход.',flags:MessageFlags.Ephemeral});
+    const r=useCombatBagItem(freshBattle,freshPlayer,interaction.values[0],bagUse[1]);if(!r.ok)return interaction.reply({content:r.reason==='limit'?`🚫 В этот ход уже использован предмет категории **${bagUse[1]==='food'?'еда':bagUse[1]==='potion'?'зелье':'свиток'}**.`:'❌ Предмет отсутствует или больше недоступен.',flags:MessageFlags.Ephemeral});await refresh(id);return interaction.reply({content:`✅ ${r.text}`,flags:MessageFlags.Ephemeral});
   }
   const enemyTargetSelect = interaction.customId.match(/^wb_enemy_target_(attack|skill2|skill|ult)_\d+$/);
   if (interaction.isStringSelectMenu() && enemyTargetSelect) {
