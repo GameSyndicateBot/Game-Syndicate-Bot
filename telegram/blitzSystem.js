@@ -701,25 +701,27 @@ async function askQuestion(game) {
         return;
     }
 
-    game.round += 1;
-    game.answers.clear();
-    game.roundResult = null;
-    game.resolving = false;
-    game.current = nextQuestion(game);
+    // Раунд и вопрос фиксируем только ПОСЛЕ успешной отправки сообщения.
+    // Раньше номер увеличивался до Telegram API: при сетевой ошибке watchdog
+    // восстанавливал игру уже со следующим номером, визуально пропуская раунды.
+    const candidateRound = game.round + 1;
+    const candidateQuestion = game.preparedQuestions[0];
+    if (!candidateQuestion) throw new Error(`Закончилась подготовленная очередь вопросов для категории ${game.category}`);
 
-    const rows = game.current.answers.map((answer, index) => [{
+    const rows = candidateQuestion.answers.map((answer, index) => [{
         text: `${index + 1}️⃣ ${answer}`,
-        callback_data: `blitz_answer:${game.round}:${index}`,
+        callback_data: `blitz_answer:${candidateRound}:${index}`,
     }]);
 
+    const activeNames=[...game.alive].map(id=>game.players.get(id)?.name).filter(Boolean);
     const text = [
-        `⚡ <b>Раунд ${game.round}</b>`,
+        `⚡ <b>Раунд ${candidateRound}</b>`,
         `Категория: ${CATEGORY_MAP[game.category]}`,
         '',
-        `❓ ${esc(String(game.current.text).replace(/\s*\[вариант\s+\d+\]\s*$/i, ''))}`,
+        `❓ ${esc(String(candidateQuestion.text).replace(/\s*\[вариант\s+\d+\]\s*$/i, ''))}`,
         '',
         `⏳ На ответ: ${QUESTION_SECONDS} секунд`,
-        `👥 В игре: ${game.alive.size}`,
+        `👥 В игре: ${game.alive.size}${activeNames.length ? ` — ${activeNames.map(esc).join(', ')}` : ''}`,
     ].join('\n');
 
     const message = await callApi('sendMessage', {
@@ -728,8 +730,13 @@ async function askQuestion(game) {
         text,
         parse_mode: 'HTML',
         reply_markup: { inline_keyboard: rows },
-    });
+    }, { retries: 2 });
 
+    game.round = candidateRound;
+    game.answers.clear();
+    game.roundResult = null;
+    game.resolving = false;
+    game.current = nextQuestion(game);
     game.questionMessageId = message.message_id;
     game.questionDeadlineAt = Date.now() + QUESTION_SECONDS * 1000;
     later(game, () => resolveRound(game), QUESTION_SECONDS * 1000, `round-${game.round}`);
@@ -787,8 +794,10 @@ async function resolveRound(game) {
         if (nobodyCorrect) {
             lines.push('😄 Никто не ответил правильно — все остаются в игре.');
         } else {
-            lines.push(`🟢 Прошли дальше: <b>${correct.length}</b>`);
-            if (eliminated.length) lines.push(`🔴 Выбыли: <b>${eliminated.length}</b>`);
+            const correctNames=correct.map(id=>game.players.get(id)?.name).filter(Boolean).map(esc);
+            const eliminatedNames=eliminated.map(id=>game.players.get(id)?.name).filter(Boolean).map(esc);
+            lines.push(`🟢 Прошли дальше: <b>${correct.length}</b>${correctNames.length ? ` — ${correctNames.join(', ')}` : ''}`);
+            if (eliminated.length) lines.push(`🔴 Выбыли: <b>${eliminated.length}</b>${eliminatedNames.length ? ` — ${eliminatedNames.join(', ')}` : ''}`);
         }
 
         if (game.alive.size <= 1) {
@@ -802,7 +811,7 @@ async function resolveRound(game) {
             ...(game.threadId ? { message_thread_id: game.threadId } : {}),
             text: lines.join('\n'),
             parse_mode: 'HTML',
-        }, { optional: true });
+        }, { retries: 2 });
 
         if (game.alive.size <= 1) {
             game.resolving = false;
@@ -881,7 +890,8 @@ async function finishMatch(game) {
                     `🔥 Серия побед: <b>${row.win_streak}</b>`,
                 ].join('\n'),
                 parse_mode: 'HTML',
-            });
+                reply_markup: { inline_keyboard: [[{ text: '▶️ Начать новую игру', callback_data: 'blitz_join' }]] },
+            }, { retries: 2 });
         }
 
         if (game.matchId) {

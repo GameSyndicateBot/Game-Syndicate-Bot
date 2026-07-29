@@ -1563,8 +1563,11 @@ function battleTurnToken(b){return `${b.round_no}:${b.turn_index}`;}
 function activeConsumableText(e){const rows=[];if(e.guildFeastActive)rows.push('🥧 Гильдейский пирог — до конца боя');if(e.combatDamageTurns>0)rows.push(`⚔️ Усиление урона — ${e.combatDamageTurns} ход.`);if(e.combatResistanceTurns>0)rows.push(`🛡️ Снижение урона — ${e.combatResistanceTurns} ход.`);if(e.shield>0)rows.push(`🛡️ Щит — ${e.shield} HP`);return rows.length?rows.join('\n'):'Нет активных эффектов от расходников.';}
 function useCombatBagItem(b,p,itemKey,category){
   const meta=COMBAT_BAG[category]?.[itemKey];if(!meta)return {ok:false,reason:'invalid'};
-  const e=effects(p), token=battleTurnToken(b), limitKey=`bag_${category}_token`;
-  if(e[limitKey]===token)return {ok:false,reason:'limit'};
+  const e=effects(p), token=battleTurnToken(b);
+  // Еда имеет собственный лимит. Зелья и свитки делят одно дополнительное
+  // действие: за ход разрешено либо одно зелье, либо один свиток.
+  const limitKey = category === 'food' ? 'bag_food_token' : 'bag_combat_item_token';
+  if(e[limitKey]===token)return {ok:false,reason:category === 'food' ? 'food_limit' : 'combat_item_limit'};
   if(!consumeHeroInventoryItem(p.user_id,itemKey))return {ok:false,reason:'missing'};
   const st=stateOf(b);let text='';
   if(itemKey==='travel_stew'){const heal=Math.min(35,p.max_hp-p.hp);db.prepare('UPDATE world_boss_players SET hp=MIN(max_hp,hp+35),healing_done=healing_done+? WHERE battle_id=? AND user_id=?').run(heal,b.id,p.user_id);text=`восстанавливает **${heal} HP**`;}
@@ -1692,13 +1695,13 @@ ${enemyText}
     if (b.status !== 'active') return interaction.reply({content:'🎒 Боевая сумка доступна только во время боя.',flags:MessageFlags.Ephemeral});
     const current=currentPlayer(b).p;if(!current||current.user_id!==uid)return interaction.reply({content:'⏳ Использовать боевые расходники можно только во время своего хода.',flags:MessageFlags.Ephemeral});
     const rows=[];for(const cat of ['food','potion','scroll']){const menu=bagMenu(id,uid,cat);if(menu)rows.push(menu);}
-    const ef=effects(p);return interaction.reply({content:`## 🎒 Боевая сумка\nЗа ход: **1 еда + 1 зелье + 1 свиток**. Они не тратят атаку, способность или ульту.\n\n### Активные эффекты\n${activeConsumableText(ef)}${rows.length?'':'\n\nПодходящих расходников в инвентаре нет.'}`,components:rows,flags:MessageFlags.Ephemeral});
+    const ef=effects(p);return interaction.reply({content:`## 🎒 Боевая сумка\nЗа ход: **1 еда** и **либо 1 зелье, либо 1 свиток**. Расходники не тратят атаку, способность или ульту.\n\n### Активные эффекты\n${activeConsumableText(ef)}${rows.length?'':'\n\nПодходящих расходников в инвентаре нет.'}`,components:rows,flags:MessageFlags.Ephemeral});
   }
   const bagUse=interaction.customId.match(/^wb_baguse_(food|potion|scroll)_\d+$/);
   if(interaction.isStringSelectMenu()&&bagUse){
     const freshBattle=db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='active'").get(id);const freshPlayer=db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id,uid);if(!freshBattle||!freshPlayer)return interaction.reply({content:'Бой уже завершён.',flags:MessageFlags.Ephemeral});
     const current=currentPlayer(freshBattle).p;if(!current||current.user_id!==uid)return interaction.reply({content:'⏳ Сейчас не твой ход.',flags:MessageFlags.Ephemeral});
-    const r=useCombatBagItem(freshBattle,freshPlayer,interaction.values[0],bagUse[1]);if(!r.ok)return interaction.reply({content:r.reason==='limit'?`🚫 В этот ход уже использован предмет категории **${bagUse[1]==='food'?'еда':bagUse[1]==='potion'?'зелье':'свиток'}**.`:'❌ Предмет отсутствует или больше недоступен.',flags:MessageFlags.Ephemeral});await refresh(id);return interaction.reply({content:`✅ ${r.text}`,flags:MessageFlags.Ephemeral});
+    const r=useCombatBagItem(freshBattle,freshPlayer,interaction.values[0],bagUse[1]);if(!r.ok)return interaction.reply({content:r.reason==='food_limit'?'🚫 В этот ход уже была использована еда.':r.reason==='combat_item_limit'?'🚫 В этот ход уже использовано зелье или свиток. Второй боевой расходник будет доступен на следующем ходу.':'❌ Предмет отсутствует или больше недоступен.',flags:MessageFlags.Ephemeral});await refresh(id);return interaction.reply({content:`✅ ${r.text}`,flags:MessageFlags.Ephemeral});
   }
   const enemyTargetSelect = interaction.customId.match(/^wb_enemy_target_(attack|skill2|skill|ult)_\d+$/);
   if (interaction.isStringSelectMenu() && enemyTargetSelect) {

@@ -95,9 +95,31 @@ function saleStock(){
 function sellableMaterials(userId){
   return listResources(userId).map(r=>({...r,unitPrice:materialBuyPrice(r.key),profession:professionForMaterial(r.key)})).filter(r=>r.quantity>0);
 }
+function equippedReservationMap(userId){
+  // hero_inventory хранит одинаковые предметы одной строкой с quantity > 1.
+  // Один надетый экземпляр резервирует только одну штуку, а не всю стопку.
+  const rows=db.prepare(`
+    SELECT inventory_id FROM hero_equipment WHERE user_id=?
+    UNION
+    SELECT inventory_id FROM hero_class_equipment WHERE user_id=?
+  `).all(userId,userId);
+  const reserved=new Map();
+  for(const row of rows){
+    const id=Number(row.inventory_id);
+    if(Number.isFinite(id)) reserved.set(id,1);
+  }
+  return reserved;
+}
 function sellableEquipment(userId){
-  const equipped=new Set(db.prepare(`SELECT inventory_id FROM hero_equipment WHERE user_id=? UNION SELECT inventory_id FROM hero_class_equipment WHERE user_id=?`).all(userId,userId).map(r=>Number(r.inventory_id)));
-  return getInventory(userId,{limit:100}).filter(i=>i.slot && !equipped.has(Number(i.id))).map(i=>({...i,unitPrice:equipmentBuyPrice(i)}));
+  const reserved=equippedReservationMap(userId);
+  return getInventory(userId,{limit:100})
+    .filter(i=>i.slot)
+    .map(i=>{
+      const equippedQuantity=reserved.get(Number(i.id))||0;
+      const sellableQuantity=Math.max(0,Number(i.quantity||0)-equippedQuantity);
+      return {...i,equippedQuantity,sellableQuantity,unitPrice:equipmentBuyPrice(i)};
+    })
+    .filter(i=>i.sellableQuantity>0);
 }
 function sellMaterial(userId,key,quantity){
   const owned=sellableMaterials(userId).find(x=>x.key===key);
@@ -116,8 +138,16 @@ function sellEquipment(userId,id){
   if(!item)return {ok:false,reason:'missing'};
   const total=equipmentBuyPrice(item);
   const tx=db.transaction(()=>{
-    const del=db.prepare('DELETE FROM hero_inventory WHERE id=? AND user_id=?').run(Number(id),userId);
-    if(!del.changes)throw new Error('missing');
+    // Продаём ровно один свободный экземпляр. Если в строке quantity=2 и один
+    // экземпляр надет, второй можно продать, не затрагивая экипированный.
+    const current=db.prepare('SELECT quantity FROM hero_inventory WHERE id=? AND user_id=?').get(Number(id),userId);
+    if(!current||Number(current.quantity)<1)throw new Error('missing');
+    const reserved=equippedReservationMap(userId).get(Number(id))||0;
+    if(Number(current.quantity)-reserved<1)throw new Error('equipped');
+    const changed=Number(current.quantity)===1
+      ? db.prepare('DELETE FROM hero_inventory WHERE id=? AND user_id=?').run(Number(id),userId)
+      : db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=? AND user_id=? AND quantity>?').run(Number(id),userId,reserved);
+    if(!changed.changes)throw new Error('missing');
     addCardDust(userId,total);
     db.prepare('INSERT INTO guild_merchant_sales(user_id,asset_type,asset_key,quantity,dust_paid,unit_price) VALUES(?,?,?,?,?,?)').run(userId,'equipment',item.item_key,1,total,total);
   });
