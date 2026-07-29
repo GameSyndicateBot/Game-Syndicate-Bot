@@ -330,9 +330,19 @@ function buyOffer(userId,id){const offer=getOffer(userId,id);if(!isActive())retu
   })();}catch(error){console.error('[Caravan buy]',error);return {ok:false,reason:'error'};}}
 
 async function announce(client,s){
-  const channel=await client.channels.fetch(GUILD_CHANNEL_ID).catch(()=>null);if(!channel?.isTextBased())return;
   const [icon,text]=ATMOSPHERE[s.atmosphere_index]||ATMOSPHERE[0];
-  await channel.send({content:`## 🐪 В Гильдию прибыл Караванщик!\n${icon} **${text}**\n\n🎁 Для каждого героя подготовлены **5 персональных предложений**.\n🔥 Одно из них — **Товар дня** со скидкой.\n⭐ Желаемый предмет можно отложить до следующего визита.\n\n⏳ Караванщик пробудет здесь всего **30 минут**. Откройте **🏰 Гильдейцы → 🐪 Караванщик**.`});
+  const content=`## 🐪 В Гильдию прибыл Караванщик!
+${icon} **${text}**
+
+🎁 Для каждого героя подготовлены **5 персональных предложений**.
+🔥 Одно из них — **Товар дня** со скидкой.
+⭐ Желаемый предмет можно отложить до следующего визита.
+
+⏳ Караванщик пробудет здесь всего **30 минут**. Откройте **🏰 Гильдейцы → 🐪 Караванщик**.`;
+  const users=db.prepare('SELECT DISTINCT user_id FROM heroes').all();
+  for(const row of users){
+    try{const user=await client.users.fetch(String(row.user_id));await user.send({content});}catch(_){ }
+  }
 }
 async function refreshHub(client){try{const guild=require('../commands/guild');if(guild?.ensureGuildHub)await guild.ensureGuildHub(client);}catch(e){console.error('[Caravan hub refresh]',e);}}
 

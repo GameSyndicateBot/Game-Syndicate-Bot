@@ -175,7 +175,7 @@ function raritySphere(rarity) {
 
 async function showInventory(interaction, notice = '') {
   const hero=getHero(interaction.user.id);if(!hero)return interaction.reply({content:'❌ Сначала создай героя.',flags:MessageFlags.Ephemeral});
-  const items=getInventory(interaction.user.id,{limit:100}),equipment=getEquipment(interaction.user.id),equippedIds=new Set(equipment.map(x=>Number(x.inventory_id)));
+  const items=getInventory(interaction.user.id,{limit:100}).filter(i=>i.item_type!=='utility'),equipment=getEquipment(interaction.user.id),equippedIds=new Set(equipment.map(x=>Number(x.inventory_id)));
   const activeMount=getActiveMount(interaction.user.id);
   const labels={melee:'Оружие ближнего боя',ranged:'Дальнее оружие',offhand:'Щит / левая рука',ring1:'Кольцо I',ring2:'Кольцо II',belt:'Пояс',legs:'Штаны',chest:'Нагрудник',boots:'Сапоги',helmet:'Шлем',amulet:'Амулет',gloves:'Перчатки',backpack:'Рюкзак'};
   const icons={melee:'⚔️',ranged:'🏹',offhand:'🛡️',ring1:'💍',ring2:'💍',belt:'🪢',legs:'👖',chest:'🥋',boots:'🥾',helmet:'🪖',amulet:'📿',gloves:'🧤',backpack:'🎒'};
@@ -192,7 +192,6 @@ async function showInventory(interaction, notice = '') {
   const components=[],eq=items.filter(i=>i.slot).slice(0,25);if(eq.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:select').setPlaceholder('Выбрать предмет: информация / надеть / снять').addOptions(eq.map(i=>({label:`#${i.id} ${i.name}`.slice(0,100),value:String(i.id),emoji:raritySphere(i.rarity),description:equippedIds.has(Number(i.id))?'Сейчас надето':'Свободно в инвентаре'})))));
   if(mounts.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:mount').setPlaceholder('Выбрать маунта: информация / надеть / снять').addOptions(mounts.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐎',description:m.active_mount?'Сейчас надет • открыть характеристики':`${RARITY_LABELS[m.rarity]||m.rarity} • открыть характеристики`})))));
   if(pets.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:pet').setPlaceholder('Выбрать питомца: информация / надеть / снять').addOptions(pets.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐾',description:m.active_slot?`Активен в слоте ${m.active_slot} • открыть характеристики`:`${COMPANION_RARITIES[m.rarity]||m.rarity} • открыть характеристики`})))));
-  components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:home').setLabel('Вернуться в Гильдию').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)));
   const payload={embeds:[embed],components};const eph=Boolean(interaction.message?.flags?.has?.(MessageFlags.Ephemeral));return eph?interaction.update(payload):interaction.reply({...payload,flags:MessageFlags.Ephemeral});
 }
 
@@ -537,9 +536,6 @@ function cookRows(recipes) {
         }))
     ));
   }
-  rows.push(new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('guild:home').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
-  ));
   return rows;
 }
 
@@ -627,8 +623,7 @@ function hospitalRows(hero, canHeal) {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('guild:hospital:heal').setLabel('Полностью вылечить').setEmoji('❤️').setStyle(ButtonStyle.Success).setDisabled(!canHeal),
       new ButtonBuilder().setCustomId('guild:hospital:expedition').setLabel('В экспедиции').setEmoji('🗺️').setStyle(ButtonStyle.Primary).setDisabled(hero?.status !== 'ready'),
-      new ButtonBuilder().setCustomId('guild:home').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
-    ),
+      ),
   ];
 }
 
@@ -736,7 +731,6 @@ async function showProfessionHub(interaction) {
   }
   professionButtons.push(new ButtonBuilder().setCustomId('guild:profession:change').setLabel(`Сменить профессию · ${PROFESSION_CHANGE_COST} Dust`).setEmoji('🔄').setStyle(ButtonStyle.Primary));
   components.push(new ActionRowBuilder().addComponents(...professionButtons));
-  components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
   return interaction.reply({embeds:[embed],components,flags:MessageFlags.Ephemeral});
 }
 
@@ -930,7 +924,6 @@ function caravanMainComponents(offers) {
   }
   rows.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('guild:caravan:reservation:cancel').setLabel('Отменить отложенный').setEmoji('⭐').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('guild:npcs').setLabel('К гильдейцам').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
   ));
   return rows;
 }
@@ -995,8 +988,7 @@ function merchantHomeRows() {
       new ButtonBuilder().setCustomId('guild:merchant:buy').setLabel('Купить товары').setEmoji('🛒').setStyle(ButtonStyle.Primary),
     ),
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('guild:npcs').setLabel('К гильдейцам').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
-    ),
+      ),
   ];
 }
 function professionName(key){

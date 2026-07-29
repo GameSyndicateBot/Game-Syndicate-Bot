@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.4.2",
+  "version": "19.4.3",
   "private": true,
   "description": "Game Syndicate V19.4.2: private dungeon history and clean completion reports",
   "main": "index.js",

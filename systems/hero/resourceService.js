@@ -11,7 +11,7 @@ function normalizeResourceKey(value) {
 
 function isResourceKey(key) {
   const normalized = normalizeResourceKey(key);
-  return Boolean(MATERIALS[normalized] || ITEMS[normalized]?.type === 'material');
+  return Boolean(MATERIALS[normalized] || ITEMS[normalized]?.type === 'material' || normalized === 'lockpick_set');
 }
 
 function resourceMeta(key) {
@@ -57,7 +57,7 @@ function migrateLegacyResources() {
     SELECT id, user_id, item_key, quantity
     FROM hero_inventory
     WHERE quantity > 0
-  `).all().filter(row => ITEMS[normalizeResourceKey(row.item_key)]?.type === 'material');
+  `).all().filter(row => (ITEMS[normalizeResourceKey(row.item_key)]?.type === 'material' || normalizeResourceKey(row.item_key) === 'lockpick_set'));
 
   if (!legacy.length) return { movedRows: 0, movedQuantity: 0 };
 

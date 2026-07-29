@@ -47,7 +47,6 @@ function controls(scope, page, hasNext) {
   const rows = [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('guild:economylog:global:0').setLabel('Общий журнал').setEmoji('🌐').setStyle(scope === 'global' ? ButtonStyle.Primary : ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('guild:economylog:personal:0').setLabel('Личный журнал').setEmoji('👤').setStyle(scope === 'personal' ? ButtonStyle.Primary : ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
   )];
   if (scope === 'personal') rows.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`guild:economylog:personal:${Math.max(0, page - 1)}`).setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary).setDisabled(page <= 0),

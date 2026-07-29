@@ -92,7 +92,7 @@ function homeView(userId) {
     ].join('\n'))
     .setFooter({ text: `Герой: ${hero.name} · уровень ${hero.level}` });
 
-  return { embeds: [embed], components: [navRow(userId, 'home'), guildReturnRow(userId)] };
+  return { embeds: [embed], components: [navRow(userId, 'home')] };
 }
 
 function recipesView(userId) {
@@ -119,7 +119,7 @@ ${missing.length ? `Нужно: ${missing.join(', ')}` : 'Все условия 
     ].join('\n\n').slice(0, 4000) || 'Рецептов пока нет.')
     .setFooter({ text: `Открыто по уровню: ${unlocked}/${recipes.length} · готово: ${ready}/${recipes.length}` });
 
-  const components = [navRow(userId, 'recipes'), guildReturnRow(userId)];
+  const components = [navRow(userId, 'recipes')];
   if (recipes.length) {
     components.push(new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -208,7 +208,7 @@ function bagView(userId, notice = '') {
     .setDescription(`${notice ? `${notice}\n\n` : ''}${text}`.slice(0, 4000))
     .setFooter({ text: 'Выбери предмет ниже, чтобы применить его.' });
 
-  const components = [navRow(userId, 'bag'), guildReturnRow(userId)];
+  const components = [navRow(userId, 'bag')];
   if (items.length) {
     components.push(new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
@@ -240,7 +240,7 @@ function buffsView(userId) {
     .setTitle('✨ Активные алхимические эффекты')
     .setDescription(text.slice(0, 4000))
     .setFooter({ text: 'Эффект списывается только при фактическом старте соответствующей активности.' });
-  return { embeds: [embed], components: [navRow(userId, 'buffs'), guildReturnRow(userId)] };
+  return { embeds: [embed], components: [navRow(userId, 'buffs')] };
 }
 
 async function sendView(interaction, payload) {
