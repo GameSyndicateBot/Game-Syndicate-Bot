@@ -179,6 +179,23 @@ function bonusesForRow(active) {
   return bonuses;
 }
 
+
+function companionTransferData(row){
+  const def=COMPANIONS[row.companion_key]||{};
+  const item=db.prepare('SELECT name,rarity,description,bonuses_json,item_type FROM hero_items WHERE item_key=?').get(row.companion_key)||{};
+  return {key:row.companion_key,name:row.name||def.name||item.name||row.companion_key,rarity:row.rarity||def.rarity||item.rarity||'common',kind:inferCompanionKind(row),description:def.description||item.description||'Спутник героя.',bonuses:normalizeBonuses(def.bonuses||item.bonuses_json),icon:def.icon||(inferCompanionKind(row)==='mount'?'🐎':'🐾')};
+}
+function sellableCompanions(userId){return listCompanions(userId).filter(x=>!x.active).map(x=>({...x,transfer:companionTransferData(x)}));}
+function takeCompanionForTransfer(userId,id){
+ const uid=String(userId),row=db.prepare('SELECT * FROM hero_companions WHERE user_id=? AND id=?').get(uid,Number(id));
+ if(!row)return null;
+ if(db.prepare('SELECT 1 FROM hero_active_companions WHERE user_id=? AND companion_id=? UNION SELECT 1 FROM hero_active_mounts WHERE user_id=? AND companion_id=?').get(uid,Number(id),uid,Number(id)))return null;
+ const data=companionTransferData(row);
+ db.prepare('DELETE FROM hero_companions WHERE user_id=? AND id=?').run(uid,Number(id));
+ return data;
+}
+function giveTransferredCompanion(userId,data){return grantCustomCompanion(String(userId),data.key,data,'market_transfer');}
+
 function getCompanionBonuses(userId) {
   const rows = [...getActiveCompanions(userId)];
   const mount = getActiveMount(userId);
@@ -202,4 +219,8 @@ module.exports = {
   getActiveCompanions,
   getActiveMount,
   getCompanionBonuses,
+  sellableCompanions,
+  takeCompanionForTransfer,
+  giveTransferredCompanion,
+  companionTransferData,
 };

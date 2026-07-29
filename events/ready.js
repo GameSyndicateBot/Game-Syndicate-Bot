@@ -2,7 +2,7 @@ const { startQuickEventScheduler } = require('../systems/quickEventSystem');
 const { startScheduler: startWorldBossScheduler } = require('../services/worldBoss/worldBossSystem');
 const { startLuckyDayScheduler } = require('../services/luckyDay');
 const { startAutomaticBackups } = require('../services/automaticBackups');
-const { startCaravanScheduler, applyV1934CaravanRecoveryVisit } = require('../services/caravanService');
+const { startCaravanScheduler } = require('../services/caravanService');
 const { db, getOrCreatePlayer, updatePlayer } = require('../database/db');
 const { checkAchievements } = require('../utils/checkAchievements');
 const { getJoinDateOverrideEntries } = require('../utils/memberJoinOverrides');
@@ -87,7 +87,6 @@ module.exports = {
         startWorldBossScheduler(client);
         startLuckyDayScheduler(client);
         startAutomaticBackups(client);
-        applyV1934CaravanRecoveryVisit();
         startCaravanScheduler(client);
         const { sendV1915DungeonRecoveryNotice, sendV1916ManticoreRecoveryNotice } = require('../services/caravanService');
         await sendV1915DungeonRecoveryNotice(client);

@@ -4,6 +4,7 @@ const { ITEMS, RARITY_LABELS } = require('../systems/hero/itemData');
 const { listResources, consumeResources, grantResource } = require('../systems/hero/resourceService');
 const { getInventory, getInventoryItem } = require('../systems/hero/itemService');
 const { getProfessionCounts } = require('../systems/hero/professionService');
+const { sellableCompanions, takeCompanionForTransfer } = require('../systems/hero/companionService');
 
 const PROFESSION_KEYS = {
   herbalist: ['forest_herbs','culinary_herbs','moon_blossom','spicy_herbs','herb_extract','herb'],
@@ -136,9 +137,14 @@ function buyMaterial(userId,key,quantity=1){
   });
   try{tx();return {ok:true,total,quantity,balance:getCardDust(userId),meta:MATERIALS[key]||ITEMS[key]};}catch(e){return {ok:false,reason:e.message};}
 }
+
+function companionBuyPrice(row){const rarity=row?.transfer?.rarity||row?.rarity||'common';const base={common:180,rare:500,epic:1300,legendary:3300,mythic:7200,exclusive:11000}[rarity]||180;return Math.round(base*(row?.transfer?.kind==='mount'?1.25:1));}
+function sellableCompanionRows(userId){return sellableCompanions(userId).map(x=>({...x,unitPrice:companionBuyPrice(x)}));}
+function sellCompanion(userId,id){const row=sellableCompanionRows(userId).find(x=>Number(x.id)===Number(id));if(!row)return {ok:false,reason:'missing'};const total=row.unitPrice;try{return db.transaction(()=>{const data=takeCompanionForTransfer(userId,id);if(!data)throw new Error('missing');addCardDust(userId,total);db.prepare('INSERT INTO guild_merchant_sales(user_id,asset_type,asset_key,quantity,dust_paid,unit_price) VALUES(?,?,?,?,?,?)').run(userId,data.kind,data.key,1,total,total);return {ok:true,total,item:data,balance:getCardDust(userId)};})();}catch(e){return {ok:false,reason:e.message};}}
+
 function marketSummary(){
   const counts=professionPopulation();
   const sorted=Object.entries(PROFESSION_KEYS).map(([key])=>({key,count:Number(counts[key]||0)})).sort((a,b)=>a.count-b.count);
   return {counts,scarce:sorted[0],abundant:sorted.at(-1)};
 }
-module.exports={materialBuyPrice,equipmentBuyPrice,sellableMaterials,sellableEquipment,sellMaterial,sellEquipment,saleStock,buyMaterial,marketSummary,professionForMaterial};
+module.exports={materialBuyPrice,equipmentBuyPrice,companionBuyPrice,sellableMaterials,sellableEquipment,sellableCompanionRows,sellMaterial,sellEquipment,sellCompanion,saleStock,buyMaterial,marketSummary,professionForMaterial};
