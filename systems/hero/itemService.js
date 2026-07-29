@@ -40,12 +40,17 @@ function seedItems(){
  const tx=db.transaction(()=>{for(const [key,item] of Object.entries(ITEMS))stmt.run({key,name:item.name,type:item.type,rarity:item.rarity,description:item.description,slot:item.slot||null,bonuses:JSON.stringify(item.bonuses||{}),lore:item.lore||'',consumable:item.consumable?1:0});}); tx();
 }
 function grantItem(userId,itemKey,quantity=1,source='system'){
- seedItems(); const item=ITEMS[itemKey]; if(!item)return null;
- if(item.type==='material') return grantResource(userId,itemKey,quantity,source);
+ seedItems();
+ const staticItem=ITEMS[itemKey];
+ const storedItem=db.prepare('SELECT * FROM hero_items WHERE item_key=?').get(itemKey);
+ const item=staticItem||storedItem;
+ if(!item)return null;
+ const type=staticItem?.type||storedItem?.item_type;
+ if(type==='material') return grantResource(userId,itemKey,quantity,source);
  db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,?,?)
- ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+excluded.quantity, acquired_from=excluded.acquired_from`).run(userId,itemKey,Math.max(1,quantity),source);
- db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,?)`).run(userId,itemKey,source);
- return getInventoryItemByKey(userId,itemKey);
+ ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+excluded.quantity, acquired_from=excluded.acquired_from`).run(String(userId),itemKey,Math.max(1,quantity),source);
+ db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,?)`).run(String(userId),itemKey,source);
+ return getInventoryItemByKey(String(userId),itemKey);
 }
 function getInventory(userId,{type=null,limit=100}={}){
  seedItems(); let sql=`SELECT hi.*,i.name,i.item_type,i.rarity,i.description,i.slot,i.bonuses_json,i.lore,i.is_consumable,

@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.3.6",
+  "version": "19.3.8",
   "private": true,
-  "description": "Game Syndicate V19.3.6: rarity spheres, mount inventory slot, class equipment rules and companion trade visibility",
+  "description": "Game Syndicate V19.3.8: complete player market, Dust purchases and atomic exchanges",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

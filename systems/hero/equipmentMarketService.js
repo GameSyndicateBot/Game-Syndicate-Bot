@@ -98,7 +98,19 @@ function buyListing(userId,id){
  }
 }
 function cancelListing(userId,id){
- const l=getListing(id); if(!l||l.seller_id!==String(userId)||l.status!=='open')return {ok:false,reason:'missing'};
- const tx=db.transaction(()=>{grantItem(userId,l.item_key,1,'equipment_market_cancel');if(Number(l.upgrade_level)>0)db.prepare('UPDATE hero_inventory SET upgrade_level=MAX(upgrade_level,?) WHERE user_id=? AND item_key=?').run(Number(l.upgrade_level),userId,l.item_key);db.prepare("UPDATE equipment_market_listings SET status='cancelled',closed_at=CURRENT_TIMESTAMP WHERE id=?").run(id);});tx();return {ok:true,listing:getListing(id)};
+ userId=String(userId); id=Number(id);
+ try{
+  const result=db.transaction(()=>{
+   const l=db.prepare("SELECT * FROM equipment_market_listings WHERE id=? AND seller_id=? AND status='open'").get(id,userId);
+   if(!l)throw Object.assign(new Error('missing'),{code:'missing'});
+   const claimed=db.prepare("UPDATE equipment_market_listings SET status='cancelled',closed_at=CURRENT_TIMESTAMP WHERE id=? AND seller_id=? AND status='open'").run(id,userId);
+   if(claimed.changes!==1)throw Object.assign(new Error('missing'),{code:'missing'});
+   const granted=grantItem(userId,l.item_key,1,'equipment_market_cancel');
+   if(!granted)throw Object.assign(new Error('grant'),{code:'grant'});
+   if(Number(l.upgrade_level)>0)db.prepare('UPDATE hero_inventory SET upgrade_level=MAX(COALESCE(upgrade_level,0),?) WHERE user_id=? AND item_key=?').run(Number(l.upgrade_level),userId,l.item_key);
+   return l;
+  })();
+  return {ok:true,listing:{...result,status:'cancelled'}};
+ }catch(e){return {ok:false,reason:e?.code||e?.message||'transaction'};}
 }
 module.exports={duplicateEquipment,sellToBlacksmith,createListing,listOpen,listMine,buyListing,cancelListing};

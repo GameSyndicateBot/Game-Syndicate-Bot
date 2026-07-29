@@ -500,6 +500,44 @@ function applyV1924ManticoreRingReturn(){
 }
 applyV1924ManticoreRingReturn();
 
+
+// V19.3.7 — точечное восстановление двух потерянных колец.
+function applyV1937InventoryRecovery(){
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const migrationKey='v19.3.7-ring-and-cancelled-market-recovery';
+  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)) return false;
+  db.transaction(()=>{
+    const manticoreKey='dungeon_manticore_venom_ring';
+    db.prepare(`INSERT INTO hero_items(item_key,name,item_type,rarity,description,slot,bonuses_json,lore,is_consumable)
+      VALUES(?,?,'equipment',?,?,?,?,?,0)
+      ON CONFLICT(item_key) DO UPDATE SET name=excluded.name,item_type='equipment',rarity=excluded.rarity,description=excluded.description,slot=excluded.slot,bonuses_json=excluded.bonuses_json,lore=excluded.lore`).run(
+        manticoreKey,'Кольцо Яда Мантикоры','epic','Редкая добыча героического Логова Мантикоры.','ring',JSON.stringify({dexterity:6,rare_find:2}),'Редкая добыча героического Логова Мантикоры.'
+      );
+    db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from)
+      VALUES(?,?,1,'v19.3.7-recovery')
+      ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+1,acquired_from='v19.3.7-recovery'`).run('752908251896479915',manticoreKey);
+    db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,'v19.3.7-recovery')`).run('752908251896479915',manticoreKey);
+
+    const cancelled=db.prepare(`SELECT * FROM equipment_market_listings
+      WHERE seller_id=? AND status='cancelled' AND lower(item_name) LIKE '%кольц%'
+      ORDER BY COALESCE(closed_at,created_at) DESC,id DESC LIMIT 1`).get('759026090038657034');
+    if(cancelled){
+      const exists=db.prepare('SELECT 1 FROM hero_items WHERE item_key=?').get(cancelled.item_key);
+      if(exists){
+        db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,upgrade_level,acquired_from)
+          VALUES(?,?,1,?,'v19.3.7-market-cancel-recovery')
+          ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+1,upgrade_level=MAX(COALESCE(upgrade_level,0),excluded.upgrade_level),acquired_from='v19.3.7-market-cancel-recovery'`)
+          .run('759026090038657034',cancelled.item_key,Number(cancelled.upgrade_level||0));
+        db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,'v19.3.7-market-cancel-recovery')`).run('759026090038657034',cancelled.item_key);
+      }
+    }
+    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+  })();
+  console.log('[V19.3.7] Выполнено восстановление Кольца Яда Мантикоры и последнего снятого с рынка кольца.');
+  return true;
+}
+applyV1937InventoryRecovery();
+
 async function sendV1916ManticoreRecoveryNotice(client){
   db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
   const key='v19.1.6-manticore-recovery-notice-channel-1531291125195866203';
