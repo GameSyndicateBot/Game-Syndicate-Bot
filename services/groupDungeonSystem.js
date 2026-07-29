@@ -91,9 +91,9 @@ function hubEmbed(guildId,imageUrl=`attachment://${DUNGEON_HUB_IMAGE_NAME}`){
    {name:'📊 Перед стартом',value:'Откройте группу и нажмите **«Анализ состава»**, чтобы увидеть силу отряда, роли, бонусы и итоговый процент успеха.',inline:false}
   )
   .setImage(imageUrl)
-  .setFooter({text:'Создать группу • Найти группу • Активные рейды • Анализ • Награды'});
+  .setFooter({text:'Создать группу • Найти группу • Активные рейды • История • Анализ • Награды'});
 }
-function hubRows(){return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dng_create').setLabel('Создать группу').setEmoji('⚔️').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('dng_find').setLabel('Найти группу').setEmoji('🔎').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('dng_active').setLabel('Активные рейды').setEmoji('🗺️').setStyle(ButtonStyle.Secondary)),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dng_my').setLabel('Моя группа').setEmoji('👤').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('dng_rules').setLabel('Вся информация').setEmoji('📖').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('dng_rewards').setLabel('Награды').setEmoji('🎁').setStyle(ButtonStyle.Secondary))];}
+function hubRows(){return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dng_create').setLabel('Создать группу').setEmoji('⚔️').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('dng_find').setLabel('Найти группу').setEmoji('🔎').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('dng_active').setLabel('Активные рейды').setEmoji('🗺️').setStyle(ButtonStyle.Secondary)),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dng_my').setLabel('Моя группа').setEmoji('👤').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('dng_history_open').setLabel('История').setEmoji('📜').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('dng_rules').setLabel('Вся информация').setEmoji('📖').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('dng_rewards').setLabel('Награды').setEmoji('🎁').setStyle(ButtonStyle.Secondary))];}
 
 async function ensureHub(client,guildId=null){
  const guilds=guildId?[client.guilds.cache.get(guildId)].filter(Boolean):[...client.guilds.cache.values()];
@@ -154,8 +154,8 @@ function rarityPoolFor(diff){
 function chooseDungeonItem(diff){
  const rarities=rarityPoolFor(diff);
  const placeholders=rarities.map(()=>'?').join(',');
- let item=db.prepare(`SELECT item_key,name,rarity FROM hero_items WHERE is_consumable=0 AND item_type NOT IN ('material','mount') AND rarity IN (${placeholders}) ORDER BY RANDOM() LIMIT 1`).get(...rarities);
- if(!item)item=db.prepare("SELECT item_key,name,rarity FROM hero_items WHERE is_consumable=0 AND item_type NOT IN ('material','mount') ORDER BY RANDOM() LIMIT 1").get();
+ let item=db.prepare(`SELECT item_key,name,rarity,item_type,slot,description,bonuses_json,lore FROM hero_items WHERE is_consumable=0 AND item_type NOT IN ('material','mount') AND rarity IN (${placeholders}) ORDER BY RANDOM() LIMIT 1`).get(...rarities);
+ if(!item)item=db.prepare("SELECT item_key,name,rarity,item_type,slot,description,bonuses_json,lore FROM hero_items WHERE is_consumable=0 AND item_type NOT IN ('material','mount') ORDER BY RANDOM() LIMIT 1").get();
  return item||null;
 }
 function pickValuableWinners(ms,count){
@@ -183,40 +183,44 @@ async function resolveGroup(client,g){
    addCardDust(m.user_id,dust,`Награда данжа #${g.id}: ${g.dungeon_name}`);
    const classXp=Math.round((success?90:25)*diff.reward);
    grantClassXp(m.user_id,m.class_key,classXp,{completed:success});
-   let valuableName=null,valuableKey=null;
+   let valuableName=null,valuableKey=null,valuableItem=null;
    const won=winnerIds.has(String(m.user_id));
    if(won){
     const item=chooseDungeonItem(diff);
     if(item){
      db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,1,?) ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=quantity+1`).run(m.user_id,item.item_key,`dungeon:${g.id}`);
      db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,?)`).run(m.user_id,item.item_key,`dungeon:${g.id}`);
-     valuableName=item.name; valuableKey=item.item_key;
+     valuableName=item.name; valuableKey=item.item_key; valuableItem={itemKey:item.item_key,name:item.name,rarity:item.rarity,itemType:item.item_type,slot:item.slot,description:item.description,bonusesJson:item.bonuses_json,lore:item.lore};
     }
    }
    updateValuableLuck(m.user_id,Boolean(valuableName));
-   rewards.push({userId:m.user_id,dust,classXp,valuable:valuableName,valuableKey});
+   rewards.push({userId:m.user_id,classKey:m.class_key,dust,classXp,valuable:valuableName,valuableKey,valuableItem});
    db.prepare("UPDATE heroes SET status='ready',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND status='dungeon'").run(m.user_id);
   }
-  db.prepare("UPDATE dungeon_groups SET status='resolved',resolved_at=CURRENT_TIMESTAMP,success=?,result_json=? WHERE id=?").run(success?1:0,JSON.stringify({version:2,dungeon:g.dungeon_name,difficulty:diff.key,rewards}),g.id);
+  db.prepare("UPDATE dungeon_groups SET status='resolved',resolved_at=CURRENT_TIMESTAMP,success=?,result_json=? WHERE id=?").run(success?1:0,JSON.stringify({version:3,dungeon:g.dungeon_name,difficulty:diff.key,rewards}),g.id);
  });
  tx();
- const cfg=getConfig(g.guild_id),guild=client.guilds.cache.get(g.guild_id),ch=cfg&&guild?await guild.channels.fetch(cfg.channel_id).catch(()=>null):null;
- if(ch?.isTextBased()){
-  const lines=rewards.map(r=>`<@${r.userId}> — 🪙 **${r.dust} Dust** • 📚 **${r.classXp} опыта класса**${r.valuable?` • 💎 **${r.valuable}**`:''}`);
-  const winners=rewards.filter(r=>r.valuable);
-  const summary=success
-   ? `Каждый участник получил Dust и опыт класса.\n${winners.length?`Редкую добычу получили **${winners.length}** участника. Остальные получили обычную награду.`:'В этот раз редкая добыча не найдена.'}`
-   : 'Группа получила небольшие утешительные Dust и опыт.';
-  await ch.send({embeds:[new EmbedBuilder().setColor(success?0x16a34a:0xdc2626).setTitle(success?'🏆 Данж пройден!':'💀 Данж провален').setDescription(`**${g.difficulty_icon} ${g.dungeon_name}**\nШанс группы: ${Math.round(g.success_chance)}%\n\n${summary}\n\n${lines.join('\n')}`).setFooter({text:'Награды сразу сохранены в профилях и истории рейда.'})]});
- }
+ // Результат сохраняется в истории хаба. Подробный отчёт больше не публикуется в общий канал.
  await ensureHub(client,g.guild_id);
 }
 async function tick(client){cleanupClosedFormingGroups();const due=db.prepare("SELECT * FROM dungeon_groups WHERE status='active' AND ends_at<=?").all(new Date().toISOString());for(const g of due)await resolveGroup(client,g).catch(e=>console.error('[Dungeon] resolve',g.id,e));await ensureHub(client).catch(()=>{});}
 function startScheduler(client){if(globalThis.__gsDungeonTimer)return;globalThis.__gsDungeonTimer=setInterval(()=>tick(client),60_000);setTimeout(()=>tick(client),10_000);console.log('🏰 Group Dungeon scheduler started');}
 
+
+const DUNGEON_RARITY_ICONS={common:'⚪',rare:'🔵',epic:'🟣',legendary:'🟠',mythic:'🔴',exclusive:'💠',holographic:'🌈'};
+const DUNGEON_SLOT_LABELS={ring:'Кольцо',weapon:'Оружие',main_hand:'Оружие',off_hand:'Щит / левая рука',shield:'Щит',ranged:'Дальнее оружие',helmet:'Шлем',head:'Шлем',chest:'Нагрудник',pants:'Штаны',boots:'Сапоги',belt:'Пояс',amulet:'Амулет',backpack:'Рюкзак',mount:'Маунт'};
+function safeJson(value,fallback={}){try{return value?JSON.parse(value):fallback;}catch{return fallback;}}
+function formatDungeonBonuses(raw){const bonuses=typeof raw==='string'?safeJson(raw,{}):(raw||{});const labels={strength:'Сила',defense:'Защита',dexterity:'Ловкость',intelligence:'Интеллект',luck:'Удача',hp:'HP',max_hp:'HP',damage:'Урон',crit_chance:'Шанс крита',rare_drop_chance:'Шанс редкой добычи',rare_drop:'Шанс редкой добычи'};const rows=[];for(const [key,value] of Object.entries(bonuses)){const n=Number(value);if(!Number.isFinite(n)||n===0)continue;rows.push(`${labels[key]||key}: ${n>0?'+':''}${n}${String(key).includes('chance')||String(key).includes('drop')?'%':''}`);}return rows.length?rows.join(', '):'без дополнительных характеристик';}
+function resolvedDungeonRows(guildId){return db.prepare("SELECT * FROM dungeon_groups WHERE guild_id=? AND status='resolved' ORDER BY COALESCE(resolved_at,created_at) DESC,id DESC").all(guildId);}
+function getDungeonHistoryData(group){const result=safeJson(group.result_json,{rewards:[]});const rewards=Array.isArray(result.rewards)?result.rewards:[];return {result,rewards};}
+function enrichDungeonReward(reward){if(reward.valuableItem)return reward;let item=null;if(reward.valuableKey)item=db.prepare('SELECT item_key,name,rarity,item_type,slot,description,bonuses_json,lore FROM hero_items WHERE item_key=?').get(reward.valuableKey);return {...reward,valuableItem:item?{itemKey:item.item_key,name:item.name,rarity:item.rarity,itemType:item.item_type,slot:item.slot,description:item.description,bonusesJson:item.bonuses_json,lore:item.lore}:null};}
+function dungeonHistoryEmbed(group,page,total){const {rewards}=getDungeonHistoryData(group);const success=Number(group.success)===1;const lines=rewards.map((raw,index)=>{const r=enrichDungeonReward(raw);const cls=CLASS_LABELS[normalizeClassKey(r.classKey)]||r.classKey||'класс не записан';let line=`**${index+1}. <@${r.userId}>** — ${cls}\n🪙 ${Number(r.dust||0)} Dust • 📚 ${Number(r.classXp||0)} опыта класса`;const item=r.valuableItem;if(item){const rarity=String(item.rarity||'common').toLowerCase();line+=`\n${DUNGEON_RARITY_ICONS[rarity]||'⚪'} **${item.name||r.valuable||r.valuableKey}** · ${rarity}`;if(item.slot)line+=` · ${DUNGEON_SLOT_LABELS[item.slot]||item.slot}`;if(item.description)line+=`\n_${String(item.description).slice(0,260)}_`;line+=`\n⚙️ ${formatDungeonBonuses(item.bonusesJson)}`;}else line+='\n📦 Ценный предмет не выпал.';return line;});const when=group.resolved_at?`<t:${Math.floor(Date.parse(group.resolved_at)/1000)}:f>`:'дата не записана';return new EmbedBuilder().setColor(success?0x16a34a:0xdc2626).setTitle(`📜 Данж #${group.id} — ${success?'пройден':'провален'}`).setDescription(`**${group.difficulty_icon||'🎲'} ${group.dungeon_name}**\nСложность: **${group.difficulty_name||group.difficulty_key||'неизвестна'}**\nШанс группы: **${Math.round(Number(group.success_chance||0))}%**\nЗавершён: ${when}\n\n${lines.join('\n\n')||'Подробные награды для этого старого рейда не сохранились.'}`).setFooter({text:`История подземелий • запись ${page+1} из ${total}`});}
+function dungeonHistoryComponents(page,total){return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`dng_history_page:${Math.max(0,page-1)}`).setEmoji('⬅️').setLabel('Назад').setStyle(ButtonStyle.Secondary).setDisabled(page<=0),new ButtonBuilder().setCustomId(`dng_history_page:${Math.min(total-1,page+1)}`).setEmoji('➡️').setLabel('Далее').setStyle(ButtonStyle.Secondary).setDisabled(page>=total-1))];}
+async function dungeonHistory(interaction,page=0){const rows=resolvedDungeonRows(interaction.guildId);if(!rows.length)return ephemeral(interaction,{content:'📜 История завершённых подземелий пока пуста.'});const safePage=clamp(Number(page)||0,0,rows.length-1);const payload={embeds:[dungeonHistoryEmbed(rows[safePage],safePage,rows.length)],components:dungeonHistoryComponents(safePage,rows.length)};if((interaction.customId||'').startsWith('dng_history_page:'))return interaction.update(payload);return ephemeral(interaction,payload);}
+
 async function rules(interaction){return ephemeral(interaction,{embeds:[new EmbedBuilder().setColor(0x7c3aed).setTitle('📖 Как работают групповые данжи').setDescription('🌞 Окно: **11:00–12:09 МСК**, запуск до **12:09**.\n🌙 Окно: **18:00–19:09 МСК**, запуск до **19:09**.\n\nКаждый рейд длится **50 минут**. Одновременно могут идти разные независимые группы. Минимум — **4 героя**, максимума нет.\n\nШанс зависит от уровня героя и класса, экипировки, силы состава, наличия танка, лекаря и контроля. До старта процент пересчитывается автоматически. После старта он фиксируется.\n\nВсе получают награду. Редкую добычу получают лишь некоторые. После ценной награды личный шанс временно снижается, но никогда не становится нулевым.') ]});}
 async function rewards(interaction){return ephemeral(interaction,{embeds:[new EmbedBuilder().setColor(0xf59e0b).setTitle('🎁 Награды данжей').setDescription('**При победе каждый получает:**\n• GS Dust\n• опыт выбранного класса\n• шанс на найденную экипировку\n\nЧем выше сложность, тем больше обычная награда и шанс ценного предмета. Система распределения уменьшает повторное выпадение редкой добычи одному и тому же игроку, но повторная ценная награда всё равно возможна.\n\nПри поражении выдаются небольшие утешительные Dust и опыт.') ]});}
 
-async function handle(interaction){const id=interaction.customId;if(id==='dng_create')return createGroup(interaction);if(id==='dng_find')return listGroups(interaction,['forming']);if(id==='dng_active')return listGroups(interaction,['active']);if(id==='dng_my'){const g=userActiveGroup(interaction.guildId,interaction.user.id);return g?ephemeral(interaction,{embeds:[groupEmbed(g.id,g.status==='forming')],components:groupRows(g,interaction.user.id)}):ephemeral(interaction,{content:'Вы сейчас не состоите в группе.'});}if(id==='dng_rules')return rules(interaction);if(id==='dng_rewards')return rewards(interaction);if(id==='dng_open_group')return openGroup(interaction,Number(interaction.values[0]));const [action,raw]=id.split(':');const gid=Number(raw);if(action==='dng_join')return join(interaction,gid);if(action==='dng_class')return classMenu(interaction,gid);if(action==='dng_set_class')return setClass(interaction,gid,interaction.values[0]);if(action==='dng_analyze')return analyzeView(interaction,gid);if(action==='dng_leave')return leave(interaction,gid);if(action==='dng_disband')return disband(interaction,gid);if(action==='dng_start')return start(interaction,gid);if(action==='dng_refresh')return interaction.update({embeds:[groupEmbed(gid)],components:groupRows(getGroup(gid),interaction.user.id)});}
+async function handle(interaction){const id=interaction.customId;if(id==='dng_history_open')return dungeonHistory(interaction,0);if(id.startsWith('dng_history_page:'))return dungeonHistory(interaction,Number(id.split(':')[1]||0));if(id==='dng_create')return createGroup(interaction);if(id==='dng_find')return listGroups(interaction,['forming']);if(id==='dng_active')return listGroups(interaction,['active']);if(id==='dng_my'){const g=userActiveGroup(interaction.guildId,interaction.user.id);return g?ephemeral(interaction,{embeds:[groupEmbed(g.id,g.status==='forming')],components:groupRows(g,interaction.user.id)}):ephemeral(interaction,{content:'Вы сейчас не состоите в группе.'});}if(id==='dng_rules')return rules(interaction);if(id==='dng_rewards')return rewards(interaction);if(id==='dng_open_group')return openGroup(interaction,Number(interaction.values[0]));const [action,raw]=id.split(':');const gid=Number(raw);if(action==='dng_join')return join(interaction,gid);if(action==='dng_class')return classMenu(interaction,gid);if(action==='dng_set_class')return setClass(interaction,gid,interaction.values[0]);if(action==='dng_analyze')return analyzeView(interaction,gid);if(action==='dng_leave')return leave(interaction,gid);if(action==='dng_disband')return disband(interaction,gid);if(action==='dng_start')return start(interaction,gid);if(action==='dng_refresh')return interaction.update({embeds:[groupEmbed(gid)],components:groupRows(getGroup(gid),interaction.user.id)});}
 
 module.exports={startScheduler,ensureHub,setupChannel,handle,hubEmbed,analyze};

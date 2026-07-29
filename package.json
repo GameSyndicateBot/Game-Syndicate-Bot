@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.4.0",
+  "version": "19.4.2",
   "private": true,
-  "description": "Game Syndicate V19.4.0: economy log pages, registry/codex roster, inventory companion UX, politics-free Blitz",
+  "description": "Game Syndicate V19.4.2: private dungeon history and clean completion reports",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

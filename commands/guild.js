@@ -500,9 +500,8 @@ function professionRosterText() {
   return Object.entries(PROFESSIONS).map(([key,p])=>{
     const members=rows.filter(r=>r.profession_key===key);
     const lines=members.length?members.map(r=>{
-      const cls=HERO_CLASSES[r.class_key];
       const spec=r.specialization_key?SPECIALIZATIONS[key]?.[r.specialization_key]:null;
-      return `• <@${r.user_id}> — **${r.hero_name}** · ${cls?.icon||'⚔️'} ${cls?.name||r.class_key} · ${p.icon} ур. ${r.profession_level}${spec?` · ${spec.icon} ${spec.name}`:''}`;
+      return `• <@${r.user_id}> — **${r.hero_name}** · ${p.icon} ур. ${r.profession_level}${spec?` · ${spec.icon} ${spec.name}`:''}`;
     }).join('\n'):'• Свободно — участников пока нет';
     return `### ${p.icon} ${p.name} (${members.length})\n${lines}`;
   }).join('\n\n');
@@ -512,13 +511,12 @@ function discordName(interaction,userId, fallback='Неизвестный гер
 }
 async function showRegistry(interaction) {
   const heroes=Number(db.prepare('SELECT COUNT(*) c FROM heroes').get()?.c||0);
-  const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('📖 Реестр Гильдии')
+  const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('📖 Реестр профессий Гильдии')
     .setDescription(`👥 Зарегистрировано героев: **${heroes}**
 
 ${professionRosterText()}`.slice(0,4000))
-    .setFooter({text:'Указаны Discord-участник, имя персонажа, класс и выбранная профессия.'});
-  const payload={embeds:[embed],components:registryRows()};
-  return interaction.message ? interaction.update(payload) : interaction.reply({...payload,flags:MessageFlags.Ephemeral});
+    .setFooter({text:'Только профессии: Discord-участник, имя персонажа, уровень и специализация профессии.'});
+  return interaction.reply({embeds:[embed],components:[],flags:MessageFlags.Ephemeral});
 }
 
 
@@ -712,7 +710,7 @@ async function showMasters(interaction) {
     fields.push({name:`${p.icon} Лучшие ${p.name.toLowerCase()}и`,value,inline:false});
   }
   const embed=new EmbedBuilder().setColor(0xF59E0B).setTitle('🏆 Зал мастеров').setDescription('Рейтинг сортируется по уровню профессии, затем по опыту и числу выполненных работ. Лидер получает почётный статус 👑.').addFields(fields);
-  return interaction.reply({embeds:[embed],components:registryRows(),flags:MessageFlags.Ephemeral});
+  return interaction.reply({embeds:[embed],components:[],flags:MessageFlags.Ephemeral});
 }
 async function showRegistryStats(interaction) {
   const heroStats=db.prepare(`SELECT COUNT(*) heroes,COALESCE(SUM(level),0) hero_levels FROM heroes`).get();
@@ -799,7 +797,7 @@ function marketRows() {
       new ButtonBuilder().setCustomId('guild:orders:exchange').setLabel('Обмен').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('guild:orders:requests').setLabel('Заказы').setEmoji('📋').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('guild:orders:mine').setLabel('Мои сделки').setEmoji('📦').setStyle(ButtonStyle.Secondary),
-    ), guildNavRow('orders'),
+    ),
   ];
 }
 function marketBackRow(){return new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:orders').setLabel('Назад на рынок').setEmoji('↩️').setStyle(ButtonStyle.Secondary));}
@@ -1330,7 +1328,7 @@ async function handleComponent(interaction) {
   if (action === 'inventory' && parts[2] === 'select') return showInventoryItem(interaction, interaction.values?.[0]);
   if (action === 'inventory' && parts[2] === 'equip') { const r=equipItem(interaction.user.id,Number(parts[3])); const msg=r.ok?'✅ Предмет экипирован.':r.reason==='class_restricted'?'❌ Этот класс не может использовать данный тип оружия или щита.':r.reason==='two_handed_conflict'?'❌ Двуручное оружие нельзя использовать одновременно со щитом.':'❌ Не удалось экипировать предмет.'; return showInventoryItem(interaction,parts[3],msg); }
   if (action === 'inventory' && parts[2] === 'unequip') { const r=unequipInventoryItem(interaction.user.id,Number(parts[3])); return showInventory(interaction,r.ok?'✅ Предмет снят.':'❌ Не удалось снять предмет.'); }
-  if (action === 'inventory' && parts[2] === 'mount') { const r=activateCompanion(interaction.user.id,Number(interaction.values?.[0])); return showInventory(interaction,r.ok?(r.active?`✅ Маунт **${r.companion.name}** активирован.`:`✅ Маунт **${r.companion.name}** снят.`):'❌ Маунт не найден.'); }
+  if (action === 'inventory' && parts[2] === 'mount' && parts.length === 3) return showInventoryCompanion(interaction, Number(interaction.values?.[0]));
   if (action === 'classes' && parts.length === 2) return showClasses(interaction);
   if (action === 'classes' && parts[2] === 'select') return showClassDetails(interaction, interaction.values?.[0]);
 
@@ -1392,25 +1390,19 @@ async function handleComponent(interaction) {
   if (action === 'artifacts') return showArtifacts(interaction);
 
   if (action === 'codex') {
-    const classRows=db.prepare(`SELECT h.user_id,h.name,h.class_key,h.level,hp.profession_key,hp.level profession_level
-      FROM heroes h LEFT JOIN hero_professions hp ON hp.user_id=h.user_id ORDER BY h.class_key,h.level DESC`).all();
+    const classRows=db.prepare(`SELECT h.user_id,h.name,h.class_key,h.level
+      FROM heroes h ORDER BY h.class_key,h.level DESC,h.name`).all();
     const classText=Object.entries(HERO_CLASSES).map(([key,c])=>{
       const members=classRows.filter(r=>r.class_key===key);
       const lines=members.length
-        ? members.map(r=>{
-            const p=PROFESSIONS[r.profession_key];
-            return `• <@${r.user_id}> — **${r.name}** · ур. ${r.level}${p ? ` · ${p.icon} ${p.name} ур. ${r.profession_level}` : ' · профессия не выбрана'}`;
-          }).join('\n')
+        ? members.map(r=>`• <@${r.user_id}> — **${r.name}** · уровень ${r.level}`).join('\n')
         : '• Представителей пока нет';
       return `### ${c.icon} ${c.name}\n${lines}`;
     }).join('\n\n');
-    const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('📖 Кодекс Гильдии')
-      .setDescription(`Здесь видно, какие Discord-участники и персонажи занимают классы и профессии.\n\n${classText}\n\n## 👷 Профессии\n${professionRosterText()}`.slice(0,4000))
-      .setFooter({text:'Экспедиции и World Boss используют актуальные классы и профессии персонажей.'});
-    const payload={embeds:[embed],components:[new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
-    )]};
-    return interaction.message ? interaction.update(payload) : interaction.reply({...payload,flags:MessageFlags.Ephemeral});
+    const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('📖 Кодекс классов Гильдии')
+      .setDescription(`Только классы героев: участники Discord, имена персонажей и уровни.\n\n${classText}`.slice(0,4000))
+      .setFooter({text:'Профессии отображаются отдельно в Реестре Гильдии.'});
+    return interaction.reply({embeds:[embed],components:[],flags:MessageFlags.Ephemeral});
   }
 
 }

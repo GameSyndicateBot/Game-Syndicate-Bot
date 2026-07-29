@@ -1426,3 +1426,18 @@ module.exports = {
     checkpointDatabase,
     closeDatabase,
 };
+
+// V19.4.1 — удалить ошибочно выданного Изумрудного Костяного коня у указанного игрока.
+(function applyV1941EmeraldBoneHorseRemoval(){
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+    const migrationKey='v19.4.1-remove-emerald-bone-horse-468683569359880192';
+    if (db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)) return;
+    db.transaction(()=>{
+      db.prepare(`DELETE FROM hero_companions WHERE user_id=? AND (id=? OR lower(name) LIKE lower(?))`)
+        .run('468683569359880192',11,'%Изумрудный Костяной конь%');
+      db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+    })();
+    console.log('[V19.4.1] Изумрудный Костяной конь удалён у 468683569359880192.');
+  } catch (error) { console.error('[V19.4.1] companion removal failed:', error); }
+})();

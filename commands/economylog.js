@@ -75,8 +75,8 @@ async function render(interaction) {
   }
   const embed = new EmbedBuilder().setColor(0x8B5CF6).setTitle(title).setDescription(text.slice(0, 4000)).setFooter({ text: footer });
   const payload = { embeds: [embed], components: controls(scope, page, hasNext) };
-  const isComponent = Boolean(interaction.isButton?.() || interaction.isStringSelectMenu?.());
-  return isComponent ? interaction.update(payload) : interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+  const isJournalPage = String(interaction.customId || '').startsWith('guild:economylog:');
+  return isJournalPage ? interaction.update(payload) : interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
 }
 module.exports = {
   data: new SlashCommandBuilder().setName('economylog').setDescription('Открыть общий или личный журнал экономики'),
