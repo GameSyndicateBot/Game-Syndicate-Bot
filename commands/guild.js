@@ -8,7 +8,7 @@ const { getHero, getLatestExpeditionClassKey, createHero, addHistory } = require
 const { getEffectiveHero, getInventory, getEquipment, getInventoryItem, equipItem, unequipItem, unequipInventoryItem, formatBonuses } = require('../systems/hero/itemService');
 const { listRecipes, hydrateRecipe, craft } = require('../systems/hero/craftingService');
 const { getUpgradeInfo, upgradeItem, MAX_UPGRADE } = require('../systems/hero/upgradeService');
-const { listCompanions, activateCompanion, getActiveMount, sellableCompanions, takeCompanionForTransfer, giveTransferredCompanion } = require('../systems/hero/companionService');
+const { listCompanions, activateCompanion, getActiveMount, sellableCompanions, takeCompanionForTransfer, giveTransferredCompanion, companionTransferData } = require('../systems/hero/companionService');
 const { COMPANIONS, RARITY_LABELS: COMPANION_RARITIES } = require('../systems/hero/companionData');
 const { RARITY_LABELS } = require('../systems/hero/itemData');
 const { HERO_CLASSES, ORIGINS, GENDERS } = require('../systems/hero/heroData');
@@ -77,7 +77,6 @@ function npcRows() {
 
 function storageExtraRows() {
   return [new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('guild:pets').setLabel('Питомцы').setEmoji('🐾').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('guild:artifacts').setLabel('Артефакты').setEmoji('💍').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('guild:chests').setLabel('Сундуки').setEmoji('🎁').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
@@ -191,7 +190,8 @@ async function showInventory(interaction, notice = '') {
   const petStock=pets.length?pets.map(x=>`${raritySphere(x.rarity)} **#${x.id} 🐾 ${x.name}**${x.active_slot?` · **активен, слот ${x.active_slot}**`:' · на складе'}`).join('\n'):'Питомцев пока нет.';
   const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle(`🎒 Инвентарь — ${hero.name}`).setDescription([notice,'### Активные слоты',slotText,mountLine,legacy,'','### Предметы',itemText,'','### 🐎 Маунты',mountStock,'','### 🐾 Питомцы',petStock].filter(Boolean).join('\n').slice(0,4000)).setFooter({text:'⚪ Common • 🔵 Rare • 🟣 Epic • 🟠 Legendary • 🔴 Mythic. Активные предметы отмечены текстом «надето».'});
   const components=[],eq=items.filter(i=>i.slot).slice(0,25);if(eq.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:select').setPlaceholder('Выбрать предмет').addOptions(eq.map(i=>({label:`#${i.id} ${i.name}`.slice(0,100),value:String(i.id),emoji:raritySphere(i.rarity),description:equippedIds.has(Number(i.id))?'Сейчас надето':'Свободно в инвентаре'})))));
-  if(mounts.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:mount').setPlaceholder(activeMount?'Сменить или снять маунта':'Надеть маунта').addOptions(mounts.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐎',description:m.active_mount?'Сейчас надет — выбрать, чтобы снять':`${RARITY_LABELS[m.rarity]||m.rarity} • надеть в слот маунта`})))));
+  if(mounts.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:companion').setPlaceholder(activeMount?'Выбрать маунта: информация / смена / снятие':'Выбрать маунта: информация / надеть').addOptions(mounts.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐎',description:m.active_mount?'Сейчас надет • открыть характеристики':`${RARITY_LABELS[m.rarity]||m.rarity} • открыть характеристики`})))));
+  if(pets.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:companion').setPlaceholder('Выбрать питомца: информация / снять / надеть').addOptions(pets.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐾',description:m.active_slot?`Активен в слоте ${m.active_slot} • открыть характеристики`:`${COMPANION_RARITIES[m.rarity]||m.rarity} • открыть характеристики`})))));
   components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:home').setLabel('Вернуться в Гильдию').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)));
   const payload={embeds:[embed],components};const eph=Boolean(interaction.message?.flags?.has?.(MessageFlags.Ephemeral));return eph?interaction.update(payload):interaction.reply({...payload,flags:MessageFlags.Ephemeral});
 }
@@ -209,6 +209,20 @@ async function showInventoryItem(interaction, inventoryId, notice='') {
     new ButtonBuilder().setCustomId(`guild:inventory:${equipped?'unequip':'equip'}:${item.id}`).setLabel(equipped?'Снять':'Экипировать').setEmoji(equipped?'📤':'⚔️').setStyle(equipped?ButtonStyle.Danger:ButtonStyle.Success)
   );
   return interaction.update({embeds:[embed],components:[row]});
+}
+
+async function showInventoryCompanion(interaction, companionId, notice='') {
+  const row=listCompanions(interaction.user.id).find(x=>Number(x.id)===Number(companionId));
+  if(!row)return showInventory(interaction,'❌ Питомец или маунт не найден.');
+  const d=companionTransferData(row);
+  const bonusLines=formatBonuses(d.bonuses||{});
+  const active=row.companion_kind==='mount'?Boolean(row.active_mount):Boolean(row.active_slot);
+  const type=row.companion_kind==='mount'?'Маунт (ездовой)':'Питомец';
+  const status=row.companion_kind==='mount'?(active?'✅ Надет в слот маунта':'⚪ На складе'):(active?`✅ Активен в слоте ${row.active_slot}/3`:'⚪ На складе');
+  const embed=new EmbedBuilder().setColor(active?0x22C55E:0x8B5CF6).setTitle(`${row.companion_kind==='mount'?'🐎':'🐾'} ${d.name}`)
+    .setDescription([notice,`**Тип:** ${type}`,`**Редкость:** ${raritySphere(d.rarity)} ${COMPANION_RARITIES[d.rarity]||d.rarity}`,`**Статус:** ${status}`,d.description?`\n${d.description}`:'',bonusLines.length?`\n**Характеристики и бонусы**\n${bonusLines.join('\n')}`:'\nБез дополнительных бонусов.'].filter(Boolean).join('\n'));
+  const buttons=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`guild:inventory:companion:toggle:${row.id}`).setLabel(active?'Снять':'Надеть').setEmoji(active?'📤':'✅').setStyle(active?ButtonStyle.Danger:ButtonStyle.Success),new ButtonBuilder().setCustomId('guild:inventory').setLabel('Назад в инвентарь').setEmoji('⬅️').setStyle(ButtonStyle.Secondary));
+  return interaction.update({embeds:[embed],components:[buttons]});
 }
 
 function progressBar(percent, size = 10) {
@@ -662,7 +676,7 @@ async function showRegistryHeroes(interaction) {
   const text=rows.length?rows.map((h,i)=>{
     const cls=HERO_CLASSES[h.class_key];
     const prof=PROFESSIONS[h.profession_key];
-    return `**${i+1}. ${h.name}** • ${cls?.icon||'⚔️'} ${cls?.name||h.class_key} • ⭐ ${h.level}${prof?` • ${prof.icon} ${prof.name} ${h.profession_level}`:''}`;
+    return `**${i+1}. ${h.name}** • <@${h.user_id}>\n${cls?.icon||'⚔️'} **${cls?.name||h.class_key}** • ⭐ ${h.level}${prof?` • ${prof.icon} **${prof.name}** ур. ${h.profession_level}`:' • 👷 Профессия не выбрана'}`;
   }).join('\n'):'Героев пока нет.';
   return interaction.update({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('👥 Герои Гильдии').setDescription(text.slice(0,4000))],components:registryRows()});
 }
@@ -1344,6 +1358,13 @@ async function handleComponent(interaction) {
     return interaction.reply({ content: '❌ Алхимик временно недоступен.', flags: MessageFlags.Ephemeral });
   }
 
+  if (action === 'inventory' && parts[2] === 'companion' && parts.length === 3) return showInventoryCompanion(interaction, Number(interaction.values?.[0]));
+  if (action === 'inventory' && parts[2] === 'companion' && parts[3] === 'toggle') {
+    const id=Number(parts[4]);
+    const result=activateCompanion(interaction.user.id,id);
+    const notice=result.ok?(result.active?`✅ **${result.companion.name}** активирован.`:`✅ **${result.companion.name}** снят.`):(result.reason==='max_active'?'❌ Уже активно 3 питомца. Сначала сними одного.':'❌ Не удалось изменить активность.');
+    return showInventoryCompanion(interaction,id,notice);
+  }
   if (action === 'pets' && parts.length === 2) return showPets(interaction);
   if (action === 'pets' && parts[2] === 'activate') {
     const result = activateCompanion(interaction.user.id, Number(interaction.values?.[0]));
@@ -1366,10 +1387,18 @@ async function handleComponent(interaction) {
 
   if (action === 'codex') {
     const classes = Object.values(HERO_CLASSES).map(c => `${c.icon} **${c.name}** — ${c.role}`).join('\n');
-    return interaction.reply({
-      content: `## 📖 Кодекс Гильдии\n\n### Классы\n${classes}\n\n🗺️ Экспедиции проходят в канале <#${EXPEDITION_CHANNEL_ID}>.\n👹 На World Boss нельзя идти, пока герой находится в экспедиции.`,
-      flags: MessageFlags.Ephemeral,
-    });
+    const roster=db.prepare(`SELECT h.user_id,h.name,h.class_key,hp.profession_key,hp.level profession_level FROM heroes h LEFT JOIN hero_professions hp ON hp.user_id=h.user_id ORDER BY h.level DESC LIMIT 25`).all();
+    const members=roster.length?roster.map(h=>{const c=HERO_CLASSES[h.class_key],p=PROFESSIONS[h.profession_key];return `• <@${h.user_id}> — **${h.name}**: ${c?.icon||'⚔️'} ${c?.name||h.class_key}${p?` • ${p.icon} ${p.name} ур. ${h.profession_level}`:' • профессия не выбрана'}`;}).join('\n'):'Героев пока нет.';
+    return interaction.reply({content:`## 📖 Кодекс Гильдии
+
+### Классы
+${classes}
+
+### Участники, герои, классы и профессии
+${members}
+
+🗺️ Экспедиции проходят в канале <#${EXPEDITION_CHANNEL_ID}>.
+👹 На World Boss нельзя идти, пока герой находится в экспедиции.`,flags:MessageFlags.Ephemeral});
   }
 
 }

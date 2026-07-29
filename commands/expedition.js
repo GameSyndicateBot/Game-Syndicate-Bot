@@ -40,23 +40,24 @@ function hubRows(world, locked) {
     new ButtonBuilder()
       .setCustomId(`expedition:start:${location.key}`)
       .setLabel(location.name)
+      .setEmoji('🗺️')
       .setStyle(index === 0 ? ButtonStyle.Success : index === 1 ? ButtonStyle.Primary : ButtonStyle.Danger)
       .setDisabled(locked)
   );
   return [
     new ActionRowBuilder().addComponents(...buttons),
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('expedition:status').setLabel('Моя экспедиция').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('expedition:return').setLabel('Забрать результат').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('expedition:history').setLabel('История').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('expedition:refresh').setLabel('Обновить хаб').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('expedition:status').setLabel('Моя экспедиция').setEmoji('🧭').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('expedition:return').setLabel('Забрать результат').setEmoji('🎁').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('expedition:history').setLabel('История').setEmoji('📜').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('expedition:refresh').setLabel('Обновить хаб').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
     ),
   ];
 }
 
 function locationChoiceRows(world) {
   return [new ActionRowBuilder().addComponents(...world.locations.slice(0,3).map((location,index)=>
-    new ButtonBuilder().setCustomId(`expedition:start:${location.key}`).setLabel(location.name).setStyle(index===0?ButtonStyle.Success:index===1?ButtonStyle.Primary:ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(`expedition:start:${location.key}`).setLabel(location.name).setEmoji('🗺️').setStyle(index===0?ButtonStyle.Success:index===1?ButtonStyle.Primary:ButtonStyle.Danger)
   ))];
 }
 function durationMenu(locationKey,classKey) {
