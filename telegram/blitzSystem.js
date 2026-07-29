@@ -323,6 +323,40 @@ function initDb() {
         resetSeason();
         console.log('✅ GS Blitz: рейтинг и победы всех игроков обнулены для нового сезона');
     }
+
+
+    // V19.4.4: окончательно убираем старый Elo-рейтинг.
+    // Единственный источник очков — число побед. Это чинит записи со значением 1000,
+    // даже если ранняя миграция уже была помечена выполненной.
+    const winsRatingKey = 'v19_4_4_rating_equals_wins_hard_fix';
+    const winsRatingApplied = db.prepare(`
+        SELECT 1 FROM telegram_blitz_migrations WHERE migration_key = ?
+    `).get(winsRatingKey);
+    if (!winsRatingApplied) {
+        const repairRatings = db.transaction(() => {
+            db.prepare(`
+                UPDATE telegram_blitz_players
+                SET rating = MAX(0, wins),
+                    updated_at = CURRENT_TIMESTAMP
+            `).run();
+
+            // Матико должен начинать исправленный рейтинг с 9 побед/очков.
+            db.prepare(`
+                UPDATE telegram_blitz_players
+                SET wins = MAX(wins, 9),
+                    rating = MAX(wins, 9),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE LOWER(display_name) LIKE '%матико%'
+                   OR LOWER(display_name) LIKE '%matiko%'
+            `).run();
+
+            db.prepare(`
+                INSERT INTO telegram_blitz_migrations(migration_key) VALUES(?)
+            `).run(winsRatingKey);
+        });
+        repairRatings();
+        console.log('✅ GS Blitz V19.4.4: очки всех игроков синхронизированы с победами');
+    }
 }
 initDb();
 
@@ -843,7 +877,7 @@ async function finishMatch(game) {
                     '',
                     `👑 ${esc(player?.name || winnerId)}`,
                     `⭐ +${bonus} очко за победу`,
-                    `📈 Очки: <b>${row.rating}</b>`,
+                    `📈 Очки: <b>${row.wins}</b>`,
                     `🔥 Серия побед: <b>${row.win_streak}</b>`,
                 ].join('\n'),
                 parse_mode: 'HTML',
@@ -1027,7 +1061,7 @@ async function answer(callback) {
 async function top(chatId, threadId) {
     const rows = db.prepare(`
         SELECT * FROM telegram_blitz_players
-        ORDER BY rating DESC, wins DESC, correct_answers DESC
+        ORDER BY wins DESC, correct_answers DESC, games ASC
         LIMIT 15
     `).all();
 
@@ -1035,7 +1069,7 @@ async function top(chatId, threadId) {
         '🏆 <b>Топ GS Blitz</b>',
         '',
         ...(rows.length
-            ? rows.map((row, index) => `${index + 1}. ${esc(row.display_name)} — <b>${row.rating}</b> 🏆`)
+            ? rows.map((row, index) => `${index + 1}. ${esc(row.display_name)} — <b>${row.wins}</b> 🏆`)
             : ['Пока никто не сыграл.']),
     ].join('\n');
 
@@ -1061,7 +1095,7 @@ async function stats(chatId, threadId, user) {
             '📊 <b>Статистика GS Blitz</b>',
             '',
             `Игрок: ${esc(row.display_name)}`,
-            `🏆 Очки: <b>${row.rating}</b>`,
+            `🏆 Очки: <b>${row.wins}</b>`,
             `🏆 Победы: <b>${row.wins}</b>`,
             `🎮 Игры: <b>${row.games}</b>`,
             `✅ Правильные ответы: <b>${row.correct_answers}</b>`,

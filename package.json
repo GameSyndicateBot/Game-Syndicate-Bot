@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.4.3",
+  "version": "19.4.5",
   "private": true,
-  "description": "Game Syndicate V19.4.2: private dungeon history and clean completion reports",
+  "description": "Game Syndicate V19.4.5: personal in-channel Caravan notification",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

@@ -1144,7 +1144,18 @@ async function handleComponent(interaction) {
   }
 
   if (action === 'home') return interaction.update({ content:'🏰 **Гильдия героев**\nВыберите нужный раздел. Это личное меню видно только вам.', embeds:[], components:hubRows() });
-  if (action === 'npcs') return interaction.reply({ content:`## 🏰 Гильдейцы\nВыбери нужного мастера Гильдии.`, components:npcRows(), flags:MessageFlags.Ephemeral });
+  if (action === 'npcs') {
+    const caravanNotice = caravan.isActive()
+      ? `
+
+## 🐪 В Гильдию прибыл Караванщик!
+🎁 Для твоего героя подготовлены **5 персональных предложений**.
+🔥 Одно из них — **Товар дня** со скидкой.
+⏳ До ухода: **${caravan.formatTimeLeft()}**. Нажми кнопку **🐪 Караванщик** ниже.`
+      : '';
+    return interaction.reply({ content:`## 🏰 Гильдейцы
+Выбери нужного мастера Гильдии.${caravanNotice}`, components:npcRows(), flags:MessageFlags.Ephemeral });
+  }
   if (action === 'economylog') { const command=interaction.client.commands.get('economylog'); return command?.execute ? command.execute(interaction) : interaction.reply({content:'❌ Журнал временно недоступен.',flags:MessageFlags.Ephemeral}); }
   if (action === 'profile' && parts[2] === 'displayclass') {
     const classKey=interaction.values?.[0];
