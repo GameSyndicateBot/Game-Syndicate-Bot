@@ -189,9 +189,9 @@ async function showInventory(interaction, notice = '') {
   const mountStock=mounts.length?mounts.map(x=>`${raritySphere(x.rarity)} **#${x.id} 🐎 ${x.name}**${x.active_mount?' · **надето**':' · на складе'}`).join('\n'):'Маунтов пока нет.';
   const petStock=pets.length?pets.map(x=>`${raritySphere(x.rarity)} **#${x.id} 🐾 ${x.name}**${x.active_slot?` · **активен, слот ${x.active_slot}**`:' · на складе'}`).join('\n'):'Питомцев пока нет.';
   const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle(`🎒 Инвентарь — ${hero.name}`).setDescription([notice,'### Активные слоты',slotText,mountLine,legacy,'','### Предметы',itemText,'','### 🐎 Маунты',mountStock,'','### 🐾 Питомцы',petStock].filter(Boolean).join('\n').slice(0,4000)).setFooter({text:'⚪ Common • 🔵 Rare • 🟣 Epic • 🟠 Legendary • 🔴 Mythic. Активные предметы отмечены текстом «надето».'});
-  const components=[],eq=items.filter(i=>i.slot).slice(0,25);if(eq.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:select').setPlaceholder('Выбрать предмет').addOptions(eq.map(i=>({label:`#${i.id} ${i.name}`.slice(0,100),value:String(i.id),emoji:raritySphere(i.rarity),description:equippedIds.has(Number(i.id))?'Сейчас надето':'Свободно в инвентаре'})))));
-  if(mounts.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:companion').setPlaceholder(activeMount?'Выбрать маунта: информация / смена / снятие':'Выбрать маунта: информация / надеть').addOptions(mounts.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐎',description:m.active_mount?'Сейчас надет • открыть характеристики':`${RARITY_LABELS[m.rarity]||m.rarity} • открыть характеристики`})))));
-  if(pets.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:companion').setPlaceholder('Выбрать питомца: информация / снять / надеть').addOptions(pets.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐾',description:m.active_slot?`Активен в слоте ${m.active_slot} • открыть характеристики`:`${COMPANION_RARITIES[m.rarity]||m.rarity} • открыть характеристики`})))));
+  const components=[],eq=items.filter(i=>i.slot).slice(0,25);if(eq.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:select').setPlaceholder('Выбрать предмет: информация / надеть / снять').addOptions(eq.map(i=>({label:`#${i.id} ${i.name}`.slice(0,100),value:String(i.id),emoji:raritySphere(i.rarity),description:equippedIds.has(Number(i.id))?'Сейчас надето':'Свободно в инвентаре'})))));
+  if(mounts.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:mount').setPlaceholder('Выбрать маунта: информация / надеть / снять').addOptions(mounts.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐎',description:m.active_mount?'Сейчас надет • открыть характеристики':`${RARITY_LABELS[m.rarity]||m.rarity} • открыть характеристики`})))));
+  if(pets.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:pet').setPlaceholder('Выбрать питомца: информация / надеть / снять').addOptions(pets.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐾',description:m.active_slot?`Активен в слоте ${m.active_slot} • открыть характеристики`:`${COMPANION_RARITIES[m.rarity]||m.rarity} • открыть характеристики`})))));
   components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:home').setLabel('Вернуться в Гильдию').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)));
   const payload={embeds:[embed],components};const eph=Boolean(interaction.message?.flags?.has?.(MessageFlags.Ephemeral));return eph?interaction.update(payload):interaction.reply({...payload,flags:MessageFlags.Ephemeral});
 }
@@ -487,27 +487,38 @@ async function showArtifacts(interaction) {
 
 
 function registryRows() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('guild:registry:heroes').setLabel('Герои').setEmoji('👥').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('guild:registry:classes').setLabel('Классы').setEmoji('⚔️').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('guild:registry:professions').setLabel('Профессии').setEmoji('👷').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('guild:masters').setLabel('Зал мастеров').setEmoji('🏆').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('guild:registry:stats').setLabel('Статистика').setEmoji('📊').setStyle(ButtonStyle.Secondary),
-    ),
-    guildNavRow('registry'),
-  ];
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:registry').setLabel('Обновить реестр').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
+  )];
+}
+function professionRosterText() {
+  const rows=db.prepare(`SELECT h.user_id,h.name hero_name,h.level hero_level,h.class_key,
+    hp.profession_key,hp.level profession_level,hp.specialization_key
+    FROM heroes h LEFT JOIN hero_professions hp ON hp.user_id=h.user_id
+    ORDER BY hp.profession_key,hp.level DESC,h.level DESC,h.name`).all();
+  return Object.entries(PROFESSIONS).map(([key,p])=>{
+    const members=rows.filter(r=>r.profession_key===key);
+    const lines=members.length?members.map(r=>{
+      const cls=HERO_CLASSES[r.class_key];
+      const spec=r.specialization_key?SPECIALIZATIONS[key]?.[r.specialization_key]:null;
+      return `• <@${r.user_id}> — **${r.hero_name}** · ${cls?.icon||'⚔️'} ${cls?.name||r.class_key} · ${p.icon} ур. ${r.profession_level}${spec?` · ${spec.icon} ${spec.name}`:''}`;
+    }).join('\n'):'• Свободно — участников пока нет';
+    return `### ${p.icon} ${p.name} (${members.length})\n${lines}`;
+  }).join('\n\n');
 }
 function discordName(interaction,userId, fallback='Неизвестный герой') {
   return interaction.guild?.members?.cache?.get(userId)?.displayName || fallback;
 }
 async function showRegistry(interaction) {
   const heroes=Number(db.prepare('SELECT COUNT(*) c FROM heroes').get()?.c||0);
-  const counts=getProfessionCounts();
-  const professionText=Object.entries(PROFESSIONS).map(([k,p])=>`${p.icon} ${p.name}: **${counts[k]||0}**`).join('\n');
   const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('📖 Реестр Гильдии')
-    .setDescription(`Здесь собраны герои, классы, профессии и лучшие мастера Game Syndicate.\n\n👥 Зарегистрировано героев: **${heroes}**\n\n${professionText}`);
-  return interaction.reply({embeds:[embed],components:registryRows(),flags:MessageFlags.Ephemeral});
+    .setDescription(`👥 Зарегистрировано героев: **${heroes}**
+
+${professionRosterText()}`.slice(0,4000))
+    .setFooter({text:'Указаны Discord-участник, имя персонажа, класс и выбранная профессия.'});
+  const payload={embeds:[embed],components:registryRows()};
+  return interaction.message ? interaction.update(payload) : interaction.reply({...payload,flags:MessageFlags.Ephemeral});
 }
 
 
@@ -686,12 +697,7 @@ async function showRegistryClasses(interaction) {
   return interaction.update({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('⚔️ Классы Гильдии').setDescription(text)],components:registryRows()});
 }
 async function showRegistryProfessions(interaction) {
-  const counts=getProfessionCounts();
-  const text=Object.entries(PROFESSIONS).map(([k,p])=>{
-    const leader=getProfessionLeaders(k,1)[0];
-    return `${p.icon} **${p.name}** — ${counts[k]||0}${leader?`\n👑 Лидер: **${leader.hero_name||'Без имени'}**, ур. ${leader.level}`:''}`;
-  }).join('\n\n');
-  return interaction.update({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('👷 Профессии Гильдии').setDescription(text)],components:registryRows()});
+  return interaction.update({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('👷 Профессии Гильдии').setDescription(professionRosterText().slice(0,4000))],components:registryRows()});
 }
 async function showMasters(interaction) {
   const all=getAllProfessionLeaders(5);
@@ -732,7 +738,7 @@ async function showProfessionHub(interaction) {
   }
   professionButtons.push(new ButtonBuilder().setCustomId('guild:profession:change').setLabel(`Сменить профессию · ${PROFESSION_CHANGE_COST} Dust`).setEmoji('🔄').setStyle(ButtonStyle.Primary));
   components.push(new ActionRowBuilder().addComponents(...professionButtons));
-  components.push(guildNavRow('profession'));
+  components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary)));
   return interaction.reply({embeds:[embed],components,flags:MessageFlags.Ephemeral});
 }
 
@@ -1358,7 +1364,7 @@ async function handleComponent(interaction) {
     return interaction.reply({ content: '❌ Алхимик временно недоступен.', flags: MessageFlags.Ephemeral });
   }
 
-  if (action === 'inventory' && parts[2] === 'companion' && parts.length === 3) return showInventoryCompanion(interaction, Number(interaction.values?.[0]));
+  if (action === 'inventory' && ['companion','mount','pet'].includes(parts[2]) && parts.length === 3) return showInventoryCompanion(interaction, Number(interaction.values?.[0]));
   if (action === 'inventory' && parts[2] === 'companion' && parts[3] === 'toggle') {
     const id=Number(parts[4]);
     const result=activateCompanion(interaction.user.id,id);
@@ -1386,19 +1392,25 @@ async function handleComponent(interaction) {
   if (action === 'artifacts') return showArtifacts(interaction);
 
   if (action === 'codex') {
-    const classes = Object.values(HERO_CLASSES).map(c => `${c.icon} **${c.name}** — ${c.role}`).join('\n');
-    const roster=db.prepare(`SELECT h.user_id,h.name,h.class_key,hp.profession_key,hp.level profession_level FROM heroes h LEFT JOIN hero_professions hp ON hp.user_id=h.user_id ORDER BY h.level DESC LIMIT 25`).all();
-    const members=roster.length?roster.map(h=>{const c=HERO_CLASSES[h.class_key],p=PROFESSIONS[h.profession_key];return `• <@${h.user_id}> — **${h.name}**: ${c?.icon||'⚔️'} ${c?.name||h.class_key}${p?` • ${p.icon} ${p.name} ур. ${h.profession_level}`:' • профессия не выбрана'}`;}).join('\n'):'Героев пока нет.';
-    return interaction.reply({content:`## 📖 Кодекс Гильдии
-
-### Классы
-${classes}
-
-### Участники, герои, классы и профессии
-${members}
-
-🗺️ Экспедиции проходят в канале <#${EXPEDITION_CHANNEL_ID}>.
-👹 На World Boss нельзя идти, пока герой находится в экспедиции.`,flags:MessageFlags.Ephemeral});
+    const classRows=db.prepare(`SELECT h.user_id,h.name,h.class_key,h.level,hp.profession_key,hp.level profession_level
+      FROM heroes h LEFT JOIN hero_professions hp ON hp.user_id=h.user_id ORDER BY h.class_key,h.level DESC`).all();
+    const classText=Object.entries(HERO_CLASSES).map(([key,c])=>{
+      const members=classRows.filter(r=>r.class_key===key);
+      const lines=members.length
+        ? members.map(r=>{
+            const p=PROFESSIONS[r.profession_key];
+            return `• <@${r.user_id}> — **${r.name}** · ур. ${r.level}${p ? ` · ${p.icon} ${p.name} ур. ${r.profession_level}` : ' · профессия не выбрана'}`;
+          }).join('\n')
+        : '• Представителей пока нет';
+      return `### ${c.icon} ${c.name}\n${lines}`;
+    }).join('\n\n');
+    const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('📖 Кодекс Гильдии')
+      .setDescription(`Здесь видно, какие Discord-участники и персонажи занимают классы и профессии.\n\n${classText}\n\n## 👷 Профессии\n${professionRosterText()}`.slice(0,4000))
+      .setFooter({text:'Экспедиции и World Boss используют актуальные классы и профессии персонажей.'});
+    const payload={embeds:[embed],components:[new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
+    )]};
+    return interaction.message ? interaction.update(payload) : interaction.reply({...payload,flags:MessageFlags.Ephemeral});
   }
 
 }

@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.3.9",
+  "version": "19.4.0",
   "private": true,
-  "description": "Game Syndicate V19.3.9: companion inventory, guild registry audit and expedition UI",
+  "description": "Game Syndicate V19.4.0: economy log pages, registry/codex roster, inventory companion UX, politics-free Blitz",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

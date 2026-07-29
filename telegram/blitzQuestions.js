@@ -162,6 +162,12 @@ const DATA = {
   ],
 };
 
+
+const POLITICAL_RE = /(?:политик|президент|парламент|правительств|министр|депутат|сенат|конгресс|выборы|избирател|партия|конституц|монарх|король|царь|император|революц|независимост|государственн(?:ая|ый|ое) власть|нато|оон|евросоюз|ссср|геополит|война|военн|диктатор|режим|колони|импери)/iu;
+function isPoliticalQuestion(question) {
+  const haystack=[question?.text,...(question?.answers||[]),question?.explanation||''].join(' ');
+  return POLITICAL_RE.test(haystack);
+}
 function mulberry32(seed) { return function() { let t = seed += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function pick(arr, rng) { return arr[Math.floor(rng() * arr.length)]; }
 function shuffle(arr, rng) { const out=[...arr]; for(let i=out.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[out[i],out[j]]=[out[j],out[i]];} return out; }
@@ -243,8 +249,9 @@ function expandToTarget(key, base, target, rng){
 function buildQuestionBank(targetPerCategory=300){
   const rng=mulberry32(20260728); const all=[];
   for(const [key] of CATEGORY_DEFS){
-    const base=buildCategory(key,rng);
-    if(!base.length) throw new Error(`No questions for ${key}`);
+    const rawBase=buildCategory(key,rng);
+    const base=rawBase.filter(question=>!isPoliticalQuestion(question));
+    if(!base.length) throw new Error(`No non-political questions for ${key}`);
     all.push(...expandToTarget(key,base,targetPerCategory,rng));
   }
   return all;
