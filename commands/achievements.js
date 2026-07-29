@@ -30,6 +30,8 @@ const categories = [
     { label: 'Особые', value: 'special', emoji: '🌙' },
     { label: 'Гильдия героев', value: 'guild', emoji: '🏰' },
     { label: 'Экспедиции', value: 'expeditions', emoji: '🗺️' },
+    { label: 'Подземелья', value: 'dungeons', emoji: '🏰' },
+    { label: 'Мировой босс', value: 'world_boss', emoji: '👹' },
     { label: 'XP', value: 'xp', emoji: '⚡' },
 ];
 

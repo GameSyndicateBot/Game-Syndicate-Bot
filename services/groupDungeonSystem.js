@@ -9,6 +9,7 @@ const { getHero } = require('../systems/hero/heroService');
 const { getClassProgress, grantClassXp, normalizeClassKey } = require('../systems/hero/classProgressService');
 const { buildHeroSnapshot } = require('./worldBoss/heroIntegration');
 const path = require('path');
+const { checkAchievementsForUsers } = require('../utils/checkAchievementsForUser');
 
 const DUNGEON_HUB_IMAGE_PATH = path.join(__dirname, '..', 'assets', 'dungeons', 'dungeon-hub.jpg');
 const DUNGEON_HUB_IMAGE_NAME = 'dungeon-hub.jpg';
@@ -202,6 +203,7 @@ async function resolveGroup(client,g){
  tx();
  // Результат сохраняется в истории хаба. Подробный отчёт больше не публикуется в общий канал.
  await ensureHub(client,g.guild_id);
+ await checkAchievementsForUsers(client, g.guild_id, ms.map(m => m.user_id));
 }
 async function tick(client){cleanupClosedFormingGroups();const due=db.prepare("SELECT * FROM dungeon_groups WHERE status='active' AND ends_at<=?").all(new Date().toISOString());for(const g of due)await resolveGroup(client,g).catch(e=>console.error('[Dungeon] resolve',g.id,e));await ensureHub(client).catch(()=>{});}
 function startScheduler(client){if(globalThis.__gsDungeonTimer)return;globalThis.__gsDungeonTimer=setInterval(()=>tick(client),60_000);setTimeout(()=>tick(client),10_000);console.log('🏰 Group Dungeon scheduler started');}

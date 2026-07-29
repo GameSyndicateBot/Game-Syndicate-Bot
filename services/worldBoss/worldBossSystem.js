@@ -15,6 +15,7 @@ const { consumeContextBuffs, describeBuffKeys } = require('../../systems/hero/al
 const { getInventory } = require('../../systems/hero/itemService');
 const { ITEMS } = require('../../systems/hero/itemData');
 const GAME_CHANNELS = require('../../config/gameChannels');
+const { checkAchievementsForUsers } = require('../../utils/checkAchievementsForUser');
 
 const CHANNEL_ID = GAME_CHANNELS.worldBoss;
 const AUTO_SCHEDULE_ENABLED = String(process.env.WORLD_BOSS_AUTO_SCHEDULE ?? 'true').toLowerCase() !== 'false';
@@ -1518,7 +1519,10 @@ async function finish(id, win) {
   const deaths = st.deathStats || { players: ps.filter(p => p.status === 'dead').length, bossMinions: 0, playerSummons: 0 };
   const summary = [`⚔️ **Потери боя:** игроков — **${deaths.players || 0}**, миньонов босса — **${deaths.bossMinions || 0}**, призывов игроков — **${deaths.playerSummons || 0}**.`];
   const banner = win ? [`🏆 **${String(b.boss_name || 'МИРОВОЙ БОСС').toUpperCase()} ПОВЕРЖЕН!**`] : [`💀 **Отряд пал. ${b.boss_name} одерживает победу.**`];
-  st.log = [...banner, ...lines, ...summary, ...(st.log || [])].slice(-20); saveState(b, st); await refresh(id); scheduleRegular();
+  st.log = [...banner, ...lines, ...summary, ...(st.log || [])].slice(-20); saveState(b, st); await refresh(id);
+  const guildId = clientRef?.channels?.cache?.get(String(b.channel_id))?.guildId;
+  if (guildId) await checkAchievementsForUsers(clientRef, guildId, ps.map(p => p.user_id));
+  scheduleRegular();
 }
 
 function scheduleRegular() { setTimeout(() => { try { require('../../systems/quickEventSystem').postQuickEvent(clientRef).catch(console.error); } catch (e) { console.error(e); } }, 5000).unref?.(); }

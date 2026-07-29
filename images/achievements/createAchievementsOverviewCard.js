@@ -23,6 +23,8 @@ function getCategoryInfo(category) {
         xp: { icon: 'XP', title: 'XP' },
         guild: { icon: 'GLD', title: 'Гильдия героев' },
         expeditions: { icon: 'MAP', title: 'Экспедиции' },
+        dungeons: { icon: 'DNG', title: 'Подземелья' },
+        world_boss: { icon: 'BOS', title: 'Мировой босс' },
     };
 
     return categories[category] || { icon: 'ACH', title: category };
@@ -99,6 +101,8 @@ async function createAchievementsOverviewCard(user, achievements, unlockedIds) {
         'xp',
         'guild',
         'expeditions',
+        'dungeons',
+        'world_boss',
     ];
     const visibleCategoryCount = categoriesOrder.filter(category =>
         achievements.some(achievement => (achievement.category || 'other') === category)

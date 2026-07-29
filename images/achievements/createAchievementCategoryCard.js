@@ -38,6 +38,8 @@ const categoryTitles = {
     quick_events: 'Quick Events',
     guild: 'Гильдия героев',
     expeditions: 'Экспедиции',
+    dungeons: 'Подземелья',
+    world_boss: 'Мировой босс',
 };
 
 async function createAchievementCategoryCard(category, achievements, unlockedIds, page = 1) {

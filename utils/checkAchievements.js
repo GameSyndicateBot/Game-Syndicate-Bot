@@ -156,6 +156,67 @@ function getExpeditionAchievementStats(userId) {
     };
 }
 
+
+function getDungeonAchievementStats(userId) {
+    const rows = db.prepare(`
+        SELECT g.dungeon_name, g.difficulty_key, g.success, g.result_json
+        FROM dungeon_members m
+        JOIN dungeon_groups g ON g.id = m.group_id
+        WHERE m.user_id = ? AND g.status = 'resolved'
+    `).all(userId);
+
+    let wins = 0;
+    let valuableLoot = 0;
+    let hardWins = 0;
+    const uniqueWins = new Set();
+    const hardKeys = new Set(['heroic', 'epic', 'legendary']);
+
+    for (const row of rows) {
+        if (Number(row.success) === 1) {
+            wins++;
+            if (row.dungeon_name) uniqueWins.add(row.dungeon_name);
+            if (hardKeys.has(String(row.difficulty_key || ''))) hardWins++;
+        }
+        try {
+            const result = JSON.parse(row.result_json || '{}');
+            const reward = (result.rewards || []).find(r => String(r.userId) === String(userId));
+            if (reward?.valuable || reward?.valuableKey || reward?.valuableItem) valuableLoot++;
+        } catch (_) {}
+    }
+
+    return { runs: rows.length, wins, uniqueWins: uniqueWins.size, valuableLoot, hardWins };
+}
+
+function getWorldBossAchievementStats(userId) {
+    const row = db.prepare(`
+        SELECT
+            COUNT(*) AS battles,
+            SUM(CASE WHEN b.status = 'won' THEN 1 ELSE 0 END) AS wins,
+            COALESCE(SUM(p.damage_done), 0) AS damage,
+            COALESCE(SUM(p.healing_done), 0) AS healing,
+            COALESCE(SUM(p.damage_taken), 0) AS tanking
+        FROM world_boss_players p
+        JOIN world_boss_battles b ON b.id = p.battle_id
+        WHERE p.user_id = ? AND b.status IN ('won', 'lost')
+    `).get(userId) || {};
+
+    const uniqueWins = db.prepare(`
+        SELECT COUNT(DISTINCT b.boss_card_id) AS value
+        FROM world_boss_players p
+        JOIN world_boss_battles b ON b.id = p.battle_id
+        WHERE p.user_id = ? AND b.status = 'won'
+    `).get(userId)?.value || 0;
+
+    return {
+        battles: Number(row.battles || 0),
+        wins: Number(row.wins || 0),
+        uniqueWins: Number(uniqueWins),
+        damage: Number(row.damage || 0),
+        healing: Number(row.healing || 0),
+        tanking: Number(row.tanking || 0),
+    };
+}
+
 function isAchievementCompleted(achievement, player, member) {
     const now = new Date();
 
@@ -270,6 +331,31 @@ function isAchievementCompleted(achievement, player, member) {
 
         case 'expedition_miniboss_wins':
             return getExpeditionAchievementStats(player.user_id).minibossWins >= achievement.target;
+
+
+        case 'dungeon_runs':
+            return getDungeonAchievementStats(player.user_id).runs >= achievement.target;
+        case 'dungeon_wins':
+            return getDungeonAchievementStats(player.user_id).wins >= achievement.target;
+        case 'dungeon_unique_wins':
+            return getDungeonAchievementStats(player.user_id).uniqueWins >= achievement.target;
+        case 'dungeon_valuable_loot':
+            return getDungeonAchievementStats(player.user_id).valuableLoot >= achievement.target;
+        case 'dungeon_hard_wins':
+            return getDungeonAchievementStats(player.user_id).hardWins >= achievement.target;
+
+        case 'world_boss_battles':
+            return getWorldBossAchievementStats(player.user_id).battles >= achievement.target;
+        case 'world_boss_wins':
+            return getWorldBossAchievementStats(player.user_id).wins >= achievement.target;
+        case 'world_boss_unique_wins':
+            return getWorldBossAchievementStats(player.user_id).uniqueWins >= achievement.target;
+        case 'world_boss_damage':
+            return getWorldBossAchievementStats(player.user_id).damage >= achievement.target;
+        case 'world_boss_healing':
+            return getWorldBossAchievementStats(player.user_id).healing >= achievement.target;
+        case 'world_boss_tanking':
+            return getWorldBossAchievementStats(player.user_id).tanking >= achievement.target;
 
         case 'card_rarity_complete':
         case 'boss_pack_type_complete':

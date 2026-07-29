@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
+const path = require('path');
 const { getHero } = require('../systems/hero/heroService');
 const { getEffectiveHero } = require('../systems/hero/itemService');
 const { LOCATIONS } = require('../systems/hero/expeditionData');
@@ -54,6 +55,7 @@ function hubRows(world, locked) {
       new ButtonBuilder().setCustomId('expedition:status').setLabel('Моя экспедиция').setEmoji('🧭').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('expedition:return').setLabel('Забрать результат').setEmoji('🎁').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('expedition:history').setLabel('История').setEmoji('📜').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('expedition:map').setLabel('Карта').setEmoji('🗺️').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('expedition:refresh').setLabel('Обновить хаб').setEmoji('🔄').setStyle(ButtonStyle.Secondary),
     ),
   ];
@@ -328,6 +330,14 @@ async function handleComponent(interaction) {
   let hero = getHero(interaction.user.id);
   if (!hero) return interaction.reply(noHero());
   if (hero.status === 'wounded' && recoverHero(interaction.user.id)) hero = getHero(interaction.user.id);
+
+  if (action === 'map') {
+    const mapPath = path.join(__dirname, '..', 'images', 'hero', 'cartography', 'expedition-world-map.png');
+    return interaction.reply({
+      files: [new AttachmentBuilder(mapPath, { name: 'game-syndicate-expedition-world-map.png' })],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 
   if (action === 'refresh') {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
