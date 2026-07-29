@@ -452,7 +452,7 @@ async function assignChosenClass(id, user, key, auto = false) {
   const joinedPlayer = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, user);
   const playerWithClass = {...joinedPlayer,class_key:classKey};
   const classBonus = selectedClassBonuses(playerWithClass);
-  const heroMaxHp = Math.round(c.maxHp * hpMultiplier(playerWithClass));
+  const heroMaxHp = Math.max(1, Math.round(c.maxHp * hpMultiplier(playerWithClass) + Number(classBonus.equipment.flatHp || 0)));
   s.log.push(`📚 ${c.name} **Lv.${classBonus.level}** • ${classBonus.mastery.title}: ⚔️ +${classBonus.mastery.damagePercent}% ❤️ +${classBonus.mastery.hpPercent}% 🛡️ +${classBonus.mastery.resistancePercent}% • экипировка: ⚔️ +${classBonus.equipment.damagePercent}% ❤️ +${classBonus.equipment.hpPercent}% 🛡️ +${classBonus.equipment.resistancePercent}%.`);
   saveState(b,s);
   db.prepare("UPDATE world_boss_players SET class_key=?,hp=?,max_hp=?,energy=0,mana=?,ult_charge=0,status='alive',effects_json='{}' WHERE battle_id=? AND user_id=?").run(classKey, heroMaxHp, heroMaxHp, c.resourceType === 'mana' ? 100 : 0, id, user);
@@ -566,7 +566,7 @@ function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null
   if (cfg.mechanic === 'shadow_dome' && state.shadowDomeActive && (state.minions||[]).some(x=>x.hp>0)) amount *= 0.20;
   if (cfg.mechanic === 'shadow_dome' && state.shadowDomeActive && !(state.minions||[]).some(x=>x.hp>0)) state.shadowDomeActive=false;
 
-  const overheatMul = cfg.mechanic === 'overheat' && Number(state.overheatVulnerableRounds||0)>0 ? 1.30 : 1;
+  const overheatMul = cfg.mechanic === 'overheat' && Number(state.overheatVulnerableRounds||0)>0 ? 1.25 : 1;
   const vulnerability = (Number(state.bossVulnerabilityOwnerTurns||0)>0 ? 1+Number(state.bossVulnerability||0) : 1) * overheatMul;
   const adjusted = Math.max(1, Math.round(amount * resistanceMultiplier(cfg,damageType,pierce) * holyBonus(cfg,sourceClass) * vulnerability));
   const dealt = Math.min(adjusted,b.boss_hp);
@@ -575,7 +575,16 @@ function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null
     ? Math.min(4, Math.max(1, Math.ceil(dealt / 90)))
     : Math.min(14, Math.max(2, Math.ceil(dealt / 30)));
   state.rage = clamp(Number(state.rage||0) + rageGain, 0, 100);
-  if (cfg.mechanic === 'overheat') { state.ironHeat=clamp(Number(state.ironHeat||0)+25,0,100); if(state.ironHeat>=100){state.ironHeat=0;state.skipNextBossTurn=true;state.overheatVulnerableRounds=1;state.log.push('🔥 **Перегрев 100%!** Колосс пропустит следующий ход и получает +30% входящего урона.');} }
+  if (cfg.mechanic === 'overheat') {
+    const last = Number(state.lastOverheatRound || -99);
+    const gain = Math.min(8, Math.max(1, Math.ceil(dealt / 55)));
+    state.ironHeat = clamp(Number(state.ironHeat || 0) + gain, 0, 100);
+    if (state.ironHeat >= 100 && Number(b.round_no || 0) - last >= 4) {
+      state.ironHeat = 0; state.skipNextBossTurn = true; state.lastOverheatRound = Number(b.round_no || 0);
+      state.overheatVulnerableRounds = 1;
+      state.log.push('🔥 **Перегрев 100%!** Колосс пропустит один ход и получает +25% входящего урона.');
+    }
+  }
   const freshHp=Math.max(0,Number(b.boss_hp||0)-dealt);
   if (cfg.mechanic === 'shadow_dome' && !state.shadowDomeTriggered && freshHp/Math.max(1,Number(b.boss_max_hp||1))<=0.35) {state.shadowDomeTriggered=true;state.shadowDomeActive=true;state.log.push('🛡️ Теневой купол активирован: пока живы тени, урон снижен на 80%.');}
   saveState(b,state);
@@ -1143,11 +1152,12 @@ function damagePlayerSummons(state, ratio = 0.55) {
   return total;
 }
 
-function applyBossCurse(id, state, players, type, rounds = 2) {
-  if (!players.length) return null;
-  const target = pick(players), e = effects(target);
-  if (type === 'skill') { e.skillSilencedTurns = Math.max(Number(e.skillSilencedTurns || 0), rounds); updateEffects(id, target.user_id, e); return `🔒 <@${target.user_id}> не может использовать способности **${rounds} хода**.`; }
-  if (type === 'ult') { e.ultSilencedTurns = Math.max(Number(e.ultSilencedTurns || 0), rounds); updateEffects(id, target.user_id, e); return `⛓️ <@${target.user_id}> не может использовать ульту **${rounds} хода**.`; }
+function applyBossCurse(id, state, players, type, rounds = 1) {
+  const eligible = players.filter(p => Number(effects(p).bossControlImmunityTurns || 0) <= 0);
+  if (!eligible.length) return null;
+  const target = pick(eligible), e = effects(target);
+  if (type === 'skill') { e.skillSilencedTurns = Math.max(Number(e.skillSilencedTurns || 0), rounds); e.bossControlImmunityTurns = Math.max(Number(e.bossControlImmunityTurns || 0), 2); updateEffects(id, target.user_id, e); return `🔒 <@${target.user_id}> не может использовать способности **${rounds} хода**.`; }
+  if (type === 'ult') { e.ultSilencedTurns = Math.max(Number(e.ultSilencedTurns || 0), rounds); e.bossControlImmunityTurns = Math.max(Number(e.bossControlImmunityTurns || 0), 2); updateEffects(id, target.user_id, e); return `⛓️ <@${target.user_id}> не может использовать ульту **${rounds} хода**.`; }
   return null;
 }
 function destroyRandomSummon(state) {
@@ -1169,7 +1179,7 @@ async function bossTurn(id) {
   const state = stateOf(b);
   state.minions = state.minions || [];
   state.bossActionStats = state.bossActionStats || {};
-  state.rage = clamp(Number(state.rage || 0) + (boss.mechanic === 'dragon_birth' ? 6 : 32), 0, 100);
+  state.rage = clamp(Number(state.rage || 0) + Number(boss.rageGain || 10), 0, 100);
 
   if (boss.mechanic === 'overheat' && state.skipNextBossTurn) { state.skipNextBossTurn=false; state.log.push('🔥 Железный Колосс перегрет и **пропускает ход**.'); if(Number(state.overheatVulnerableRounds||0)>0)state.overheatVulnerableRounds--; saveState(b,state); return; }
   if (boss.mechanic === 'void_absorption' && Number(b.round_no)%4===0) { const victim=pick(players),meta=resourceMeta(victim.class_key),key=meta.key,current=Number(victim[key]||0),drained=Math.min(40,current); db.prepare(`UPDATE world_boss_players SET ${key}=MAX(0,${key}-?) WHERE battle_id=? AND user_id=?`).run(drained,id,victim.user_id); state.log.push(`🕳️ **Поглощение Пустоты:** <@${victim.user_id}> теряет **${drained} ${meta.label.toLowerCase()}**.`); }
@@ -1192,7 +1202,7 @@ async function bossTurn(id) {
   };
   const target = chooseSingleTarget();
   const attackDamageType = pickDamageType(boss.attackTypes, 'physical');
-  const phaseDamageMultiplier = phase === 3 ? 1.40 : phase === 2 ? 1.20 : 1;
+  const phaseDamageMultiplier = phase === 3 ? 1.15 : phase === 2 ? 1.08 : 1;
   const bossDamageMultiplier = (Number(state.bossWeakenRounds || 0) > 0 ? 1 - Number(state.bossWeaken || 0) : 1) * phaseDamageMultiplier;
   const effectiveBossMiss = Math.max(0, Number(boss.miss || 0) - (phase === 3 ? 5 : 0));
 
@@ -1242,14 +1252,17 @@ async function bossTurn(id) {
   let action = '';
   let text = '';
 
-  if (state.rage >= 100) {
+  if (state.rage >= 100 && Number(b.round_no || 0) - Number(state.lastRageUltRound || -99) >= 4) {
     action = 'RAGE_ULT';
     let total = 0;
     const rageType = pickDamageType(boss.attackTypes, attackDamageType);
+    const totalBudget = Math.max(120, Number(boss.ultimateTotal || Math.round(((boss.damage[0] + boss.damage[1]) / 2) * 3.2)));
+    const perTargetBase = Math.max(12, Math.round(totalBudget / Math.max(1, players.length)));
     for (const p of players) {
-      const r = damageTarget(id, p, Math.round(rand(Math.round(boss.damage[0] * 0.99), Math.round(boss.damage[1] * 1.16)) * bossDamageMultiplier), rageType);
+      const r = damageTarget(id, p, Math.round(perTargetBase * bossDamageMultiplier), rageType);
       total += r.hpDamage;
     }
+    state.lastRageUltRound = Number(b.round_no || 0);
     const summonDamage = damagePlayerSummons(state, 1);
     for (const p of battlePlayers(id).filter(x => x.status === 'alive')) { const pe = effects(p); pe.healingPenaltyTurns = Math.max(Number(pe.healingPenaltyTurns || 0), 2); pe.healingPenalty = 0.30; updateEffects(id, p.user_id, pe); }
     state.rage = 0;
@@ -1260,7 +1273,7 @@ async function bossTurn(id) {
     const neverCursed = Number(state.bossActionStats.SKILL_CURSE || 0) + Number(state.bossActionStats.ULT_CURSE || 0) + Number(state.bossActionStats.GROUP_CURSE || 0) === 0;
     const canSummon = state.minions.length < 3 && (boss.minions || []).length > 0;
     const canGroupCurse = b.round_no - Number(state.lastGroupCurseRound || -99) >= 5;
-    const forcedAoeCadence = phase === 3 ? 2 : 3;
+    const forcedAoeCadence = phase === 3 ? 3 : 4;
     const forceAoe = b.round_no - Number(state.lastForcedAoeRound || -99) >= forcedAoeCadence;
 
     if (forceAoe) { action = 'AOE'; state.lastForcedAoeRound = b.round_no; }
@@ -1287,7 +1300,7 @@ async function bossTurn(id) {
     if (action === 'ATTACK') {
       if (Math.random() * 100 < effectiveBossMiss) text = `💨 ${boss.name} промахивается.`;
       else {
-        let damage = Math.round(rand(Math.round(boss.damage[0] * 1.1), Math.round(boss.damage[1] * 1.1)) * bossDamageMultiplier);
+        let damage = Math.round(rand(boss.damage[0], boss.damage[1]) * bossDamageMultiplier);
         const crit = Math.random() * 100 < BOSS_CRIT_CHANCE;
         if (crit) damage = Math.round(damage * BOSS_CRIT_MULTIPLIER);
         const r = damageTarget(id, target, damage, attackDamageType);
@@ -1297,7 +1310,7 @@ async function bossTurn(id) {
       let total = 0;
       const aoeType = pickDamageType(boss.attackTypes, attackDamageType);
       for (const p of players) {
-        const r = damageTarget(id, p, Math.round(rand(Math.round(boss.damage[0] * 0.66), Math.round(boss.damage[1] * 0.77)) * bossDamageMultiplier), aoeType);
+        const r = damageTarget(id, p, Math.round(rand(Math.round(boss.damage[0] * 0.42), Math.round(boss.damage[1] * 0.55)) * bossDamageMultiplier), aoeType);
         total += r.hpDamage;
       }
       const summonDamage = damagePlayerSummons(state, 0.65);
@@ -1308,7 +1321,7 @@ async function bossTurn(id) {
       }
       text = `💥 ${boss.name} применяет массовую атаку (${damageTypeLabel(aoeType)} урон): группе нанесено **${total} HP**${summonDamage ? `, призывам — ${summonDamage}` : ''}${healDebuffText}.`;
     } else if (action === 'SPECIAL') {
-      let damage = Math.round(rand(Math.round(boss.damage[1] * 1.25), Math.round(boss.damage[1] * 1.55)) * bossDamageMultiplier);
+      let damage = Math.round(Number(boss.specialDamage || Math.round(boss.damage[1] * 1.35)) * bossDamageMultiplier);
       const crit = Math.random() * 100 < BOSS_CRIT_CHANCE;
       if (crit) damage = Math.round(damage * BOSS_CRIT_MULTIPLIER);
       const specialType = pickDamageType(boss.attackTypes, attackDamageType);
@@ -1339,7 +1352,7 @@ async function bossTurn(id) {
       let handText = '';
       if (handTarget && Math.random() * 100 >= effectiveBossMiss) {
         const handType = pickDamageType(boss.attackTypes, attackDamageType);
-        const r = damageTarget(id, handTarget, rand(Math.round(boss.damage[0] * 0.85), Math.round(boss.damage[1] * 0.95)), handType);
+        const r = damageTarget(id, handTarget, rand(Math.round(boss.damage[0] * 0.55), Math.round(boss.damage[1] * 0.70)), handType);
         handText = ` Затем босс бьёт <@${handTarget.user_id}> с руки на **${r.hpDamage} HP** (${damageTypeLabel(handType)}).`;
       } else handText = ' Затем босс атакует с руки, но промахивается.';
       text = summonText + handText;
@@ -1372,7 +1385,7 @@ async function bossTurn(id) {
   saveState(b, state);
   for (const p of battlePlayers(id)) {
     const e = effects(p);
-    for (const k of ['guardRounds','guardianUltRounds','tauntRounds','interceptRounds','groupDamageRounds','partyGuardRounds','healingPenaltyTurns']) if (e[k] > 0) e[k]--;
+    for (const k of ['guardRounds','guardianUltRounds','tauntRounds','interceptRounds','groupDamageRounds','partyGuardRounds','healingPenaltyTurns','bossControlImmunityTurns']) if (e[k] > 0) e[k]--;
     updateEffects(id, p.user_id, e);
   }
 }

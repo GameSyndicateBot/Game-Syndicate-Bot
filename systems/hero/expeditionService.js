@@ -196,12 +196,15 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
   if (!testMode && !window.fits) return { ok: false, reason: 'boss_window', nextBossAt: window.nextBoss.toISOString() };
   const returnsAt = new Date(Date.now() + durationMs).toISOString();
   const alchemy = consumeContextBuffs(userId, 'expedition');
-  const buffPayload = { bonuses: alchemy.bonuses || {}, consumed: alchemy.consumed || [], effects: describeBuffKeys(alchemy.consumed || []) };
+  const worldEffectsAtStart = getRegionEffects(guildId || 'global', location.region);
+  const effectiveHero = getEffectiveHero(hero);
+  const startChance = Math.round(computeSuccessChance(effectiveHero, location, { ...(alchemy.bonuses || {}), expedition_success:(Number(alchemy.bonuses?.expedition_success)||0)+Number(worldEffectsAtStart.success||0) }, tacticKey));
+  const buffPayload = { bonuses: alchemy.bonuses || {}, consumed: alchemy.consumed || [], effects: describeBuffKeys(alchemy.consumed || []), successChance:startChance, worldEffects:{ success:Number(worldEffectsAtStart.success||0), eventKey:worldEffectsAtStart.event?.key||null } };
   const heroSnapshot = {
-    name: hero.name, level: hero.level, hp: hero.hp, max_hp: hero.max_hp,
+    name: effectiveHero.name, level: effectiveHero.level, hp: effectiveHero.hp, max_hp: effectiveHero.max_hp,
     class_key: hero.class_key, origin_key: hero.origin_key,
-    strength: hero.strength, defense: hero.defense, dexterity: hero.dexterity,
-    intelligence: hero.intelligence, luck: hero.luck,
+    strength: effectiveHero.strength, defense: effectiveHero.defense, dexterity: effectiveHero.dexterity,
+    intelligence: effectiveHero.intelligence, luck: effectiveHero.luck,
   };
   const info = db.prepare(`INSERT INTO hero_expeditions
     (user_id,location_key,status,returns_at,buffs_json,guild_id,location_snapshot_json,hero_snapshot_json,hp_before,class_key,tactic_key,duration_hours)
@@ -214,7 +217,7 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
   recordActivity(guildId,userId,location,'started',`${location.icon} ${playerName(userId)} отправился в «${location.name}»`,location.rarity,0);
   const tactic = getExpeditionTactic(tacticKey);
   addHistory(userId, 'expedition_started', `${location.icon} Герой отправился в локацию «${location.name}». Тактика: ${tactic.icon} ${tactic.name}.${buffText}`, { expeditionId: Number(info.lastInsertRowid), locationKey, classKey, tacticKey, durationHours, alchemy: buffPayload });
-  return { ok: true, expedition: db.prepare('SELECT * FROM hero_expeditions WHERE id=?').get(info.lastInsertRowid), location };
+  return { ok: true, expedition: db.prepare('SELECT * FROM hero_expeditions WHERE id=?').get(info.lastInsertRowid), location, chance:startChance };
 }
 
 function originBonus(originKey, location) {
@@ -304,7 +307,7 @@ function resolveExpedition(userId, { force = false } = {}) {
   const tactic = getExpeditionTactic(expedition.tactic_key);
   const duration = durationModifiers(expedition.duration_hours || 4);
   const worldEffects = getRegionEffects(expedition.guild_id || 'global', location.region);
-  const chance = computeSuccessChance(hero, location, { ...alchemyBonuses, expedition_success:(Number(alchemyBonuses.expedition_success)||0)+Number(worldEffects.success||0) }, tactic.key);
+  const chance = Number(expeditionBuffs.successChance || 0) || computeSuccessChance(hero, location, { ...alchemyBonuses, expedition_success:(Number(alchemyBonuses.expedition_success)||0)+Number(worldEffects.success||0) }, tactic.key);
   const roll = rng() * 100;
   let outcome = 'fail';
   if (roll <= chance * 0.25) outcome = 'great';

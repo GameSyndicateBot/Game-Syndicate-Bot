@@ -401,7 +401,7 @@ ${preview}
     return interaction.reply({
       embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`)
         .setDescription(`**${hero.name}** отправился в **${result.location.name}** как **${HERO_CLASSES[result.expedition.class_key]?.icon || ''} ${HERO_CLASSES[result.expedition.class_key]?.name || result.expedition.class_key}**.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**\n\nДлительность: **${Number(result.expedition.duration_hours||4)} ч.**\nВозвращение ${ts(result.expedition.returns_at)}. После этого нажми **«Забрать результат»**.`)
-        .addFields({ name: 'Опасность', value: stars(result.location.difficulty), inline: true }, { name: 'Шанс успеха', value: `${Math.round(computeSuccessChance(hero, result.location, {}, tactic.key))}%`, inline: true })],
+        .addFields({ name: 'Опасность', value: stars(result.location.difficulty), inline: true }, { name: 'Шанс успеха', value: `${Number(result.chance || Math.round(computeSuccessChance(getEffectiveHero(hero), result.location, {}, tactic.key)))}%`, inline: true })],
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -501,7 +501,7 @@ ${lockText}`).setFooter({ text: active ? 'Твой герой уже наход�
       let expeditionBuffs = {}; try { expeditionBuffs = JSON.parse(result.expedition.buffs_json || '{}') || {}; } catch {}
       const tactic = getExpeditionTactic(result.expedition.tactic_key);
       const activeEffects = expeditionBuffs.effects?.length ? `\n\n🧪 Активировано: ${expeditionBuffs.effects.map(e => `**${e.icon} ${e.name}**`).join(', ')}` : '';
-      return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`).setDescription(`**${hero.name}** отправился в локацию **${result.location.name}** как **${HERO_CLASSES[result.expedition.class_key]?.icon || ''} ${HERO_CLASSES[result.expedition.class_key]?.name || result.expedition.class_key}**.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**\n\nВернётся ${ts(result.expedition.returns_at)} (${ts(result.expedition.returns_at, 'f')}).\nПосле этого используй \`/expedition return\`.${activeEffects}`).addFields({ name:'Опасность', value:stars(result.location.difficulty), inline:true }, { name:'Ожидаемый шанс', value:`${Math.round(computeSuccessChance(hero, result.location, expeditionBuffs.bonuses || {}, tactic.key))}%`, inline:true }, { name:'Погода', value:`${result.location.weather?.icon || '🌤️'} ${result.location.weather?.name || 'Без изменений'}`, inline:true })] });
+      return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`).setDescription(`**${hero.name}** отправился в локацию **${result.location.name}** как **${HERO_CLASSES[result.expedition.class_key]?.icon || ''} ${HERO_CLASSES[result.expedition.class_key]?.name || result.expedition.class_key}**.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**\n\nВернётся ${ts(result.expedition.returns_at)} (${ts(result.expedition.returns_at, 'f')}).\nПосле этого используй \`/expedition return\`.${activeEffects}`).addFields({ name:'Опасность', value:stars(result.location.difficulty), inline:true }, { name:'Ожидаемый шанс', value:`${Number(result.chance || Math.round(computeSuccessChance(getEffectiveHero(hero), result.location, expeditionBuffs.bonuses || {}, tactic.key)))}%`, inline:true }, { name:'Погода', value:`${result.location.weather?.icon || '🌤️'} ${result.location.weather?.name || 'Без изменений'}`, inline:true })] });
     }
 
     if (sub === 'status') {

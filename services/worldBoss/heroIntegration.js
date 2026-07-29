@@ -2,7 +2,7 @@
 
 const { getHero } = require('../../systems/hero/heroService');
 const { getEquipment, getEquipmentOnlyBonuses, getClassEquipment, getClassEquipmentOnlyBonuses } = require('../../systems/hero/itemService');
-const { getActiveCompanion } = require('../../systems/hero/companionService');
+const { getActiveCompanion, getActiveCompanions, getActiveMount, getCompanionBonuses } = require('../../systems/hero/companionService');
 const { serializeClassProgress, normalizeClassKey, classWorldBossBonuses } = require('../../systems/hero/classProgressService');
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, Number(n) || 0)); }
@@ -24,16 +24,22 @@ const CLASS_EQUIPMENT_PROFILES = Object.freeze({
 
 function equipmentBonusesForClass(snapshot, classKey) {
   const key = normalizeClassKey(classKey);
-  const stats = snapshot?.classEquipmentBonuses?.[key] || snapshot?.equipmentBonuses || {};
+  const classStats = snapshot?.classEquipmentBonuses?.[key] || snapshot?.equipmentBonuses || {};
+  const companionStats = snapshot?.companionBonuses || {};
+  const stats = { ...classStats };
+  for (const [stat, value] of Object.entries(companionStats)) stats[stat] = Number(stats[stat] || 0) + Number(value || 0);
   const profile = CLASS_EQUIPMENT_PROFILES[key] || CLASS_EQUIPMENT_PROFILES.warrior;
   const primaryScore = profile.primary.reduce((sum, stat) => sum + Number(stats[stat] || 0), 0);
   const damagePercent = clamp(primaryScore / 1.45 + Number(stats.world_boss_damage || 0) * 1.75, 0, 35);
-  const hpPercent = clamp((Number(stats.hp || 0) / 4.5 + Number(stats.defense || 0) / 3.2) * profile.hpWeight, 0, 28);
+  // Flat HP from equipment/pets/mounts is applied as an exact value later.
+  const hpPercent = clamp((Number(stats.defense || 0) / 3.2) * profile.hpWeight, 0, 18);
   const resistancePercent = clamp((Number(stats.defense || 0) / 2.1 + Number(stats.world_boss_resistance || 0) * 1.6) * profile.resistanceWeight, 0, 22);
   return {
     damagePercent: Math.round(damagePercent * 10) / 10,
     hpPercent: Math.round(hpPercent * 10) / 10,
     resistancePercent: Math.round(resistancePercent * 10) / 10,
+    flatHp: Math.max(0, Math.round(Number(stats.hp || 0))),
+    expeditionSuccess: Number(stats.expedition_success || 0),
   };
 }
 
@@ -55,6 +61,9 @@ function buildHeroSnapshot(userId) {
     }));
   }
   const companion = getActiveCompanion(userId);
+  const activePets = getActiveCompanions(userId);
+  const activeMount = getActiveMount(userId);
+  const companionBonuses = getCompanionBonuses(userId) || {};
 
   // Базовый герой даёт небольшой общий бонус. Экипировка считается отдельно
   // и адаптируется под выбранный в World Boss класс, чтобы не было двойного учёта.
@@ -79,10 +88,13 @@ function buildHeroSnapshot(userId) {
     },
     combat: { damagePercent, hpPercent, resistancePercent },
     equipmentBonuses,
+    companionBonuses,
     classEquipmentBonuses,
     classEquipment,
     classProgress: serializeClassProgress(userId),
     equipment,
+    activePets: activePets.map(x => ({ key:x.companion_key, name:x.name, rarity:x.rarity, level:Number(x.level||1) })),
+    activeMount: activeMount ? { key:activeMount.companion_key, name:activeMount.name, rarity:activeMount.rarity, level:Number(activeMount.level||1) } : null,
     companion: companion ? {
       key: companion.companion_key,
       name: companion.name,

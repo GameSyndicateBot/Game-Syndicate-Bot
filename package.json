@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.4.5",
+  "version": "19.4.6",
   "private": true,
-  "description": "Game Syndicate V19.4.5: personal in-channel Caravan notification",
+  "description": "Game Syndicate V19.4.6: World Boss balance and unified hero/expedition stats",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
