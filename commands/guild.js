@@ -13,7 +13,7 @@ const { COMPANIONS, RARITY_LABELS: COMPANION_RARITIES } = require('../systems/he
 const { RARITY_LABELS } = require('../systems/hero/itemData');
 const { HERO_CLASSES, ORIGINS, GENDERS } = require('../systems/hero/heroData');
 const { getAllClassProgress, getClassProgress, classXpForNextLevel, classWorldBossBonuses, getMasteryRank, getNextMilestone, classProgressPercent } = require('../systems/hero/classProgressService');
-const { getActiveExpedition } = require('../systems/hero/expeditionService');
+const { getActiveExpedition, getTreasureMapState, activateTreasureMap } = require('../systems/hero/expeditionService');
 const { createGuildHubCard } = require('../images/hero/createGuildHubCard');
 const { createHeroCard } = require('../images/hero/createHeroCard');
 const { db, getCardDust, addCardDust, removeCardDust } = require('../database/db');
@@ -28,7 +28,7 @@ const { listCookRecipes, hydrateCookRecipe, cook } = require('../systems/hero/co
 const { sourceFor, missingRecipeSummary, missingCookSummary, recipeState, cookState, itemBonusLines } = require('../systems/hero/craftingUx');
 const caravan = require('../services/caravanService');
 const guildMerchant = require('../services/guildMerchantService');
-const { TOOL_TIERS, toolInfo, craftTool, dismantle } = require('../systems/hero/playerCorrectionService');
+const { TOOL_TIERS, toolInfo, craftTool, dismantle, equipArtifact, unequipArtifact } = require('../systems/hero/playerCorrectionService');
 
 const GUILD_CHANNEL_ID = '1530165282512044032';
 const EXPEDITION_CHANNEL_ID = '1529566430301782017';
@@ -192,7 +192,7 @@ function raritySphere(rarity) {
 
 async function showInventory(interaction, notice = '') {
   const hero=getHero(interaction.user.id);if(!hero)return interaction.reply({content:'❌ Сначала создай героя.',flags:MessageFlags.Ephemeral});
-  const items=getInventory(interaction.user.id,{limit:100}).filter(i=>i.item_type!=='utility'),equipment=getEquipment(interaction.user.id),equippedIds=new Set(equipment.map(x=>Number(x.inventory_id)));
+  const allInventory=getInventory(interaction.user.id,{limit:100}),items=allInventory.filter(i=>i.item_type!=='utility'),utilities=allInventory.filter(i=>i.item_type==='utility'),equipment=getEquipment(interaction.user.id),equippedIds=new Set(equipment.map(x=>Number(x.inventory_id)));
   const activeMount=getActiveMount(interaction.user.id);
   const labels={melee:'Оружие ближнего боя',ranged:'Дальнее оружие',offhand:'Щит / левая рука',ring1:'Кольцо I',ring2:'Кольцо II',belt:'Пояс',legs:'Штаны',chest:'Нагрудник',boots:'Сапоги',helmet:'Шлем',amulet:'Амулет',gloves:'Перчатки',backpack:'Рюкзак'};
   const icons={melee:'⚔️',ranged:'🏹',offhand:'🛡️',ring1:'💍',ring2:'💍',belt:'🪢',legs:'👖',chest:'🥋',boots:'🥾',helmet:'🪖',amulet:'📿',gloves:'🧤',backpack:'🎒'};
@@ -200,15 +200,25 @@ async function showInventory(interaction, notice = '') {
   const bySlot=new Map(equipment.map(x=>[x.slot,x]));
   const slotText=slots.map(slot=>{const x=bySlot.get(slot);return `${icons[slot]||'▫️'} **${labels[slot]}:** ${x?`${raritySphere(x.rarity)} ${x.name}${Number(x.upgrade_level||0)?` +${x.upgrade_level}`:''}`:'⚪ Свободно'}`;}).join('\n');
   const mountLine=`🐎 **Маунт (ездовой):** ${activeMount?`${raritySphere(activeMount.rarity)} ${activeMount.name}`:'⚪ Свободно'}`;
+  let artifactRows=[];try{artifactRows=db.prepare(`SELECT hae.slot_no,hi.id inventory_id,i.name,i.rarity FROM hero_artifact_equipment hae JOIN hero_inventory hi ON hi.id=hae.inventory_id JOIN hero_items i ON i.item_key=hi.item_key WHERE hae.user_id=? ORDER BY hae.slot_no`).all(String(interaction.user.id));}catch(_){}
+  const artifactMap=new Map(artifactRows.map(x=>[Number(x.slot_no),x]));
+  const artifactLines=[1,2].map(slot=>{const x=artifactMap.get(slot);return `💠 **Артефакт ${slot}:** ${x?`${raritySphere(x.rarity)} ${x.name} (#${x.inventory_id})`:'⚪ Свободно'}`;}).join('\n');
   const legacy=equipment.filter(x=>!slots.includes(x.slot)).map(x=>`${icons[x.slot]||'▫️'} **${labels[x.slot]||x.slot}:** ${raritySphere(x.rarity)} ${x.name}`).join('\n');
   const itemText=items.length?items.slice(0,25).map(i=>`${raritySphere(i.rarity)} **#${i.id} ${i.name}**${Number(i.upgrade_level||0)?` +${i.upgrade_level}`:''} ×${i.quantity} · ${RARITY_LABELS[i.rarity]||i.rarity}${equippedIds.has(Number(i.id))?' · **надето**':''}`).join('\n'):'Инвентарь пока пуст.';
+  const utilityText=utilities.length?utilities.map(i=>`${raritySphere(i.rarity)} **#${i.id} ${i.name}** ×${i.quantity}`).join('\n'):'Расходных походных предметов нет.';
   const allCompanions=listCompanions(interaction.user.id),mounts=allCompanions.filter(x=>x.companion_kind==='mount'),pets=allCompanions.filter(x=>x.companion_kind!=='mount');
   const mountStock=mounts.length?mounts.map(x=>`${raritySphere(x.rarity)} **#${x.id} 🐎 ${x.name}**${x.active_mount?' · **надето**':' · на складе'}`).join('\n'):'Маунтов пока нет.';
   const petStock=pets.length?pets.map(x=>`${raritySphere(x.rarity)} **#${x.id} 🐾 ${x.name}**${x.active_slot?` · **активен, слот ${x.active_slot}**`:' · на складе'}`).join('\n'):'Питомцев пока нет.';
-  const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle(`🎒 Инвентарь — ${hero.name}`).setDescription([notice,'### Активные слоты',slotText,mountLine,legacy,'','### Предметы',itemText,'','### 🐎 Маунты',mountStock,'','### 🐾 Питомцы',petStock].filter(Boolean).join('\n').slice(0,4000)).setFooter({text:'⚪ Common • 🔵 Rare • 🟣 Epic • 🟠 Legendary • 🔴 Mythic. Активные предметы отмечены текстом «надето».'});
+  const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle(`🎒 Инвентарь — ${hero.name}`).setDescription([notice,'### Активные слоты',slotText,mountLine,artifactLines,legacy,'','### Предметы',itemText,'','### 🗺️ Походные предметы',utilityText,'','### 🐎 Маунты',mountStock,'','### 🐾 Питомцы',petStock].filter(Boolean).join('\n').slice(0,4000)).setFooter({text:'⚪ Common • 🔵 Rare • 🟣 Epic • 🟠 Legendary • 🔴 Mythic. Активные предметы отмечены текстом «надето».'});
   const components=[],eq=items.filter(i=>i.slot).slice(0,25);if(eq.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:select').setPlaceholder('Выбрать предмет: информация / надеть / снять').addOptions(eq.map(i=>({label:`#${i.id} ${i.name}`.slice(0,100),value:String(i.id),emoji:raritySphere(i.rarity),description:equippedIds.has(Number(i.id))?'Сейчас надето':'Свободно в инвентаре'})))));
   if(mounts.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:mount').setPlaceholder('Выбрать маунта: информация / надеть / снять').addOptions(mounts.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐎',description:m.active_mount?'Сейчас надет • открыть характеристики':`${RARITY_LABELS[m.rarity]||m.rarity} • открыть характеристики`})))));
   if(pets.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:inventory:pet').setPlaceholder('Выбрать питомца: информация / надеть / снять').addOptions(pets.slice(0,25).map(m=>({label:`#${m.id} ${m.name}`.slice(0,100),value:String(m.id),emoji:'🐾',description:m.active_slot?`Активен в слоте ${m.active_slot} • открыть характеристики`:`${COMPANION_RARITIES[m.rarity]||m.rarity} • открыть характеристики`})))));
+  const inventoryActions=[];
+  if(utilities.some(i=>i.item_key==='treasure_map') || getTreasureMapState(interaction.user.id)) inventoryActions.push(
+    new ButtonBuilder().setCustomId('guild:inventory:treasuremap').setLabel(getTreasureMapState(interaction.user.id)?'Карта уже активна':'Использовать карту сокровищ').setEmoji('🗺️').setStyle(ButtonStyle.Primary).setDisabled(getTreasureMapState(interaction.user.id))
+  );
+  inventoryActions.push(new ButtonBuilder().setCustomId('guild:artifacts').setLabel('Артефакты').setEmoji('💍').setStyle(ButtonStyle.Secondary));
+  components.push(new ActionRowBuilder().addComponents(inventoryActions));
   const payload={embeds:[embed],components};const eph=Boolean(interaction.message?.flags?.has?.(MessageFlags.Ephemeral));return eph?interaction.update(payload):interaction.reply({...payload,flags:MessageFlags.Ephemeral});
 }
 
@@ -561,17 +571,59 @@ async function showPets(interaction, notice = '') {
   return interaction.reply({embeds:[embed],components,flags:MessageFlags.Ephemeral});
 }
 
-async function showArtifacts(interaction) {
+async function showArtifacts(interaction, notice='') {
   const hero=getHero(interaction.user.id);
   if(!hero)return interaction.reply({content:'❌ Сначала создай героя.',flags:MessageFlags.Ephemeral});
+  let equipped=[];
+  try{equipped=db.prepare(`SELECT hae.slot_no,hi.id inventory_id,i.name,i.rarity,i.description,i.bonuses_json
+    FROM hero_artifact_equipment hae
+    JOIN hero_inventory hi ON hi.id=hae.inventory_id
+    JOIN hero_items i ON i.item_key=hi.item_key
+    WHERE hae.user_id=? ORDER BY hae.slot_no`).all(String(interaction.user.id));}catch(_){}
+  const equippedIds=new Set(equipped.map(x=>Number(x.inventory_id)));
   const items=getInventory(interaction.user.id,{type:'artifact',limit:50});
-  const text=items.length?items.map(i=>{
+  const free=items.filter(i=>!equippedIds.has(Number(i.id)));
+  const slotLines=[1,2].map(slot=>{
+    const row=equipped.find(x=>Number(x.slot_no)===slot);
+    if(!row)return `💠 **Слот ${slot}:** ⚪ свободен`;
+    const bonuses=formatBonuses(row.bonuses_json);
+    return `💠 **Слот ${slot}:** ${raritySphere(row.rarity)} **${row.name}** (#${row.inventory_id})${bonuses.length?`\n${bonuses.join(' · ')}`:''}`;
+  }).join('\n\n');
+  const stock=free.length?free.map(i=>{
     const bonuses=formatBonuses(i.bonuses_json);
-    return `💍 **#${i.id} ${i.name}** ×${i.quantity} · ${RARITY_LABELS[i.rarity]||i.rarity}\n${i.description}${bonuses.length?`\n${bonuses.join(' · ')}`:''}`;
-  }).join('\n\n'):'Артефактов пока нет. Это редчайшие реликвии, которые выпадают в особых экспедициях и с сильных противников.';
-  const embed=new EmbedBuilder().setColor(0xA855F7).setTitle('💍 Артефакты героя').setDescription(text.slice(0,4000))
-    .setFooter({text:'Артефакты хранятся отдельно от обычной экипировки и дают постоянные коллекционные реликвии.'});
-  return interaction.reply({embeds:[embed],components:[guildNavRow('artifacts')],flags:MessageFlags.Ephemeral});
+    return `${raritySphere(i.rarity)} **#${i.id} ${i.name}** · ${RARITY_LABELS[i.rarity]||i.rarity}\n${i.description||''}${bonuses.length?`\n${bonuses.join(' · ')}`:''}`;
+  }).join('\n\n'):'Свободных артефактов нет.';
+  const embed=new EmbedBuilder().setColor(0xA855F7).setTitle('💍 Артефакты героя')
+    .setDescription([notice,'### Экипированные артефакты',slotLines,'','### Хранилище',stock].filter(Boolean).join('\n').slice(0,4000))
+    .setFooter({text:'Можно одновременно экипировать два артефакта. Их бонусы действуют только пока артефакт находится в слоте.'});
+  const components=[];
+  if(free.length)components.push(new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId('guild:artifacts:equipselect').setPlaceholder('Выбрать артефакт для экипировки')
+      .addOptions(free.slice(0,25).map(i=>({label:`#${i.id} ${i.name}`.slice(0,100),value:String(i.id),emoji:'💍',description:`${RARITY_LABELS[i.rarity]||i.rarity} · выбрать слот`})))
+  ));
+  if(equipped.length)components.push(new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId('guild:artifacts:remove').setPlaceholder('Снять артефакт')
+      .addOptions(equipped.map(i=>({label:`Слот ${i.slot_no}: ${i.name}`.slice(0,100),value:String(i.slot_no),emoji:'📤'})))
+  ));
+  components.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:inventory').setLabel('Назад в инвентарь').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
+  ));
+  const payload={embeds:[embed],components};
+  const eph=Boolean(interaction.message?.flags?.has?.(MessageFlags.Ephemeral));
+  return eph?interaction.update(payload):interaction.reply({...payload,flags:MessageFlags.Ephemeral});
+}
+
+async function showArtifactSlotChoice(interaction, inventoryId) {
+  const item=getInventoryItem(interaction.user.id,Number(inventoryId));
+  if(!item || item.item_type!=='artifact')return showArtifacts(interaction,'❌ Артефакт не найден.');
+  return interaction.update({
+    embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle(`💍 ${item.name}`).setDescription('Выбери один из двух слотов. Если слот занят, прежний артефакт будет снят.')],
+    components:[new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`guild:artifacts:equip:${inventoryId}:1`).setLabel('Надеть в слот 1').setEmoji('1️⃣').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`guild:artifacts:equip:${inventoryId}:2`).setLabel('Надеть в слот 2').setEmoji('2️⃣').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('guild:artifacts').setLabel('Отмена').setStyle(ButtonStyle.Secondary)
+    )]
+  });
 }
 
 
@@ -899,6 +951,8 @@ function createCompanionListing(userId,id,price){const value=Math.floor(Number(p
 function buyCompanionListing(userId,id){const uid=String(userId);let lot;try{db.transaction(()=>{lot=db.prepare("SELECT * FROM market_companion_listings WHERE id=? AND status='open'").get(Number(id));if(!lot)throw new Error('missing');if(String(lot.seller_id)===uid)throw new Error('self');const claim=db.prepare("UPDATE market_companion_listings SET status='processing',buyer_id=? WHERE id=? AND status='open'").run(uid,Number(id));if(claim.changes!==1)throw new Error('missing');const pay=removeCardDust(uid,Number(lot.price),`Покупка ${lot.companion_name}`);if(!pay?.ok)throw new Error('dust');const granted=giveTransferredCompanion(uid,JSON.parse(lot.companion_data));if(!granted)throw new Error('grant');addCardDust(String(lot.seller_id),Number(lot.price),`Продажа ${lot.companion_name}`);db.prepare("UPDATE market_companion_listings SET status='sold',closed_at=CURRENT_TIMESTAMP WHERE id=? AND status='processing' AND buyer_id=?").run(Number(id),uid);})();return {ok:true,lot};}catch(e){return {ok:false,reason:e.message};}}
 function cancelCompanionListing(userId,id){let lot;try{db.transaction(()=>{lot=db.prepare("SELECT * FROM market_companion_listings WHERE id=? AND seller_id=? AND status='open'").get(Number(id),String(userId));if(!lot)throw new Error('missing');const claim=db.prepare("UPDATE market_companion_listings SET status='cancelling' WHERE id=? AND seller_id=? AND status='open'").run(Number(id),String(userId));if(claim.changes!==1)throw new Error('missing');const granted=giveTransferredCompanion(userId,JSON.parse(lot.companion_data));if(!granted)throw new Error('grant');db.prepare("UPDATE market_companion_listings SET status='cancelled',closed_at=CURRENT_TIMESTAMP WHERE id=? AND status='cancelling'").run(Number(id));})();return {ok:true,lot};}catch(e){return {ok:false,reason:e.message};}}
 
+const MARKET_PRIORITY_MATERIALS=['forest_mushrooms','raw_meat','grain','moon_carp','wild_berries'];
+function marketMaterialEntries(){const all=Object.entries(MATERIALS);const priority=MARKET_PRIORITY_MATERIALS.map(k=>[k,MATERIALS[k]]).filter(([,v])=>v);const used=new Set(priority.map(([k])=>k));return [...priority,...all.filter(([k])=>!used.has(k))];}
 const marketDrafts=new Map();
 function removeEquipmentForTrade(userId,inventoryId){
  const row=db.prepare(`SELECT hi.*,i.name,i.rarity,i.slot,i.item_type,i.description,i.bonuses_json,i.lore
@@ -966,7 +1020,7 @@ async function showExchangeHub(interaction,notice=''){
  const lots=db.prepare("SELECT * FROM market_exchange_lots WHERE status='open' ORDER BY id DESC LIMIT 25").all();const components=[];
  if(lots.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:orders:exchange:take').setPlaceholder('Выбери предложение обмена').addOptions(lots.filter(x=>x.creator_id!==interaction.user.id).map(x=>({label:`${x.offer_name} ×${x.offer_qty} → ${x.want_name} ×${x.want_qty}`.slice(0,100),description:`Предложение №${x.id}`.slice(0,100),value:String(x.id),emoji:'🔄'})).slice(0,25))));
  components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:orders:exchange:create').setLabel('Создать обмен').setEmoji('➕').setStyle(ButtonStyle.Success)),marketBackRow());
- const text=lots.length?lots.map(x=>`**№${x.id}** • ${x.offer_name} ×${x.offer_qty} **⇄** ${x.want_name} ×${x.want_qty}`).join('\n'):'Предложений обмена пока нет.';
+ const text=lots.length?lots.map(x=>x.want_type==='free'?`**№${x.id}** • 🎁 ${x.offer_name} ×${x.offer_qty} **бесплатно**`:`**№${x.id}** • ${x.offer_name} ×${x.offer_qty} **⇄** ${x.want_name} ×${x.want_qty}`).join('\n'):'Предложений обмена пока нет.';
  return interaction.update({content:'',embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('🔄 Безопасный обмен').setDescription([notice,text,'','Предметы создателя резервируются сразу. Обмен проходит одной операцией: никто не потеряет вещи без встречной передачи.'].filter(Boolean).join('\n'))],components});
 }
 async function showChestsHub(interaction, notice=''){
@@ -1347,7 +1401,7 @@ async function handleComponent(interaction) {
   if (action === 'orders' && parts[2] === 'sell' && parts[3] === 'blacksmith') {const rows=duplicateEquipment(interaction.user.id).slice(0,25);if(!rows.length)return showMarketSell(interaction,'ℹ️ Нет свободных дубликатов.');return interaction.update({embeds:[new EmbedBuilder().setColor(0xF59E0B).setTitle('🔨 Продажа кузнецу').setDescription('Выбери дубликат. Продажа произойдёт сразу.')],components:[new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:orders:sell:blacksmithitem').setPlaceholder('Выбери предмет').addOptions(rows.map(x=>({label:x.name.slice(0,100),description:`${x.rarity} • свободно ${x.sellable}`,value:String(x.id),emoji:'🔨'})))),marketBackRow()]});}
   if (action === 'orders' && parts[2] === 'sell' && parts[3] === 'blacksmithitem') {const r=sellToBlacksmith(interaction.user.id,Number(interaction.values[0]));return showMarketSell(interaction,r.ok?`✅ Кузнец купил **${r.item.name}** за **${r.earned} GS Dust**.`:'❌ Продажа не выполнена.');}
   if (action === 'orders' && parts[2] === 'requests' && parts.length===3) return showMarketRequests(interaction);
-  if (action === 'orders' && parts[2] === 'requests' && parts[3] === 'create') {const all=Object.values(MATERIALS).filter(x=>x?.key).slice(0,25);const opts=Object.entries(MATERIALS).slice(0,25).map(([key,x])=>({label:(x.name||key).slice(0,100),value:key,emoji:x.icon||'📦'}));return interaction.update({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('Создать заказ').setDescription('Выбери материал, затем укажи количество и цену за единицу.')],components:[new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:orders:requests:createitem').setPlaceholder('Выбери материал').addOptions(opts)),marketBackRow()]});}
+  if (action === 'orders' && parts[2] === 'requests' && parts[3] === 'create') {const opts=marketMaterialEntries().slice(0,25).map(([key,x])=>({label:(x.name||key).slice(0,100),value:key,emoji:x.icon||'📦'}));return interaction.update({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('Создать заказ').setDescription('Выбери материал, затем укажи количество и цену за единицу.')],components:[new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:orders:requests:createitem').setPlaceholder('Выбери материал').addOptions(opts)),marketBackRow()]});}
   if (action === 'orders' && parts[2] === 'requests' && parts[3] === 'createitem') return interaction.showModal(marketModal(`guild:market:createorder:${interaction.values[0]}`,'Новый заказ',[{id:'quantity',label:'Количество',placeholder:'Например: 20'},{id:'price',label:'Цена за 1 единицу',placeholder:'Например: 5'}]));
   if (action === 'orders' && parts[2] === 'requests' && parts[3] === 'fulfill') {const o=listOpenOrders(100).find(x=>x.id===Number(interaction.values[0]));if(!o)return showMarketRequests(interaction,'❌ Заказ уже закрыт.');return interaction.showModal(marketModal(`guild:market:fulfill:${o.item_key}:${o.id}`,'Выполнить заказ',[{id:'quantity',label:'Количество',placeholder:`Максимум ${o.quantity_remaining}`}]))}
   if (action === 'orders' && parts[2] === 'mine' && parts.length===3) return showMarketMine(interaction);
@@ -1360,12 +1414,12 @@ async function handleComponent(interaction) {
   if (action === 'orders' && parts[2] === 'exchange' && parts.length===3) return showExchangeHub(interaction);
   if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'list') return showExchangeHub(interaction);
   if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'create') return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('Что отдаёшь?').setDescription('Выбери тип предмета для обмена.')],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:orders:exchange:offer:material').setLabel('Материал').setEmoji('🪨').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:offer:equipment').setLabel('Экипировка').setEmoji('⚔️').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:offer:dust').setLabel('GS Dust').setEmoji('💎').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:offer:companion').setLabel('Питомец/маунт').setEmoji('🐾').setStyle(ButtonStyle.Primary)),marketBackRow()]});
-  if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'offer') {const type=parts[4];if(type==='dust'){const balance=getCardDust(interaction.user.id);if(balance<1)return showExchangeHub(interaction,'❌ У тебя нет GS Dust для обмена.');marketDrafts.set(interaction.user.id,{offerType:'dust',offerValue:'gs_dust'});return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('Что хочешь получить?').setDescription(`Доступно: **${balance} GS Dust**`)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:orders:exchange:want:material').setLabel('Материал').setEmoji('🪨').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:equipment').setLabel('Экипировка').setEmoji('⚔️').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:dust').setLabel('GS Dust').setEmoji('💎').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:companion').setLabel('Питомец/маунт').setEmoji('🐾').setStyle(ButtonStyle.Primary)),marketBackRow()]});}const rows=type==='material'?listResources(interaction.user.id).filter(x=>x.quantity>0):type==='companion'?sellableCompanions(interaction.user.id):duplicateEquipment(interaction.user.id);if(!rows.length)return showExchangeHub(interaction,'❌ Нет подходящих предметов.');return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('Выбери, что отдаёшь')],components:[new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`guild:orders:exchange:offerset:${type}`).setPlaceholder('Выбери предмет').addOptions(rows.slice(0,25).map(x=>({label:(x.name||x.key).slice(0,100),description:type==='material'?`Доступно ${x.quantity}`:type==='companion'?`${x.companion_kind==='mount'?'Маунт (ездовой)':'Питомец'} • ${x.rarity}`:`Свободно ${x.sellable}`,value:type==='material'?x.key:String(x.id),emoji:type==='material'?(x.icon||'📦'):type==='companion'?(x.companion_kind==='mount'?'🐎':'🐾'):'⚔️'})))),marketBackRow()]});}
-  if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'offerset') {marketDrafts.set(interaction.user.id,{offerType:parts[4],offerValue:interaction.values[0]});return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('Что хочешь получить?')],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:orders:exchange:want:material').setLabel('Материал').setEmoji('🪨').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:equipment').setLabel('Экипировка').setEmoji('⚔️').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:dust').setLabel('GS Dust').setEmoji('💎').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:companion').setLabel('Питомец/маунт').setEmoji('🐾').setStyle(ButtonStyle.Primary)),marketBackRow()]});}
-  if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'want') {const type=parts[4];if(type==='dust'){const d=marketDrafts.get(interaction.user.id);if(!d)return showExchangeHub(interaction,'❌ Черновик обмена устарел.');d.wantType='dust';d.wantKey='gs_dust';marketDrafts.set(interaction.user.id,d);return interaction.showModal(marketModal('guild:market:exchangeqty','Количество в обмене',[{id:'offer_qty',label:'Сколько отдаёшь',placeholder:d.offerType==='equipment'?'1':'Например: 100'},{id:'want_qty',label:'Сколько GS Dust хочешь',placeholder:'Например: 250'}]));}const all=type==='material'?Object.entries(MATERIALS):type==='companion'?db.prepare('SELECT companion_key key,MAX(name) name,MAX(rarity) rarity FROM hero_companions GROUP BY companion_key ORDER BY name LIMIT 25').all().map(x=>[x.key,{name:x.name,rarity:x.rarity,kind:(COMPANIONS[x.key]?.kind||(/mount|маунт|конь|олень|виверн|скакун/i.test(x.name)?'mount':'pet'))}]):allEquipmentCatalog(25).map(x=>[x.key,x]);const opts=all.slice(0,25).map(([k,x])=>({label:(x.name||k).slice(0,100),value:k,emoji:type==='material'?(x.icon||'📦'):type==='companion'?(x.kind==='mount'?'🐎':'🐾'):'⚔️'}));const rows=[new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`guild:orders:exchange:wanted:${type}`).setPlaceholder('Выбери предмет из списка').addOptions(opts))];if(type==='equipment')rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:orders:exchange:search').setLabel('Поиск по названию').setEmoji('🔎').setStyle(ButtonStyle.Primary)));rows.push(marketBackRow());return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('Выбери желаемый предмет').setDescription(type==='equipment'?'В списке показаны первые 25 предметов. Если нужного нет — используй поиск по названию.':type==='companion'?'Выбери питомца или маунта, которого хочешь получить.':'Выбери материал из списка.')],components:rows});}
+  if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'offer') {const type=parts[4];if(type==='dust'){const balance=getCardDust(interaction.user.id);if(balance<1)return showExchangeHub(interaction,'❌ У тебя нет GS Dust для обмена.');marketDrafts.set(interaction.user.id,{offerType:'dust',offerValue:'gs_dust'});return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('Что хочешь получить?').setDescription(`Доступно: **${balance} GS Dust**`)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:orders:exchange:want:material').setLabel('Материал').setEmoji('🪨').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:equipment').setLabel('Экипировка').setEmoji('⚔️').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:dust').setLabel('GS Dust').setEmoji('💎').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:companion').setLabel('Питомец/маунт').setEmoji('🐾').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:free').setLabel('Отдать бесплатно').setEmoji('🎁').setStyle(ButtonStyle.Success)),marketBackRow()]});}const rows=type==='material'?listResources(interaction.user.id).filter(x=>x.quantity>0):type==='companion'?sellableCompanions(interaction.user.id):duplicateEquipment(interaction.user.id);if(!rows.length)return showExchangeHub(interaction,'❌ Нет подходящих предметов.');return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('Выбери, что отдаёшь')],components:[new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`guild:orders:exchange:offerset:${type}`).setPlaceholder('Выбери предмет').addOptions(rows.slice(0,25).map(x=>({label:(x.name||x.key).slice(0,100),description:type==='material'?`Доступно ${x.quantity}`:type==='companion'?`${x.companion_kind==='mount'?'Маунт (ездовой)':'Питомец'} • ${x.rarity}`:`Свободно ${x.sellable}`,value:type==='material'?x.key:String(x.id),emoji:type==='material'?(x.icon||'📦'):type==='companion'?(x.companion_kind==='mount'?'🐎':'🐾'):'⚔️'})))),marketBackRow()]});}
+  if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'offerset') {marketDrafts.set(interaction.user.id,{offerType:parts[4],offerValue:interaction.values[0]});return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('Что хочешь получить?')],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:orders:exchange:want:material').setLabel('Материал').setEmoji('🪨').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:equipment').setLabel('Экипировка').setEmoji('⚔️').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:dust').setLabel('GS Dust').setEmoji('💎').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:companion').setLabel('Питомец/маунт').setEmoji('🐾').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:orders:exchange:want:free').setLabel('Отдать бесплатно').setEmoji('🎁').setStyle(ButtonStyle.Success)),marketBackRow()]});}
+  if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'want') {const type=parts[4];if(type==='free'){const d=marketDrafts.get(interaction.user.id);if(!d)return showExchangeHub(interaction,'❌ Черновик обмена устарел.');d.wantType='free';d.wantKey='free';marketDrafts.set(interaction.user.id,d);return interaction.showModal(marketModal('guild:market:exchangeqty','Передать бесплатно',[{id:'offer_qty',label:'Сколько отдаёшь',placeholder:d.offerType==='equipment'||d.offerType==='companion'?'1':'Например: 5'}]));}if(type==='dust'){const d=marketDrafts.get(interaction.user.id);if(!d)return showExchangeHub(interaction,'❌ Черновик обмена устарел.');d.wantType='dust';d.wantKey='gs_dust';marketDrafts.set(interaction.user.id,d);return interaction.showModal(marketModal('guild:market:exchangeqty','Количество в обмене',[{id:'offer_qty',label:'Сколько отдаёшь',placeholder:d.offerType==='equipment'?'1':'Например: 100'},{id:'want_qty',label:'Сколько GS Dust хочешь',placeholder:'Например: 250'}]));}const all=type==='material'?marketMaterialEntries():type==='companion'?db.prepare('SELECT companion_key key,MAX(name) name,MAX(rarity) rarity FROM hero_companions GROUP BY companion_key ORDER BY name LIMIT 25').all().map(x=>[x.key,{name:x.name,rarity:x.rarity,kind:(COMPANIONS[x.key]?.kind||(/mount|маунт|конь|олень|виверн|скакун/i.test(x.name)?'mount':'pet'))}]):allEquipmentCatalog(25).map(x=>[x.key,x]);const opts=all.slice(0,25).map(([k,x])=>({label:(x.name||k).slice(0,100),value:k,emoji:type==='material'?(x.icon||'📦'):type==='companion'?(x.kind==='mount'?'🐎':'🐾'):'⚔️'}));const rows=[new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`guild:orders:exchange:wanted:${type}`).setPlaceholder('Выбери предмет из списка').addOptions(opts))];if(type==='equipment')rows.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:orders:exchange:search').setLabel('Поиск по названию').setEmoji('🔎').setStyle(ButtonStyle.Primary)));rows.push(marketBackRow());return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('Выбери желаемый предмет').setDescription(type==='equipment'?'В списке показаны первые 25 предметов. Если нужного нет — используй поиск по названию.':type==='companion'?'Выбери питомца или маунта, которого хочешь получить.':'Выбери материал из списка.')],components:rows});}
   if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'search') return interaction.showModal(marketModal('guild:market:exchangesearch','Поиск экипировки',[{id:'query',label:'Название предмета',placeholder:'Например: Амулет Рассвета'}]));
   if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'wanted') {const d=marketDrafts.get(interaction.user.id);if(!d)return showExchangeHub(interaction,'❌ Черновик обмена устарел.');d.wantType=parts[4];d.wantKey=interaction.values[0];marketDrafts.set(interaction.user.id,d);return interaction.showModal(marketModal('guild:market:exchangeqty','Количество в обмене',[{id:'offer_qty',label:'Сколько отдаёшь',placeholder:d.offerType==='equipment'?'1':'Например: 5'},{id:'want_qty',label:'Сколько хочешь получить',placeholder:d.wantType==='equipment'?'1':'Например: 5'}]));}
-  if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'take') {const lot=db.prepare("SELECT * FROM market_exchange_lots WHERE id=? AND status='open'").get(Number(interaction.values[0]));if(!lot)return showExchangeHub(interaction,'❌ Предложение уже закрыто.');return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('Подтвердить обмен').setDescription(`Ты отдаёшь: **${lot.want_name} ×${lot.want_qty}**\nПолучаешь: **${lot.offer_name} ×${lot.offer_qty}**`)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`guild:orders:exchange:confirm:${lot.id}`).setLabel('Обменять').setEmoji('✅').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('guild:orders:exchange').setLabel('Отмена').setStyle(ButtonStyle.Secondary))]});}
+  if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'take') {const lot=db.prepare("SELECT * FROM market_exchange_lots WHERE id=? AND status='open'").get(Number(interaction.values[0]));if(!lot)return showExchangeHub(interaction,'❌ Предложение уже закрыто.');return interaction.update({embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle(lot.want_type==='free'?'Получить подарок':'Подтвердить обмен').setDescription(lot.want_type==='free'?`Ты ничего не отдаёшь.\nПолучаешь: **${lot.offer_name} ×${lot.offer_qty}**`:`Ты отдаёшь: **${lot.want_name} ×${lot.want_qty}**\nПолучаешь: **${lot.offer_name} ×${lot.offer_qty}**`)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`guild:orders:exchange:confirm:${lot.id}`).setLabel(lot.want_type==='free'?'Получить':'Обменять').setEmoji(lot.want_type==='free'?'🎁':'✅').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('guild:orders:exchange').setLabel('Отмена').setStyle(ButtonStyle.Secondary))]});}
   if (action === 'orders' && parts[2] === 'exchange' && parts[3] === 'confirm') {
     const id=Number(parts[4]), takerId=String(interaction.user.id);
     let completed=null, reason='transaction';
@@ -1376,7 +1430,9 @@ async function handleComponent(interaction) {
         if(String(lot.creator_id)===takerId)throw new Error('self');
         if(!claimExchangeLot(id,takerId))throw new Error('closed');
 
-        if(lot.want_type==='material'){
+        if(lot.want_type==='free'){
+          // Бесплатная передача: принимающий игрок ничего не отдаёт.
+        }else if(lot.want_type==='material'){
           transferMarketMaterial(takerId,lot.creator_id,lot.want_key,lot.want_qty,'market_exchange_wanted');
         }else if(lot.want_type==='dust'){
           const payment=removeCardDust(takerId,Number(lot.want_qty),`Обмен №${id}`);
@@ -1441,6 +1497,15 @@ async function handleComponent(interaction) {
   if (action === 'hospital' && parts[2] === 'expedition') return interaction.reply({ content:`🗺️ Перейди в канал <#${EXPEDITION_CHANNEL_ID}> и выбери новую экспедицию.`, flags:MessageFlags.Ephemeral });
   if (action === 'profile' && parts.length === 2) return showProfile(interaction);
   if (action === 'inventory' && parts.length === 2) return showInventory(interaction);
+  if (action === 'inventory' && parts[2] === 'treasuremap') {
+    const result=activateTreasureMap(interaction.user.id);
+    const notice=result.ok
+      ? '✅ Карта сокровищ активирована. Она будет автоматически использована при старте следующей экспедиции и даст дополнительный тайник.'
+      : result.reason==='already_active'
+        ? 'ℹ️ Карта сокровищ уже активирована для следующей экспедиции.'
+        : '❌ В инвентаре нет Карты сокровищ.';
+    return showInventory(interaction,notice);
+  }
   if (action === 'inventory' && parts[2] === 'select') return showInventoryItem(interaction, interaction.values?.[0]);
   if (action === 'inventory' && parts[2] === 'equip') { const r=equipItem(interaction.user.id,Number(parts[3])); const msg=r.ok?'✅ Предмет экипирован.':r.reason==='class_restricted'?'❌ Этот класс не может использовать данный тип оружия или щита.':r.reason==='two_handed_conflict'?'❌ Двуручное оружие нельзя использовать одновременно со щитом.':'❌ Не удалось экипировать предмет.'; return showInventoryItem(interaction,parts[3],msg); }
   if (action === 'inventory' && parts[2] === 'unequip') { const r=unequipInventoryItem(interaction.user.id,Number(parts[3])); return showInventory(interaction,r.ok?'✅ Предмет снят.':'❌ Не удалось снять предмет.'); }
@@ -1507,7 +1572,16 @@ async function handleComponent(interaction) {
     ));
     return interaction.update({embeds:[embed],components});
   }
-  if (action === 'artifacts') return showArtifacts(interaction);
+  if (action === 'artifacts' && parts.length===2) return showArtifacts(interaction);
+  if (action === 'artifacts' && parts[2] === 'equipselect') return showArtifactSlotChoice(interaction,interaction.values?.[0]);
+  if (action === 'artifacts' && parts[2] === 'equip') {
+    const result=equipArtifact(interaction.user.id,Number(parts[3]),Number(parts[4]));
+    return showArtifacts(interaction,result.ok?`✅ **${result.row.name}** экипирован в слот ${result.slot}.`:'❌ Не удалось экипировать артефакт.');
+  }
+  if (action === 'artifacts' && parts[2] === 'remove') {
+    const result=unequipArtifact(interaction.user.id,Number(interaction.values?.[0]));
+    return showArtifacts(interaction,result.ok?'✅ Артефакт снят.':'❌ Не удалось снять артефакт.');
+  }
 
   if (action === 'codex') {
     const classRows=db.prepare(`SELECT h.user_id,h.name,h.class_key,h.level
@@ -1582,7 +1656,7 @@ async function handleModal(interaction) {
       return interaction.reply({content:`🔎 Найдено предметов: **${matches.length}**. Выбери нужный:`,components:[new ActionRowBuilder().addComponents(menu)],flags:MessageFlags.Ephemeral});
     }
     if(kind==='companionsell'){const id=Number(parts[3]);const price=Math.max(1,Number(interaction.fields.getTextInputValue('price'))||0);const r=createCompanionListing(interaction.user.id,id,price);return interaction.reply({content:r.ok?`✅ **${r.data.name}** выставлен на рынок за **${r.price} GS Dust**.`:'❌ Не удалось выставить. Активного питомца или маунта сначала нужно снять.',flags:MessageFlags.Ephemeral});}
-    if(kind==='exchangeqty'){const d=marketDrafts.get(interaction.user.id);if(!d)return interaction.reply({content:'❌ Черновик обмена устарел.',flags:MessageFlags.Ephemeral});let oq=Math.max(1,Number(interaction.fields.getTextInputValue('offer_qty'))||1),wq=Math.max(1,Number(interaction.fields.getTextInputValue('want_qty'))||1);if(['equipment','companion'].includes(d.offerType))oq=1;if(['equipment','companion'].includes(d.wantType))wq=1;let offerKey,offerName,upgrade=0,offerData=null;try{db.transaction(()=>{if(d.offerType==='material'){offerKey=d.offerValue;offerName=itemName(offerKey);if(!consumeResources(interaction.user.id,{[offerKey]:oq}).ok)throw new Error('materials');}else if(d.offerType==='dust'){offerKey='gs_dust';offerName='GS Dust';const payment=removeCardDust(interaction.user.id,oq);if(!payment?.ok)throw new Error('dust');}else if(d.offerType==='companion'){const removed=takeCompanionForTransfer(interaction.user.id,Number(d.offerValue));if(!removed)throw new Error('companion');offerKey=removed.key;offerName=removed.name;offerData=JSON.stringify(removed);}else{const removed=removeEquipmentForTrade(interaction.user.id,Number(d.offerValue));if(!removed)throw new Error('equipment');offerKey=removed.key;offerName=removed.name;upgrade=removed.upgrade;}db.prepare(`INSERT INTO market_exchange_lots(creator_id,offer_type,offer_key,offer_name,offer_qty,offer_upgrade,want_type,want_key,want_name,want_qty,offer_data) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(interaction.user.id,d.offerType,offerKey,offerName,oq,upgrade,d.wantType,d.wantKey,itemName(d.wantKey),wq,offerData);})();}catch(e){return interaction.reply({content:'❌ Не удалось зарезервировать предметы. Проверь количество и наличие предмета.',flags:MessageFlags.Ephemeral});}marketDrafts.delete(interaction.user.id);return interaction.reply({content:`✅ Предложение обмена создано: **${offerName} ×${oq} ⇄ ${itemName(d.wantKey)} ×${wq}**.`,flags:MessageFlags.Ephemeral});}
+    if(kind==='exchangeqty'){const d=marketDrafts.get(interaction.user.id);if(!d)return interaction.reply({content:'❌ Черновик обмена устарел.',flags:MessageFlags.Ephemeral});let oq=Math.max(1,Number(interaction.fields.getTextInputValue('offer_qty'))||1),wq=d.wantType==='free'?0:Math.max(1,Number(interaction.fields.getTextInputValue('want_qty'))||1);if(['equipment','companion'].includes(d.offerType))oq=1;if(['equipment','companion'].includes(d.wantType))wq=1;let offerKey,offerName,upgrade=0,offerData=null;try{db.transaction(()=>{if(d.offerType==='material'){offerKey=d.offerValue;offerName=itemName(offerKey);if(!consumeResources(interaction.user.id,{[offerKey]:oq}).ok)throw new Error('materials');}else if(d.offerType==='dust'){offerKey='gs_dust';offerName='GS Dust';const payment=removeCardDust(interaction.user.id,oq);if(!payment?.ok)throw new Error('dust');}else if(d.offerType==='companion'){const removed=takeCompanionForTransfer(interaction.user.id,Number(d.offerValue));if(!removed)throw new Error('companion');offerKey=removed.key;offerName=removed.name;offerData=JSON.stringify(removed);}else{const removed=removeEquipmentForTrade(interaction.user.id,Number(d.offerValue));if(!removed)throw new Error('equipment');offerKey=removed.key;offerName=removed.name;upgrade=removed.upgrade;}db.prepare(`INSERT INTO market_exchange_lots(creator_id,offer_type,offer_key,offer_name,offer_qty,offer_upgrade,want_type,want_key,want_name,want_qty,offer_data) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(interaction.user.id,d.offerType,offerKey,offerName,oq,upgrade,d.wantType,d.wantKey,d.wantType==='free'?'Ничего':itemName(d.wantKey),wq,offerData);})();}catch(e){return interaction.reply({content:'❌ Не удалось зарезервировать предметы. Проверь количество и наличие предмета.',flags:MessageFlags.Ephemeral});}marketDrafts.delete(interaction.user.id);return interaction.reply({content:d.wantType==='free'?`✅ Бесплатная передача создана: **${offerName} ×${oq}**. Забрать сможет другой игрок через раздел обменов.`:`✅ Предложение обмена создано: **${offerName} ×${oq} ⇄ ${itemName(d.wantKey)} ×${wq}**.`,flags:MessageFlags.Ephemeral});}
   }
   const gender = parts[3], classKey = parts[4], originKey = parts[5];
   if (getHero(interaction.user.id)) {

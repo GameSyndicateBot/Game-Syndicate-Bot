@@ -103,7 +103,27 @@ function unequipItem(userId,slot){const r=db.prepare('DELETE FROM hero_equipment
 function sumEquipmentBonuses(items){const total=Object.fromEntries(STAT_KEYS.map(k=>[k,0]));for(const item of items){const b=applyUpgradeToBonuses(parseBonuses(item.bonuses_json),item.upgrade_level);for(const k of STAT_KEYS)total[k]+=Number(b[k]||0);}return total;}
 function getEquipmentOnlyBonuses(userId){return sumEquipmentBonuses(getEquipment(userId));}
 function getClassEquipmentOnlyBonuses(userId,classKey,{fallback=true}={}){return sumEquipmentBonuses(getClassEquipment(userId,classKey,{fallback}));}
-function getEquipmentBonuses(userId){const total=getEquipmentOnlyBonuses(userId);try{const {getCompanionBonuses}=require('./companionService');const cb=getCompanionBonuses(userId);for(const k of STAT_KEYS)total[k]+=Number(cb[k]||0);}catch(_){}return total;}
+function getEquipmentBonuses(userId){
+  const total=getEquipmentOnlyBonuses(userId);
+  try{
+    const rows=db.prepare(`SELECT i.bonuses_json
+      FROM hero_artifact_equipment hae
+      JOIN hero_inventory hi ON hi.id=hae.inventory_id
+      JOIN hero_items i ON i.item_key=hi.item_key
+      WHERE hae.user_id=?`).all(String(userId));
+    for(const row of rows){
+      let bonuses={};
+      try{bonuses=typeof row.bonuses_json==='string'?JSON.parse(row.bonuses_json||'{}'):(row.bonuses_json||{});}catch(_){bonuses={};}
+      for(const k of STAT_KEYS)total[k]+=Number(bonuses[k]||0);
+    }
+  }catch(_){}
+  try{
+    const {getCompanionBonuses}=require('./companionService');
+    const cb=getCompanionBonuses(userId);
+    for(const k of STAT_KEYS)total[k]+=Number(cb[k]||0);
+  }catch(_){}
+  return total;
+}
 function getEffectiveHero(hero){if(!hero)return null;const b=getEquipmentBonuses(hero.user_id);return {...hero,equipmentBonuses:b,max_hp:hero.max_hp+b.hp,hp:Math.min(hero.hp+b.hp,hero.max_hp+b.hp),strength:hero.strength+b.strength,defense:hero.defense+b.defense,dexterity:hero.dexterity+b.dexterity,intelligence:hero.intelligence+b.intelligence,luck:hero.luck+b.luck};}
 function getCollection(userId){seedItems();const rows=db.prepare(`SELECT c.item_key,c.first_acquired_at,i.name,i.item_type,i.rarity FROM hero_item_collection c JOIN hero_items i ON i.item_key=c.item_key WHERE c.user_id=?`).all(userId);return {rows,found:rows.length,total:Object.keys(ITEMS).length};}
 function formatBonuses(value){const b=typeof value==='string'?parseBonuses(value):value||{};const labels={hp:'❤️ HP',strength:'⚔️ Сила',defense:'🛡️ Защита',dexterity:'🏃 Ловкость',intelligence:'🧠 Интеллект',luck:'🍀 Удача',expedition_success:'🗺️ Успех экспедиции',rare_find:'✨ Шанс редкой добычи',world_boss_damage:'🐉 Урон по боссу',world_boss_resistance:'🛡️ Защита от босса',boss_flat_damage:'💣 Урон бомбы',injury_resistance:'❤️ Защита от ранений',class_xp_bonus:'📚 Опыт класса',heal:'🧪 Лечение'};return Object.entries(b).filter(([,v])=>v).map(([k,v])=>`${labels[k]||k}: +${v}${['expedition_success','rare_find','world_boss_damage','world_boss_resistance','injury_resistance','class_xp_bonus'].includes(k)?'%':''}`);}

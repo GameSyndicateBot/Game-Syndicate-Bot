@@ -12,8 +12,8 @@ const { buildHeroSnapshot } = require('./worldBoss/heroIntegration');
 const path = require('path');
 const { checkAchievementsForUsers } = require('../utils/checkAchievementsForUser');
 
-const DUNGEON_HUB_IMAGE_PATH = path.join(__dirname, '..', 'assets', 'dungeons', 'dungeon-hub.jpg');
-const DUNGEON_HUB_IMAGE_NAME = 'dungeon-hub.jpg';
+const DUNGEON_IMAGE_DIR=path.join(__dirname,'..','assets','dungeons');
+function dungeonHubImage(date=new Date()){const w=currentWindow(date);const key=w?.key||'closed';return {name:`dungeon-hub-${key}.jpg`,path:path.join(DUNGEON_IMAGE_DIR,`dungeon-hub-${key}.jpg`)};}
 
 const TZ = 'Europe/Moscow';
 const MIN_PLAYERS = 4;
@@ -74,8 +74,9 @@ function analyze(groupId){ const g=getGroup(groupId); const ms=members(groupId);
  if(n>4)add(`Численность группы (${n})`,Math.min(14,(n-4)*2));
  const chance=clamp(Math.round(diff.base+bonus),5,95); return {chance,base:diff.base,bonus,lines,tanks,heals,controls,avgPower:Math.round(avgPower),members:enriched,difficulty:diff}; }
 
-function hubEmbed(guildId,imageUrl=`attachment://${DUNGEON_HUB_IMAGE_NAME}`){
+function hubEmbed(guildId,imageUrl){
  const w=currentWindow();
+ if(!imageUrl)imageUrl=`attachment://${dungeonHubImage().name}`;
  const forming=db.prepare("SELECT COUNT(*) c FROM dungeon_groups WHERE guild_id=? AND status='forming'").get(guildId).c;
  const active=db.prepare("SELECT COUNT(*) c FROM dungeon_groups WHERE guild_id=? AND status='active'").get(guildId).c;
  const inRaid=db.prepare("SELECT COUNT(*) c FROM dungeon_members m JOIN dungeon_groups g ON g.id=m.group_id WHERE g.guild_id=? AND g.status='active'").get(guildId).c;
@@ -105,9 +106,10 @@ async function ensureHub(client,guildId=null){
   const ch=await guild.channels.fetch(cfg.channel_id).catch(()=>null);
   if(!ch?.isTextBased())continue;
   let msg=cfg.hub_message_id?await ch.messages.fetch(cfg.hub_message_id).catch(()=>null):null;
-  const existingImage=msg?.attachments?.find?.(a=>a.name===DUNGEON_HUB_IMAGE_NAME);
-  const payload={embeds:[hubEmbed(guild.id,existingImage?.url||`attachment://${DUNGEON_HUB_IMAGE_NAME}`)],components:hubRows()};
-  if(!existingImage)payload.files=[new AttachmentBuilder(DUNGEON_HUB_IMAGE_PATH,{name:DUNGEON_HUB_IMAGE_NAME})];
+  const image=dungeonHubImage();
+  const existingImage=msg?.attachments?.find?.(a=>a.name===image.name);
+  const payload={embeds:[hubEmbed(guild.id,existingImage?.url||`attachment://${image.name}`)],components:hubRows()};
+  if(!existingImage)payload.files=[new AttachmentBuilder(image.path,{name:image.name})];
   if(msg)await msg.edit(payload).catch(e=>console.error('[Dungeon] hub edit',e));
   else {msg=await ch.send(payload);setConfig(guild.id,ch.id,msg.id);}
  }
@@ -222,7 +224,7 @@ function formatDungeonBonuses(raw){const bonuses=typeof raw==='string'?safeJson(
 function resolvedDungeonRows(guildId){return db.prepare("SELECT * FROM dungeon_groups WHERE guild_id=? AND status='resolved' ORDER BY COALESCE(resolved_at,created_at) DESC,id DESC").all(guildId);}
 function getDungeonHistoryData(group){const result=safeJson(group.result_json,{rewards:[]});const rewards=Array.isArray(result.rewards)?result.rewards:[];return {result,rewards};}
 function enrichDungeonReward(reward){if(reward.valuableItem)return reward;let item=null;if(reward.valuableKey)item=db.prepare('SELECT item_key,name,rarity,item_type,slot,description,bonuses_json,lore FROM hero_items WHERE item_key=?').get(reward.valuableKey);return {...reward,valuableItem:item?{itemKey:item.item_key,name:item.name,rarity:item.rarity,itemType:item.item_type,slot:item.slot,description:item.description,bonusesJson:item.bonuses_json,lore:item.lore}:null};}
-function dungeonHistoryEmbed(group,page,total){const {rewards}=getDungeonHistoryData(group);const success=Number(group.success)===1;const lines=rewards.map((raw,index)=>{const r=enrichDungeonReward(raw);const cls=CLASS_LABELS[normalizeClassKey(r.classKey)]||r.classKey||'класс не записан';let line=`**${index+1}. <@${r.userId}>** — ${cls}\n🪙 ${Number(r.dust||0)} Dust • 📚 ${Number(r.classXp||0)} опыта класса`;const item=r.valuableItem;if(item){const rarity=String(item.rarity||'common').toLowerCase();line+=`\n${DUNGEON_RARITY_ICONS[rarity]||'⚪'} **${item.name||r.valuable||r.valuableKey}** · ${rarity}`;if(item.slot)line+=` · ${DUNGEON_SLOT_LABELS[item.slot]||item.slot}`;if(item.description)line+=`\n_${String(item.description).slice(0,260)}_`;line+=`\n⚙️ ${formatDungeonBonuses(item.bonusesJson)}`;}else line+='\n📦 Ценный предмет не выпал.';return line;});const when=group.resolved_at?`<t:${Math.floor(Date.parse(group.resolved_at)/1000)}:f>`:'дата не записана';return new EmbedBuilder().setColor(success?0x16a34a:0xdc2626).setTitle(`📜 Данж #${group.id} — ${success?'пройден':'провален'}`).setDescription(`**${group.difficulty_icon||'🎲'} ${group.dungeon_name}**\nСложность: **${group.difficulty_name||group.difficulty_key||'неизвестна'}**\nШанс группы: **${Math.round(Number(group.success_chance||0))}%**\nЗавершён: ${when}\n\n${lines.join('\n\n')||'Подробные награды для этого старого рейда не сохранились.'}`).setFooter({text:`История подземелий • запись ${page+1} из ${total}`});}
+function dungeonHistoryEmbed(group,page,total){const {rewards}=getDungeonHistoryData(group);const success=Number(group.success)===1;const lines=rewards.map((raw,index)=>{const r=enrichDungeonReward(raw);const cls=CLASS_LABELS[normalizeClassKey(r.classKey)]||r.classKey||'класс не записан';let line=`**${index+1}. <@${r.userId}>** — ${cls}\n🪙 ${Number(r.dust||0)} Dust • ✨ ${Number(r.heroXp||0)} XP героя • 📚 ${Number(r.classXp||0)} опыта класса`;if(Array.isArray(r.materials)&&r.materials.length)line+=`\n📦 ${r.materials.map(m=>`${m.icon||'📦'} ${m.name||m.key} ×${m.quantity}`).join(', ')}`;const item=r.valuableItem;if(item){const rarity=String(item.rarity||'common').toLowerCase();line+=`\n${DUNGEON_RARITY_ICONS[rarity]||'⚪'} **${item.name||r.valuable||r.valuableKey}** · ${rarity}`;if(item.slot)line+=` · ${DUNGEON_SLOT_LABELS[item.slot]||item.slot}`;if(item.description)line+=`\n_${String(item.description).slice(0,260)}_`;line+=`\n⚙️ ${formatDungeonBonuses(item.bonusesJson)}`;}else line+='\n📦 Ценный предмет не выпал.';return line;});const when=group.resolved_at?`<t:${Math.floor(Date.parse(group.resolved_at)/1000)}:f>`:'дата не записана';return new EmbedBuilder().setColor(success?0x16a34a:0xdc2626).setTitle(`📜 Данж #${group.id} — ${success?'пройден':'провален'}`).setDescription(`**${group.difficulty_icon||'🎲'} ${group.dungeon_name}**\nСложность: **${group.difficulty_name||group.difficulty_key||'неизвестна'}**\nШанс группы: **${Math.round(Number(group.success_chance||0))}%**\nЗавершён: ${when}\n\n${lines.join('\n\n')||'Подробные награды для этого старого рейда не сохранились.'}`).setFooter({text:`История подземелий • запись ${page+1} из ${total}`});}
 function dungeonHistoryComponents(page,total){return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`dng_history_page:${Math.max(0,page-1)}`).setEmoji('⬅️').setLabel('Назад').setStyle(ButtonStyle.Secondary).setDisabled(page<=0),new ButtonBuilder().setCustomId(`dng_history_page:${Math.min(total-1,page+1)}`).setEmoji('➡️').setLabel('Далее').setStyle(ButtonStyle.Secondary).setDisabled(page>=total-1))];}
 async function dungeonHistory(interaction,page=0){const rows=resolvedDungeonRows(interaction.guildId);if(!rows.length)return ephemeral(interaction,{content:'📜 История завершённых подземелий пока пуста.'});const safePage=clamp(Number(page)||0,0,rows.length-1);const payload={embeds:[dungeonHistoryEmbed(rows[safePage],safePage,rows.length)],components:dungeonHistoryComponents(safePage,rows.length)};if((interaction.customId||'').startsWith('dng_history_page:'))return interaction.update(payload);return ephemeral(interaction,payload);}
 

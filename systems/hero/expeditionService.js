@@ -11,7 +11,41 @@ const { consumeContextBuffs, describeBuffKeys, getBuffBonuses } = require('./alc
 const { normalizeClassKey, isValidClass, ensureClassProgress, grantClassXp, getClassProgress } = require('./classProgressService');
 const { applyExpeditionResult, getRegionEffects } = require('../world/worldService');
 const { rollMinibossEncounter } = require('../world/minibossService');
-const { grantResource } = require('./resourceService');
+const { grantResource, resourceMeta } = require('./resourceService');
+
+
+function ensureTreasureMapState() {
+  db.exec(`CREATE TABLE IF NOT EXISTS hero_expedition_utilities(
+    user_id TEXT PRIMARY KEY,
+    treasure_map_active INTEGER NOT NULL DEFAULT 0,
+    activated_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+}
+function getTreasureMapState(userId) {
+  ensureTreasureMapState();
+  return Boolean(db.prepare('SELECT treasure_map_active FROM hero_expedition_utilities WHERE user_id=?').get(String(userId))?.treasure_map_active);
+}
+function activateTreasureMap(userId) {
+  ensureTreasureMapState();
+  if (getTreasureMapState(userId)) return {ok:false,reason:'already_active'};
+  const row=db.prepare(`SELECT id,quantity FROM hero_inventory WHERE user_id=? AND item_key='treasure_map' AND quantity>0 ORDER BY id LIMIT 1`).get(String(userId));
+  if(!row)return {ok:false,reason:'none'};
+  db.transaction(()=>{
+    if(Number(row.quantity)>1)db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=?').run(row.id);
+    else db.prepare('DELETE FROM hero_inventory WHERE id=?').run(row.id);
+    db.prepare(`INSERT INTO hero_expedition_utilities(user_id,treasure_map_active,activated_at,updated_at)
+      VALUES(?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET treasure_map_active=1,activated_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP`).run(String(userId));
+  })();
+  return {ok:true};
+}
+function consumeTreasureMapState(userId) {
+  ensureTreasureMapState();
+  const changed=db.prepare(`UPDATE hero_expedition_utilities SET treasure_map_active=0,updated_at=CURRENT_TIMESTAMP
+    WHERE user_id=? AND treasure_map_active=1`).run(String(userId));
+  return changed.changes===1;
+}
 
 const EXPEDITION_TACTICS = {
   balanced: { key:'balanced', icon:'⚖️', name:'Сбалансированно', description:'Ровный риск и награда.', success:0, xp:1, dust:1, rare:0, injury:1 },
@@ -217,10 +251,21 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
   const preview = getExpeditionStartPreview(userId, locationKey, guildId, tacticKey);
   if (!preview.ok) return preview;
   const alchemy = consumeContextBuffs(userId, 'expedition');
+  const treasureMap = consumeTreasureMapState(userId);
   const worldEffectsAtStart = preview.worldEffects;
   const effectiveHero = preview.hero;
   const startChance = preview.chance;
-  const buffPayload = { bonuses: alchemy.bonuses || {}, consumed: alchemy.consumed || [], effects: describeBuffKeys(alchemy.consumed || []), successChance:startChance, worldEffects:{ success:Number(worldEffectsAtStart.success||0), eventKey:worldEffectsAtStart.event?.key||null } };
+  const buffPayload = {
+    bonuses: {
+      ...(alchemy.bonuses || {}),
+      rare_find: Number(alchemy.bonuses?.rare_find || 0) + (treasureMap ? 20 : 0),
+    },
+    consumed: alchemy.consumed || [],
+    effects: [...describeBuffKeys(alchemy.consumed || []), ...(treasureMap ? [{icon:'🗺️',name:'Карта сокровищ'}] : [])],
+    treasureMap,
+    successChance:startChance,
+    worldEffects:{ success:Number(worldEffectsAtStart.success||0), eventKey:worldEffectsAtStart.event?.key||null }
+  };
   const heroSnapshot = {
     name: effectiveHero.name, level: effectiveHero.level, hp: effectiveHero.hp, max_hp: effectiveHero.max_hp,
     class_key: hero.class_key, origin_key: hero.origin_key,
@@ -412,6 +457,29 @@ function resolveExpedition(userId, { force = false } = {}) {
     .run(forceReadyAfterClaim ? 'ready' : (injuryHours ? 'wounded' : 'ready'), forceReadyAfterClaim ? null : recoveryUntil, forceReadyAfterClaim ? Number(baseHero.max_hp || hpAfter) : hpAfter, userId);
   if (forceReadyAfterClaim) injuryHours = 0;
   const resourceRewards = expeditionMaterialRewards(userId, expedition.location_key, location.difficulty, outcome, expedition.id);
+  let treasureMapReward = null;
+  if (expeditionBuffs.treasureMap) {
+    const mapRoll = rng();
+    if (mapRoll < 0.08) {
+      const tier = Math.max(2, Math.min(5, Number(location.difficulty || 1) + 1));
+      const pool = EXPEDITION_LOOT[tier] || EXPEDITION_LOOT[2] || [];
+      if (pool.length) {
+        const mapItem = grantItem(userId, pick(rng, pool), 1, `expedition:${expedition.id}:treasure_map`);
+        if (mapItem) treasureMapReward = {type:'item',name:mapItem.name,rarity:mapItem.rarity};
+      }
+    } else if (mapRoll < 0.32) {
+      const bonusDust = randomInt(rng, 70, 150) * Math.max(1, Number(location.difficulty || 1));
+      addCardDust(userId, bonusDust, `Карта сокровищ: экспедиция #${expedition.id}`);
+      treasureMapReward = {type:'dust',dust:bonusDust};
+    } else {
+      const candidates = ['gemstone','ancient_wood','pearl','crystal','essence'];
+      const key = pick(rng, candidates);
+      const quantity = Math.max(1, Math.min(4, Math.ceil(Number(location.difficulty || 1) / 2)));
+      grantResource(userId,key,quantity,`expedition:${expedition.id}:treasure_map`);
+      const meta=resourceMeta(key);
+      treasureMapReward = {type:'material',key,name:meta.name,icon:meta.icon,quantity};
+    }
+  }
   const materialMultiplier = Number(tactic.materials || 1) * Number(worldEffects.materials || 1) * duration.materials;
   if (materialMultiplier > 1 && Array.isArray(resourceRewards.materials)) {
     for (const material of resourceRewards.materials) {
@@ -439,7 +507,7 @@ function resolveExpedition(userId, { force = false } = {}) {
     else incidents.push(`💀 ${b.icon} **${b.name} оказался сильнее.** Герой получил тяжёлые ранения, и экспедиция завершилась поражением.`);
   }
   const event = [buildExpeditionStory(rng, location, outcome, { item, companion, injuryHours, dustLost, chest: resourceRewards.chest }), ...incidents].join(' ');
-  const result = { outcome, miniboss: miniboss ? { key:miniboss.boss.key, name:miniboss.boss.name, icon:miniboss.boss.icon, outcome:miniboss.outcome, damageTaken:miniboss.damageTaken, remainingHp:miniboss.remainingHp, xp:miniboss.xp, dust:miniboss.dust, loot:miniboss.loot.map(x=>({key:x.key,name:x.name,icon:x.icon,quantity:x.quantity,rarity:x.rarity})), aftermath:miniboss.aftermath, firstKill:miniboss.firstKill } : null, worldEffects: { eventKey:worldEffects.event.key, eventName:worldEffects.event.name, eventIcon:worldEffects.event.icon, success:worldEffects.success, xp:worldEffects.xp, dust:worldEffects.dust, materials:worldEffects.materials, rare:worldEffects.rare, specialNpc:worldEffects.specialNpc }, tactic: { key:tactic.key, name:tactic.name, icon:tactic.icon }, incidents, chance: Math.round(chance), alchemy: expeditionBuffs.effects || [], alchemyBonuses, roll: Math.round(roll), dust, dustLost, xp, reputation, item: item ? { name: item.name, rarity: item.rarity } : null, companion, dailyTheme: theme, weather, durationHours: duration.hours, materials: resourceRewards.materials.map(m => ({ key: m.key, name: m.name, icon: m.icon, quantity: m.quantity })), chest: resourceRewards.chest ? { key: resourceRewards.chest.key, name: resourceRewards.chest.name, icon: resourceRewards.chest.icon } : null, injuryHours, event, hpBefore: Number(expedition.hp_before || baseHero.hp || baseHero.max_hp), hpAfter, levelsGained: leveledHero?.levelsGained || 0, classKey: expeditionClassKey, classXp, classLevel: classProgress?.level || 1, classLevelsGained: classProgress?.levelsGained || 0 };
+  const result = { outcome, miniboss: miniboss ? { key:miniboss.boss.key, name:miniboss.boss.name, icon:miniboss.boss.icon, outcome:miniboss.outcome, damageTaken:miniboss.damageTaken, remainingHp:miniboss.remainingHp, xp:miniboss.xp, dust:miniboss.dust, loot:miniboss.loot.map(x=>({key:x.key,name:x.name,icon:x.icon,quantity:x.quantity,rarity:x.rarity})), aftermath:miniboss.aftermath, firstKill:miniboss.firstKill } : null, worldEffects: { eventKey:worldEffects.event.key, eventName:worldEffects.event.name, eventIcon:worldEffects.event.icon, success:worldEffects.success, xp:worldEffects.xp, dust:worldEffects.dust, materials:worldEffects.materials, rare:worldEffects.rare, specialNpc:worldEffects.specialNpc }, tactic: { key:tactic.key, name:tactic.name, icon:tactic.icon }, incidents, chance: Math.round(chance), alchemy: expeditionBuffs.effects || [], alchemyBonuses, roll: Math.round(roll), dust, dustLost, xp, reputation, item: item ? { name: item.name, rarity: item.rarity } : null, companion, dailyTheme: theme, weather, durationHours: duration.hours, materials: resourceRewards.materials.map(m => ({ key: m.key, name: m.name, icon: m.icon, quantity: m.quantity })), treasureMapReward, chest: resourceRewards.chest ? { key: resourceRewards.chest.key, name: resourceRewards.chest.name, icon: resourceRewards.chest.icon } : null, injuryHours, event, hpBefore: Number(expedition.hp_before || baseHero.hp || baseHero.max_hp), hpAfter, levelsGained: leveledHero?.levelsGained || 0, classKey: expeditionClassKey, classXp, classLevel: classProgress?.level || 1, classLevelsGained: classProgress?.levelsGained || 0 };
   db.prepare("UPDATE hero_expeditions SET status='resolved', resolved_at=CURRENT_TIMESTAMP, result_json=?, hp_after=? WHERE id=?").run(JSON.stringify(result), hpAfter, expedition.id);
   const alchemyText = result.alchemy.length ? ` Использовано: ${result.alchemy.map(e => `${e.icon} ${e.name}`).join(', ')}.` : '';
   const rewardText = [dust ? `+${dust} Dust` : null, miniboss?.dust ? `+${miniboss.dust} Dust за мини-босса` : null, dustLost ? `−${dustLost} Dust` : null, `+${xp} XP`, item ? `предмет «${item.name}»` : null, companion ? `питомец «${companion.name}»` : null, result.materials.length ? `материалы ×${result.materials.reduce((sum,m)=>sum+m.quantity,0)}` : null, result.chest ? `сундук «${result.chest.name}»` : null].filter(Boolean).join(', ');
@@ -540,4 +608,5 @@ function applyTargetedExpeditionRepairs() {
 }
 applyTargetedExpeditionRepairs();
 
-module.exports = { getExpeditionStartPreview, EXPEDITION_TACTICS, getExpeditionTactic, durationModifiers, rewardPreview, todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, availableExpeditionDurations, activeWorldBoss};
+ensureTreasureMapState();
+module.exports = { getExpeditionStartPreview, EXPEDITION_TACTICS, getExpeditionTactic, getTreasureMapState, activateTreasureMap, durationModifiers, rewardPreview, todayKey, getWorldStats, getWorldActivity, getDailyWorld, getDailyLocations, getActiveExpedition, getLatestExpeditions, getExpeditionCooldown, cancelExpedition, startExpedition, resolveExpedition, recoverHero, computeSuccessChance, nextBossAt, expeditionWindow, availableExpeditionDurations, activeWorldBoss};
