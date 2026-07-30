@@ -28,6 +28,7 @@ const { listCookRecipes, hydrateCookRecipe, cook } = require('../systems/hero/co
 const { sourceFor, missingRecipeSummary, missingCookSummary, recipeState, cookState, itemBonusLines } = require('../systems/hero/craftingUx');
 const caravan = require('../services/caravanService');
 const guildMerchant = require('../services/guildMerchantService');
+const { TOOL_TIERS, toolInfo, craftTool, dismantle } = require('../systems/hero/playerCorrectionService');
 
 const GUILD_CHANNEL_ID = '1530165282512044032';
 const EXPEDITION_CHANNEL_ID = '1529566430301782017';
@@ -164,20 +165,20 @@ async function showProfile(interaction, notice = '') {
   const base = getHero(interaction.user.id);
   if (!base) return interaction.reply({ content: '❌ Сначала создай героя кнопкой **«Создать героя»**.', flags: MessageFlags.Ephemeral });
   const hero = getEffectiveHero(base);
-  hero.display_class_key = base.display_class_key || hero.class_key;
+  hero.display_class_key = base.class_key || base.display_class_key || hero.class_key;
   const buffer = await createHeroCard(hero, interaction.user);
   const progress = getAllClassProgress(interaction.user.id).filter(r => HERO_CLASSES[r.class_key]);
   const components = [];
   if (progress.length) components.push(new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder().setCustomId('guild:profile:displayclass').setPlaceholder('Выбрать класс для отображения в профиле')
-      .addOptions(progress.slice(0,25).map(r => ({ label:`${HERO_CLASSES[r.class_key].name} • Lv.${r.level}`.slice(0,100), value:r.class_key, emoji:HERO_CLASSES[r.class_key].icon, default:r.class_key===hero.display_class_key })))
+    new StringSelectMenuBuilder().setCustomId('guild:profile:displayclass').setPlaceholder('Выбрать активный класс героя')
+      .addOptions(progress.slice(0,25).map(r => ({ label:`${HERO_CLASSES[r.class_key].name} • Lv.${r.level}`.slice(0,100), value:r.class_key, emoji:HERO_CLASSES[r.class_key].icon, default:r.class_key===base.class_key })))
   ));
   components.push(new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('guild:profile:rename').setLabel('Изменить имя • 200 Dust').setEmoji('✏️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
   ));
   const payload = {
-    content: [notice, `👤 **Профиль героя ${hero.name}**`, `Отображаемый класс: ${HERO_CLASSES[hero.display_class_key]?.icon || '⚔️'} **${HERO_CLASSES[hero.display_class_key]?.name || hero.display_class_key}**`].filter(Boolean).join('\n'),
+    content: [notice, `👤 **Профиль героя ${hero.name}**`, `Активный класс: ${HERO_CLASSES[base.class_key]?.icon || '⚔️'} **${HERO_CLASSES[base.class_key]?.name || base.class_key}** · уровень **${base.level}**`].filter(Boolean).join('\n'),
     files: [new AttachmentBuilder(buffer, { name: `hero-${interaction.user.id}.png` })],
     components,
     flags: MessageFlags.Ephemeral,
@@ -419,10 +420,69 @@ async function showBlacksmith(interaction, notice = '', category = 'all') {
         description:`${RARITY_LABELS[i.rarity] || i.rarity} · следующий уровень +${Number(i.upgrade_level || 0)+1}`.slice(0,100)
       })))
   ));
-  components.push(blacksmithExitRow());
+  const equippedIds = new Set(getEquipment(interaction.user.id).map(x => Number(x.inventory_id)));
+  const dismantleItems = getInventory(interaction.user.id,{limit:100}).filter(i => i.slot && !equippedIds.has(Number(i.id)));
+  if (dismantleItems.length) components.push(new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId('guild:blacksmith:dismantle').setPlaceholder('♻️ Разобрать свободную экипировку')
+      .addOptions(dismantleItems.slice(0,25).map(i => ({
+        label:`#${i.id} ${i.name}${Number(i.upgrade_level||0)?` +${i.upgrade_level}`:''}`.slice(0,100), value:String(i.id), emoji:'♻️',
+        description:`${RARITY_LABELS[i.rarity] || i.rarity} · предмет будет уничтожен`.slice(0,100)
+      })))
+  ));
+  components.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:blacksmith:tools').setLabel('Рабочие инструменты').setEmoji('🧰').setStyle(ButtonStyle.Primary)
+  ));
   const payload = { embeds:[embed], components };
   const isEphemeralMessage = Boolean(interaction.message?.flags?.has?.(MessageFlags.Ephemeral));
   return isEphemeralMessage ? interaction.update(payload) : interaction.reply({ ...payload, flags:MessageFlags.Ephemeral });
+}
+
+
+function formatToolCost(cost = {}) {
+  return Object.entries(cost).map(([key, qty]) => {
+    const meta = resourceMeta(key);
+    return `${meta.icon || '📦'} ${meta.name || key} ×${qty}`;
+  }).join('\n');
+}
+
+async function showBlacksmithTools(interaction, notice = '') {
+  const profession = getProfession(interaction.user.id);
+  if (!profession) return interaction.update({content:'❌ Сначала выбери мирную профессию.',embeds:[],components:[blacksmithBackRow()]});
+  const professionData = PROFESSIONS[profession.profession_key];
+  const current = toolInfo(interaction.user.id, profession.profession_key);
+  const next = TOOL_TIERS.find(x => x.tier === current.tier + 1);
+  const lines = [
+    notice,
+    `Профессия: ${professionData?.icon || '👷'} **${professionData?.name || profession.profession_key}** · уровень **${profession.level}**`,
+    '',
+    current.def
+      ? `🧰 Текущий инструмент: **${current.def.name} ${current.name}** (ур. ${current.tier})\n📦 Обычная добыча: **+${current.def.qty}** · ✨ редкая добыча: **+${current.def.rare}%**`
+      : `🧰 Инструмента пока нет. Первый инструмент можно создать у Кузнеца.`,
+  ];
+  if (next) {
+    lines.push('', `### Следующий инструмент: ${next.name} ${current.name}`, `🔓 Требуется уровень профессии: **${next.level}**`, '📦 Материалы:', formatToolCost(next.cost));
+  } else lines.push('', '🌟 Инструмент уже максимального уровня.');
+  const embed = new EmbedBuilder().setColor(0xF59E0B).setTitle('🧰 Рабочие инструменты').setDescription(lines.filter(Boolean).join('\n'));
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:blacksmith:tools:craft').setLabel(current.tier ? 'Улучшить инструмент' : 'Создать инструмент').setEmoji('🔨').setStyle(ButtonStyle.Success).setDisabled(!next),
+    new ButtonBuilder().setCustomId('guild:blacksmith:menu:all').setLabel('Назад к кузнецу').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
+  );
+  return interaction.update({embeds:[embed],components:[row]});
+}
+
+async function showDismantleConfirm(interaction, inventoryId) {
+  const item = getInventoryItem(interaction.user.id, Number(inventoryId));
+  if (!item || !item.slot) return interaction.update({content:'❌ Предмет не найден или не является экипировкой.',embeds:[],components:[blacksmithBackRow()]});
+  const previewBase = {common:3,rare:5,epic:8,legendary:12,mythic:18,exclusive:25}[String(item.rarity||'').toLowerCase()] || 3;
+  const qty = previewBase + Math.max(0,Number(item.upgrade_level||0))*2;
+  const name = String(item.name||'').toLowerCase();
+  const key = /сапог|перчат|кож|ботин/.test(name)?'leather':/лук|арбалет/.test(name)?'board':/кольц|амулет|ожерел|обруч/.test(name)?'gemstone':/посох|жезл|книга|гримуар/.test(name)?'crystal':'iron_ingot';
+  const meta = resourceMeta(key);
+  const embed = new EmbedBuilder().setColor(0xEF4444).setTitle('♻️ Разобрать экипировку?').setDescription(`**${item.name}${Number(item.upgrade_level||0)?` +${item.upgrade_level}`:''}**\nРедкость: **${RARITY_LABELS[item.rarity] || item.rarity}**\n\nПосле разбора будет получено:\n${meta.icon || '📦'} **${meta.name} ×${qty}**\n\n⚠️ Предмет будет уничтожен без возможности восстановления.`);
+  return interaction.update({embeds:[embed],components:[new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`guild:blacksmith:dismantleconfirm:${inventoryId}`).setLabel('Разобрать').setEmoji('♻️').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('guild:blacksmith:menu:all').setLabel('Отмена').setEmoji('❌').setStyle(ButtonStyle.Secondary)
+  )]});
 }
 
 async function showBlacksmithRecipe(interaction, recipeKey, notice = '', category = 'all') {
@@ -1197,8 +1257,19 @@ async function handleComponent(interaction) {
   if (action === 'profile' && parts[2] === 'displayclass') {
     const classKey=interaction.values?.[0];
     if(!HERO_CLASSES[classKey]) return showProfile(interaction,'❌ Класс не найден.');
-    db.prepare('UPDATE heroes SET display_class_key=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?').run(classKey,interaction.user.id);
-    return showProfile(interaction,`✅ В профиле теперь отображается класс **${HERO_CLASSES[classKey].name}**.`);
+    const progress=getClassProgress(interaction.user.id,classKey);
+    if(!progress) return showProfile(interaction,'❌ Прогресс выбранного класса не найден.');
+    db.transaction(()=>{
+      const current=getHero(interaction.user.id);
+      if(current?.class_key){
+        db.prepare(`INSERT INTO hero_class_progress(user_id,class_key,level,xp,expeditions_completed) VALUES(?,?,?,?,0)
+          ON CONFLICT(user_id,class_key) DO UPDATE SET level=excluded.level,xp=excluded.xp,updated_at=CURRENT_TIMESTAMP`)
+          .run(interaction.user.id,current.class_key,Number(current.level||1),Number(current.xp||0));
+      }
+      db.prepare('UPDATE heroes SET class_key=?,display_class_key=?,level=?,xp=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?')
+        .run(classKey,classKey,Number(progress.level||1),Number(progress.xp||0),interaction.user.id);
+    })();
+    return showProfile(interaction,`✅ Активный класс изменён на **${HERO_CLASSES[classKey].name} Lv.${progress.level}**. Теперь его уровень используется для опыта, профиля и рецептов.`);
   }
   if (action === 'profile' && parts[2] === 'rename') {
     const modal=new ModalBuilder().setCustomId('guild:profile:rename:modal').setTitle('Изменить имя героя');
@@ -1392,6 +1463,10 @@ async function handleComponent(interaction) {
     return showBlacksmithRecipe(interaction, recipeKey, notice, category);
   }
   if (action === 'blacksmith' && parts[2] === 'upgrade') return showUpgrade(interaction, interaction.values?.[0]);
+  if (action === 'blacksmith' && parts[2] === 'tools' && parts.length === 3) return showBlacksmithTools(interaction);
+  if (action === 'blacksmith' && parts[2] === 'tools' && parts[3] === 'craft') { const r=craftTool(interaction.user.id); const notice=r.ok?`✅ Создан инструмент: **${r.tool.def.name} ${r.tool.name}**.`:r.reason==='level'?`❌ Нужен уровень профессии **${r.required}**.`:r.reason==='materials'?'❌ Не хватает обработанных материалов.':r.reason==='max'?'✅ Инструмент уже максимального уровня.':'❌ Не удалось создать инструмент.'; return showBlacksmithTools(interaction,notice); }
+  if (action === 'blacksmith' && parts[2] === 'dismantle') return showDismantleConfirm(interaction, interaction.values?.[0]);
+  if (action === 'blacksmith' && parts[2] === 'dismantleconfirm') { const r=dismantle(interaction.user.id,Number(parts[3])); return showBlacksmith(interaction,r.ok?`✅ **${r.item.name}** разобран. Получено: **${r.name} ×${r.qty}**.`:'❌ Не удалось разобрать предмет. Возможно, он надет или уже отсутствует.'); }
   if (action === 'blacksmith' && parts[2] === 'apply') {
     const id = Number(parts[3]);
     const result = upgradeItem(interaction.user.id, id);
