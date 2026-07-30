@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 'use strict';
 
 const {
@@ -175,7 +176,12 @@ function updateValuableLuck(userId,won){
 }
 async function resolveGroup(client,g){
  const ms=members(g.id),diff=DIFFICULTIES.find(d=>d.key===g.difficulty_key)||DIFFICULTIES[0];
- const success=Math.random()*100<Number(g.success_chance||0), rewards=[];
+ const fixedChance=Math.max(0,Math.min(100,Number(g.success_chance||0)));
+ // Целочисленный криптографический бросок 0.0000–99.9999 исключает ошибки
+ // округления и сохраняется в истории для проверки владельцем.
+ const successRoll=crypto.randomInt(0,1_000_000)/10_000;
+ const success=successRoll<fixedChance, rewards=[];
+ console.log(`[Dungeon] #${g.id} chance=${fixedChance.toFixed(2)} roll=${successRoll.toFixed(4)} success=${success}`);
  const winnerIds=success?pickValuableWinners(ms,valuableCountFor(diff,ms.length)):new Set();
  const tx=db.transaction(()=>{
   for(const m of ms){
@@ -198,7 +204,7 @@ async function resolveGroup(client,g){
    rewards.push({userId:m.user_id,classKey:m.class_key,dust,classXp,valuable:valuableName,valuableKey,valuableItem});
    db.prepare("UPDATE heroes SET status='ready',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND status='dungeon'").run(m.user_id);
   }
-  db.prepare("UPDATE dungeon_groups SET status='resolved',resolved_at=CURRENT_TIMESTAMP,success=?,result_json=? WHERE id=?").run(success?1:0,JSON.stringify({version:3,dungeon:g.dungeon_name,difficulty:diff.key,rewards}),g.id);
+  db.prepare("UPDATE dungeon_groups SET status='resolved',resolved_at=CURRENT_TIMESTAMP,success=?,result_json=? WHERE id=?").run(success?1:0,JSON.stringify({version:4,dungeon:g.dungeon_name,difficulty:diff.key,chance:fixedChance,roll:Math.round(successRoll*10000)/10000,rewards}),g.id);
  });
  tx();
  // Результат сохраняется в истории хаба. Подробный отчёт больше не публикуется в общий канал.

@@ -330,24 +330,46 @@ function buyOffer(userId,id){const offer=getOffer(userId,id);if(!isActive())retu
   })();}catch(error){console.error('[Caravan buy]',error);return {ok:false,reason:'error'};}}
 
 async function announce(client,s){
-  // Discord не позволяет отправлять proactive ephemeral-сообщения без действия пользователя.
-  // Поэтому личные сообщения отключены: уведомление показывается персонально внутри
-  // ephemeral-меню Гильдии, когда игрок открывает раздел во время активного визита.
+  const channel=await client.channels.fetch(GUILD_CHANNEL_ID).catch(()=>null);
+  if(!channel?.isTextBased?.()){
+    console.error('[Caravan] Канал уведомлений не найден:',GUILD_CHANNEL_ID);
+    return false;
+  }
+  const atmosphere=ATMOSPHERE[Number(s?.atmosphere_index||0)]||ATMOSPHERE[0];
+  const message=await channel.send({
+    content:[
+      '## 🐪 Караванщик прибыл в Гильдию героев!',
+      `${atmosphere[0]} ${atmosphere[1]}`,
+      '',
+      'Торговец пробудет здесь **30 минут**. Откройте раздел Караванщика в хабе Гильдии, чтобы увидеть личные предложения.'
+    ].join('\n')
+  }).catch(error=>{console.error('[Caravan announce]',error);return null;});
+  if(!message)return false;
+  const remaining=Math.max(1000,Math.min(VISIT_MS,parseMs(s?.closes_at)-Date.now()));
+  const deletion=setTimeout(()=>message.delete().catch(()=>{}),remaining);
+  deletion.unref?.();
   return true;
 }
 async function refreshHub(client){try{const guild=require('../commands/guild');if(guild?.ensureGuildHub)await guild.ensureGuildHub(client);}catch(e){console.error('[Caravan hub refresh]',e);}}
 
-function applyV1935DailyScheduleReset(){
+function applyV1964CaravanRecovery(){
  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
- const key='v19.3.5-caravan-daily-from-2026-07-30';
+ const key='v19.6.4-caravan-one-time-visit-and-july31-resume';
  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(key))return;
- const today=moscowDay();
- if(today<='2026-07-29')createSchedule('2026-07-30');
- else ensureToday();
+ const now=Date.now();
+ const today=moscowDay(now);
+ const atmosphereIndex=randint(0,ATMOSPHERE.length-1,seeded(`caravan-recovery:${today}`));
+ // Разовый визит начинается сразу после первого запуска патча и длится 30 минут.
+ db.prepare(`INSERT INTO caravan_state(id,day_key,opens_at,closes_at,atmosphere_index,announced,updated_at)
+   VALUES(1,?,?,?,?,0,CURRENT_TIMESTAMP)
+   ON CONFLICT(id) DO UPDATE SET day_key=excluded.day_key,opens_at=excluded.opens_at,
+     closes_at=excluded.closes_at,atmosphere_index=excluded.atmosphere_index,
+     announced=0,updated_at=CURRENT_TIMESTAMP`)
+   .run(today,iso(now),iso(now+VISIT_MS),atmosphereIndex);
  db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(key);
- console.log('[V19.3.5] Caravan current visit suppressed; daily schedule resumes from 2026-07-30.');
+ console.log('[V19.6.4] Запущен разовый визит Караванщика на 30 минут. После завершения ежедневное расписание продолжится с 31.07.2026.');
 }
-applyV1935DailyScheduleReset();
+applyV1964CaravanRecovery();
 
 let timer=null,lastActive=null;
 function startCaravanScheduler(client){if(timer)return timer;ensureToday();const tick=async()=>{const s=ensureToday(),active=isActive();if(active&&!s.announced){db.prepare('UPDATE caravan_state SET announced=1 WHERE id=1').run();await announce(client,s);await refreshHub(client);}if(lastActive===true&&!active)await refreshHub(client);lastActive=active;};tick().catch(console.error);timer=setInterval(()=>tick().catch(console.error),CHECK_MS);timer.unref?.();console.log('🐪 Caravan scheduler started');return timer;}

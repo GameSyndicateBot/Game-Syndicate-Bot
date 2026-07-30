@@ -497,7 +497,10 @@ function backfillQuickEventStats() {
 
 const COMPETITIVE_ANSWER_TYPES = new Set([
   'unscramble','math','typing','finish','odd','color','memory','reaction',
-  'rarity','avatar','sequence','reverse','emoji_riddle','true_false'
+  'rarity','avatar','sequence','reverse','emoji_riddle','true_false',
+  // Королевская кнопка тоже является соревновательной победой и должна
+  // продолжать/сбрасывать серию Quick Events на общих правилах.
+  'royal_button'
 ]);
 
 function isCompetitiveAnswerType(eventType) {
@@ -1955,17 +1958,21 @@ function scheduleNextQuickEvent(delay = randomDelay()) {
     quickEventNextAt = null;
     saveNextEventAt(null);
 
+    let posted = false;
     try {
       await awardPreviousWeek(quickEventClient);
-
-      await postQuickEvent(quickEventClient);
+      posted = (await postQuickEvent(quickEventClient)) !== false;
     } catch (error) {
       console.error('[QuickEvent]', error);
     } finally {
       quickEventPosting = false;
     }
 
-    scheduleNextQuickEvent();
+    // Если событие было отложено из-за активного World Boss или временной
+    // ошибки канала, повторяем попытку через 5 минут. Раньше после каждого
+    // пропуска назначался новый полный интервал 20–70 минут, из-за чего
+    // реальный разрыв между событиями мог превышать два часа.
+    scheduleNextQuickEvent(posted ? randomDelay() : 5 * 60 * 1000);
   }, safeDelay);
 
   quickEventTimer.unref?.();
@@ -2052,14 +2059,15 @@ function startQuickEventScheduler(client) {
       quickEventNextAt = null;
       saveNextEventAt(null);
 
+      let posted = false;
       try {
         await awardPreviousWeek(client);
-        await postQuickEvent(client);
+        posted = (await postQuickEvent(client)) !== false;
       } catch (error) {
         console.error('[QuickEvent]', error);
       } finally {
         quickEventPosting = false;
-        scheduleNextQuickEvent();
+        scheduleNextQuickEvent(posted ? randomDelay() : 5 * 60 * 1000);
       }
     }, 2500);
 
@@ -2079,6 +2087,18 @@ function startQuickEventScheduler(client) {
   );
 
   weeklyTimer.unref?.();
+
+  // Защита от уснувшего/задержанного setTimeout на хостинге. Проверка раз в
+  // минуту не даёт следующему Quick Event уйти далеко за верхнюю границу.
+  const watchdogTimer = setInterval(() => {
+    if (!quickEventClient || quickEventPosting) return;
+    const now = Date.now();
+    if (quickEventNextAt && now > quickEventNextAt + 60 * 1000) {
+      console.warn('[QuickEvent] Scheduler watchdog: просроченный таймер, запускаю событие сейчас.');
+      scheduleNextQuickEvent(1000);
+    }
+  }, 60 * 1000);
+  watchdogTimer.unref?.();
 
   console.log(
     '[QuickEvent] Запущено: 40–70 минут, ' +

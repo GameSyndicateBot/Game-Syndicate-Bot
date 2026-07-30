@@ -9,6 +9,7 @@ const {
 } = require('../database/db');
 
 const caravan = require('../services/caravanService');
+const ownerGrant = require('../services/ownerGrantService');
 
 function isBotOwner(interaction) {
     const ownerId = String(process.env.BOT_OWNER_ID ?? '').trim();
@@ -112,9 +113,26 @@ module.exports = {
         .addSubcommandGroup(group => group.setName('rpg').setDescription('Восстановление RPG-состояний')
             .addSubcommand(subcommand => subcommand.setName('unstuck').setDescription('Освободить игрока из зависшего RPG-состояния')
                 .addUserOption(option => option.setName('user').setDescription('Игрок').setRequired(true))))
+        .addSubcommandGroup(group => group.setName('grant').setDescription('Выдача RPG-контента')
+            .addSubcommand(sub => sub.setName('achievement').setDescription('Выдать достижение').addUserOption(o=>o.setName('user').setDescription('Игрок').setRequired(true)).addStringOption(o=>o.setName('achievement').setDescription('ID или название').setRequired(true).setAutocomplete(true)))
+            .addSubcommand(sub => sub.setName('material').setDescription('Выдать материал').addUserOption(o=>o.setName('user').setDescription('Игрок').setRequired(true)).addStringOption(o=>o.setName('material').setDescription('Ключ материала').setRequired(true).setAutocomplete(true)).addIntegerOption(o=>o.setName('quantity').setDescription('Количество').setRequired(true).setMinValue(1).setMaxValue(100000)))
+            .addSubcommand(sub => sub.setName('item').setDescription('Выдать предмет').addUserOption(o=>o.setName('user').setDescription('Игрок').setRequired(true)).addStringOption(o=>o.setName('item').setDescription('Ключ предмета').setRequired(true).setAutocomplete(true)).addIntegerOption(o=>o.setName('quantity').setDescription('Количество').setRequired(true).setMinValue(1).setMaxValue(1000)))
+            .addSubcommand(sub => sub.setName('expedition').setDescription('Засчитать успешную экспедицию').addUserOption(o=>o.setName('user').setDescription('Игрок').setRequired(true)).addStringOption(o=>o.setName('location').setDescription('Ключ локации').setRequired(true)).addIntegerOption(o=>o.setName('hours').setDescription('2, 4 или 8 часов').setRequired(true).addChoices({name:'2 часа',value:2},{name:'4 часа',value:4},{name:'8 часов',value:8})).addStringOption(o=>o.setName('material').setDescription('Доп. материал (необязательно)').setAutocomplete(true)).addIntegerOption(o=>o.setName('material_quantity').setDescription('Количество доп. материала').setMinValue(1).setMaxValue(1000)))
+            .addSubcommand(sub => sub.setName('dungeon').setDescription('Засчитать успешное подземелье').addUserOption(o=>o.setName('user').setDescription('Игрок').setRequired(true)).addStringOption(o=>o.setName('name').setDescription('Название подземелья').setRequired(true)).addStringOption(o=>o.setName('difficulty').setDescription('Сложность').setRequired(true).addChoices({name:'Обычная',value:'normal'},{name:'Опасная',value:'dangerous'},{name:'Героическая',value:'heroic'},{name:'Эпическая',value:'epic'},{name:'Легендарная',value:'legendary'})).addStringOption(o=>o.setName('item').setDescription('Предмет-награда (необязательно)').setAutocomplete(true))))
         .addSubcommandGroup(group => group.setName('caravan').setDescription('Управление Караванщиком')
             .addSubcommand(subcommand => subcommand.setName('next').setDescription('Показать время следующего появления Караванщика'))
             .addSubcommand(subcommand => subcommand.setName('status').setDescription('Показать состояние Караванщика'))) ,
+
+    async autocomplete(interaction) {
+        if (!isBotOwner(interaction)) return interaction.respond([]);
+        const focused=interaction.options.getFocused(true);
+        let kind=focused.name;
+        if(kind==='achievement')kind='achievement';
+        else if(kind==='item')kind='item';
+        else if(kind==='material')kind='material';
+        else return interaction.respond([]);
+        return interaction.respond(ownerGrant.autocomplete(kind,focused.value));
+    },
 
     async execute(interaction) {
         if (!isBotOwner(interaction)) {
@@ -176,6 +194,17 @@ ${atmosphereIcon} ${atmosphereText}`)
                     flags: MessageFlags.Ephemeral,
                 });
             }
+        }
+
+        if (group === 'grant') {
+            const target = interaction.options.getUser('user', true);
+            let result;
+            if (subcommand === 'achievement') result = ownerGrant.grantAchievement(target.id, interaction.options.getString('achievement', true));
+            if (subcommand === 'material') result = ownerGrant.grantMaterial(target.id, interaction.options.getString('material', true), interaction.options.getInteger('quantity', true));
+            if (subcommand === 'item') result = ownerGrant.grantInventoryItem(target.id, interaction.options.getString('item', true), interaction.options.getInteger('quantity', true));
+            if (subcommand === 'expedition') result = ownerGrant.completeExpedition({userId:target.id,guildId:interaction.guildId,locationKey:interaction.options.getString('location',true),hours:interaction.options.getInteger('hours',true),materialKey:interaction.options.getString('material'),materialQty:interaction.options.getInteger('material_quantity')||0});
+            if (subcommand === 'dungeon') result = ownerGrant.completeDungeon({userId:target.id,guildId:interaction.guildId,dungeonName:interaction.options.getString('name',true),difficulty:interaction.options.getString('difficulty',true),itemKey:interaction.options.getString('item')});
+            return interaction.reply({content:result?.ok?`✅ Операция выполнена для **${target.username}**.`:`❌ Не удалось выполнить операцию: ${result?.reason||'неизвестная ошибка'}.`,flags:MessageFlags.Ephemeral});
         }
 
         const target = interaction.options.getUser('user', true);

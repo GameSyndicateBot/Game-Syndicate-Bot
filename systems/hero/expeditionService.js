@@ -334,6 +334,7 @@ function resolveExpedition(userId, { force = false } = {}) {
   if (roll <= chance * 0.25) outcome = 'great';
   else if (roll <= chance) outcome = 'success';
   else if (roll <= Math.min(97, chance + 18)) outcome = 'partial';
+  console.log(`[Expedition] #${expedition.id} user=${userId} chance=${Number(chance).toFixed(2)} roll=${roll.toFixed(4)} outcome=${outcome}`);
 
   let dust = 0, xp = 0, reputation = 0, item = null, companion = null, injuryHours = 0, dustLost = 0;
   const theme = location.dailyTheme || {};

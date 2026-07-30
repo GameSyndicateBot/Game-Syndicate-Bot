@@ -133,6 +133,8 @@ client.once('clientReady', () => {
     try {
         const { applyTargetedRecoveryV1962Extra } = require('./services/targetedRecoveryV1962Extra');
         applyTargetedRecoveryV1962Extra();
+        const { applyTargetedRecoveryV1963 } = require('./services/targetedRecoveryV1963');
+        applyTargetedRecoveryV1963();
     } catch (error) {
         console.error('[V19.6.2 Extra Recovery] Ошибка:', error);
     }

@@ -726,15 +726,15 @@
     "target": 75
   },
   {
-    "id": "collection_82",
+    "id": "collection_177",
     "title": "Полная коллекция",
-    "description": "Получить все 82 достижения.",
+    "description": "Получить все 177 достижений.",
     "xp": 20000,
     "points": 350,
     "rarity": "mythic",
     "category": "collection",
     "type": "achievements_count",
-    "target": 82
+    "target": 177
   },
   {
     "id": "event_75",
