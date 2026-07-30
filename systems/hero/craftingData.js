@@ -29,7 +29,7 @@ const RECIPES = Object.freeze({
   lightning_scroll: { itemKey:'lightning_scroll', npc:'Алхимик Лира', dust:320, level:8, materials:{ essence:8, crystal:5, ancient_fragment:1 } },
   barrier_scroll: { itemKey:'barrier_scroll', npc:'Алхимик Лира', dust:210, level:6, materials:{ essence:5, stone:5, crystal:3 } },
   blessing_scroll: { itemKey:'blessing_scroll', npc:'Алхимик Лира', dust:340, level:8, materials:{ herb_extract:8, essence:7, crystal:4, moon_blossom:1 } },
-  weakening_scroll: { itemKey:'weakening_scroll', npc:'Алхимик Лира', dust:340, level:8, materials:{ essence:8, beast_bone:5, crystal:4 } },
+  weakening_scroll: { itemKey:'weakening_scroll', npc:'Алхимик Лира', dust:340, level:8, materials:{ essence:8, beast_bone:5, crystal:1 } },
   cleanse_scroll: { itemKey:'cleanse_scroll', npc:'Алхимик Лира', dust:230, level:6, materials:{ herb_extract:8, essence:5, moon_blossom:1 } },
   alchemist_bomb: { itemKey:'alchemist_bomb', npc:'Алхимик Лира', dust:420, level:8, materials:{ essence:8, crystal:6, iron_ore:5, void_crystal:1 } },
   healing_potion_supreme: { itemKey:'healing_potion_supreme', npc:'Алхимик Лира', dust:260, level:7, materials:{ herb_extract:16, essence:8, crystal:3, ancient_fragment:1 } },

@@ -314,6 +314,19 @@ function guildNavRow(active) {
   ));
 }
 
+
+function blacksmithExitRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:npcs').setLabel('К гильдейцам').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function blacksmithBackRow(category = 'all') {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`guild:blacksmith:menu:${category}`).setLabel('Назад к кузнецу').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
+  );
+}
+
 function recipeMaterials(recipe) {
   return recipe.materials.map(m => `${m.icon} ${m.name}: **${m.owned}/${m.required}**${m.owned >= m.required ? ' ✅' : ' ❌'}`).join('\n');
 }
@@ -386,7 +399,7 @@ async function showBlacksmith(interaction, notice = '', category = 'all') {
     ].filter(Boolean).join('\n'))
     .setFooter({ text: `Герой: ${hero.name} · уровень ${hero.level} · рецепты проверяются по реальному уровню героя` });
 
-  const components = [guildNavRow('blacksmith'), blacksmithCategoryRow(category)];
+  const components = [blacksmithCategoryRow(category)];
   if (recipes.length) components.push(new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder().setCustomId(`guild:blacksmith:recipe:${category}`).setPlaceholder('🔨 Выбрать рецепт и посмотреть условия')
       .addOptions(recipes.slice(0,25).map(r => {
@@ -406,6 +419,7 @@ async function showBlacksmith(interaction, notice = '', category = 'all') {
         description:`${RARITY_LABELS[i.rarity] || i.rarity} · следующий уровень +${Number(i.upgrade_level || 0)+1}`.slice(0,100)
       })))
   ));
+  components.push(blacksmithExitRow());
   const payload = { embeds:[embed], components };
   const isEphemeralMessage = Boolean(interaction.message?.flags?.has?.(MessageFlags.Ephemeral));
   return isEphemeralMessage ? interaction.update(payload) : interaction.reply({ ...payload, flags:MessageFlags.Ephemeral });
@@ -413,7 +427,7 @@ async function showBlacksmith(interaction, notice = '', category = 'all') {
 
 async function showBlacksmithRecipe(interaction, recipeKey, notice = '', category = 'all') {
   const recipe = hydrateRecipe(recipeKey, interaction.user.id);
-  if (!recipe || recipe.npc === 'Алхимик Лира') return interaction.update({ content:'❌ Рецепт не найден.', embeds:[], components:[guildNavRow('blacksmith')] });
+  if (!recipe || recipe.npc === 'Алхимик Лира') return interaction.update({ content:'❌ Рецепт не найден.', embeds:[], components:[blacksmithBackRow(category)] });
   const state = recipeState(recipe);
   const missing = missingRecipeSummary(recipe);
   const sources = recipe.materials.map(m => `${m.icon} **${m.name}:** ${sourceFor(m.key)}`).join('\n');
@@ -447,13 +461,13 @@ async function showBlacksmithRecipe(interaction, recipeKey, notice = '', categor
     new ButtonBuilder().setCustomId(`guild:blacksmith:menu:${category}`).setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`guild:blacksmith:craft:${category}:${recipeKey}`).setLabel('Создать').setEmoji('🔨').setStyle(ButtonStyle.Success).setDisabled(!recipe.canCraft)
   );
-  return interaction.update({ embeds:[embed], components:[guildNavRow('blacksmith'),row] });
+  return interaction.update({ embeds:[embed], components:[row] });
 }
 
 async function showUpgrade(interaction, inventoryId, notice = '') {
   const info = getUpgradeInfo(interaction.user.id, Number(inventoryId));
-  if (!info.ok) return interaction.update({ content:'❌ Предмет не найден или его нельзя улучшить.', embeds:[], components:[guildNavRow('blacksmith')] });
-  if (info.maxed) return interaction.update({ content:`✅ **${info.item.name}** уже улучшен до +${MAX_UPGRADE}.`, embeds:[], components:[guildNavRow('blacksmith')] });
+  if (!info.ok) return interaction.update({ content:'❌ Предмет не найден или его нельзя улучшить.', embeds:[], components:[blacksmithBackRow()] });
+  if (info.maxed) return interaction.update({ content:`✅ **${info.item.name}** уже улучшен до +${MAX_UPGRADE}.`, embeds:[], components:[blacksmithBackRow()] });
   const materials = info.cost.materials.map(m => `${m.icon} ${m.name}: **${m.owned}/${m.required}**${m.owned>=m.required?' ✅':' ❌'}`).join('\n');
   const missing = [];
   if (info.dust < info.cost.dust) missing.push(`${info.cost.dust - info.dust} Dust`);
@@ -466,7 +480,7 @@ async function showUpgrade(interaction, inventoryId, notice = '') {
     new ButtonBuilder().setCustomId('guild:blacksmith:menu').setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`guild:blacksmith:apply:${inventoryId}`).setLabel('Улучшить').setEmoji('⚒️').setStyle(ButtonStyle.Success).setDisabled(!info.canAfford)
   );
-  return interaction.update({embeds:[embed],components:[guildNavRow('blacksmith'),row]});
+  return interaction.update({embeds:[embed],components:[row]});
 }
 
 async function showPets(interaction, notice = '') {
@@ -1032,6 +1046,7 @@ function showMerchantMaterialConfirm(interaction,key,notice=''){
   const buttons=[
     new ButtonBuilder().setCustomId(`guild:merchant:sell:material:${key}:1`).setLabel('Продать 1').setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`guild:merchant:sell:material:${key}:${Math.min(5,max)}`).setLabel(`Продать ${Math.min(5,max)}`).setStyle(ButtonStyle.Success).setDisabled(max<2),
+    new ButtonBuilder().setCustomId(`guild:merchant:sell:material:custom:${key}`).setLabel('Ввести количество').setEmoji('⌨️').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`guild:merchant:sell:material:${key}:${max}`).setLabel(`Продать всё (${max})`).setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId('guild:merchant:sell:materials').setLabel('Назад').setStyle(ButtonStyle.Secondary),
   ];
@@ -1074,6 +1089,12 @@ async function handleComponent(interaction) {
   if (action === 'merchant' && parts.length === 2) return showMerchant(interaction);
   if (action === 'merchant' && parts[2] === 'sell' && parts[3] === 'materials') return showMerchantMaterialList(interaction);
   if (action === 'merchant' && parts[2] === 'sell' && parts[3] === 'material' && parts[4] === 'select') return showMerchantMaterialConfirm(interaction, interaction.values?.[0]);
+  if (action === 'merchant' && parts[2] === 'sell' && parts[3] === 'material' && parts[4] === 'custom') {
+    const key=parts.slice(5).join(':');
+    const row=guildMerchant.sellableMaterials(interaction.user.id).find(x=>x.key===key);
+    if(!row) return showMerchantMaterialList(interaction,'❌ Материал уже закончился.');
+    return interaction.showModal(marketModal(`guild:merchant:materialqty:${key}`,'Продажа материала',[{id:'quantity',label:`Количество (макс. ${row.quantity})`,placeholder:'Например: 70'}]));
+  }
   if (action === 'merchant' && parts[2] === 'sell' && parts[3] === 'material' && parts[4] && parts[4] !== 'select') {
     const key=parts[4], qty=Number(parts[5]||1);
     const r=guildMerchant.sellMaterial(interaction.user.id,key,qty);
@@ -1459,6 +1480,17 @@ async function handleModal(interaction) {
       console.error('[Guild Rename]', interaction.user.id, error);
       return interaction.editReply({ content: '❌ Не удалось изменить имя. Dust не списан. Ошибка записана в лог.' });
     }
+  }
+  if(parts[0]==='guild'&&parts[1]==='merchant'&&parts[2]==='materialqty'){
+    const key=parts.slice(3).join(':');
+    const qty=Math.max(1,Math.floor(Number(interaction.fields.getTextInputValue('quantity'))||0));
+    const r=guildMerchant.sellMaterial(interaction.user.id,key,qty);
+    const content=r.ok
+      ? `✅ Продано **${r.item.name} ×${r.qty}** за **${r.total} GS Dust**.`
+      : r.reason==='quantity'||r.reason==='materials'
+        ? '❌ Указано неверное количество или материала недостаточно.'
+        : '❌ Продажа не выполнена.';
+    return interaction.reply({content,flags:MessageFlags.Ephemeral});
   }
   if(parts[0]==='guild'&&parts[1]==='market'){
     const kind=parts[2];

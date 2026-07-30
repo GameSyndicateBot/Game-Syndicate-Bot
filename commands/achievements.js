@@ -71,7 +71,13 @@ function buildButtonRow(category, page, totalPages, userId) {
             .setCustomId(`achievements_next_${userId}_${category}_${page}`)
             .setLabel('Вперёд')
             .setStyle(ButtonStyle.Primary)
-            .setDisabled(category === 'overview' || page >= totalPages)
+            .setDisabled(category === 'overview' || page >= totalPages),
+
+        new ButtonBuilder()
+            .setCustomId(`gs_home_${userId}`)
+            .setLabel('В меню GS')
+            .setEmoji('🏠')
+            .setStyle(ButtonStyle.Secondary)
     );
 }
 

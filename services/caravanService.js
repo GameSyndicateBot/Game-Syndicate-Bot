@@ -213,11 +213,13 @@ applyV1914DungeonRewardRecovery();
 function createSchedule(dayKey=moscowDay()){
   const rng=seeded(`caravan:${dayKey}:${Date.now()}`);
   const [y,m,d]=dayKey.split('-').map(Number);
-  const dayStart=Date.UTC(y,m-1,d,-3,0,0,0);
-  const dayEnd=dayStart+24*60*60*1000-60*1000;
+  const dayStart=Date.UTC(y,m-1,d,-3,0,0,0); // 00:00 MSK
+  const windowStart=dayStart+9*60*60*1000;      // 09:00 MSK
+  const windowEnd=dayStart+24*60*60*1000;       // 00:00 следующего дня MSK
   const now=Date.now();
-  const earliest=(moscowDay(now)===dayKey)?Math.max(dayStart,now+5*60*1000):dayStart;
-  const latest=Math.max(earliest,dayEnd);
+  const earliest=(moscowDay(now)===dayKey)?Math.max(windowStart,now+5*60*1000):windowStart;
+  // Визит длится 30 минут и всегда полностью помещается в разрешённое окно.
+  const latest=Math.max(earliest,windowEnd-VISIT_MS);
   const opens=earliest+Math.floor(rng()*Math.max(1,latest-earliest));
   const roundedOpens=Math.floor(opens/60000)*60000;
   const closes=roundedOpens+VISIT_MS;

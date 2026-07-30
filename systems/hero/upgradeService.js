@@ -37,7 +37,7 @@ function getUpgradeCost(item, targetLevel) {
   const group=classifyUpgradeGroup(item), materials={};
   const add=(key,qty)=>{if(qty>0)materials[key]=(materials[key]||0)+Math.max(1,Math.ceil(qty));};
   if(group==='metal') { add('iron_ingot',base); add('gemstone',rare); add('ancient_fragment',special); }
-  else if(group==='leather') { add('beast_hide',base); add('gemstone',rare); add('ancient_fragment',special); }
+  else if(group==='leather') { add('leather',base); add('gemstone',rare); add('ancient_fragment',special); }
   else if(group==='ranged') { add('board',base); add('ancient_wood',rare); add('gemstone',special); }
   else if(group==='wood_shield') { add('board',base); add(targetLevel>=8?'ancient_wood':'iron_ingot',rare); add('gemstone',special); }
   else if(group==='staff') { add(targetLevel<=3?'board':targetLevel<=7?'crystal':'crystal',base); add(targetLevel<=7?'gemstone':'void_crystal',rare); add('void_crystal',special); }
