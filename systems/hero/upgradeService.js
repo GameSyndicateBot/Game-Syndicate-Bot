@@ -11,18 +11,40 @@ const RARITY_MULTIPLIER = Object.freeze({ common:1, rare:1.35, epic:1.8, legenda
 function isUpgradeable(item) {
   return !!item?.slot && ['weapon','armor','helmet','gloves','boots','ring','amulet','backpack'].includes(item.item_type);
 }
+function classifyUpgradeGroup(item) {
+  const text=`${item?.item_key||''} ${item?.name||''} ${item?.description||''}`.toLowerCase();
+  const type=String(item?.item_type||'').toLowerCase();
+  const slot=String(item?.slot||'').toLowerCase();
+  if (/артефакт|реликв|artifact|relic/.test(text)) return 'artifact';
+  if (type==='ring'||slot==='ring'||/кольц|перст|ring/.test(text)) return 'jewelry';
+  if (type==='amulet'||slot==='amulet'||/амулет|ожерел|медальон|венец|корон|amulet|necklace|crown/.test(text)) return 'jewelry';
+  if (/книга|гримуар|фолиант|book|grimoire/.test(text)) return 'magic_book';
+  if (/посох|жезл|сфера|staff|wand|orb/.test(text)) return 'staff';
+  if (/лук|арбалет|bow|crossbow/.test(text)) return 'ranged';
+  if (/щит|shield/.test(text)) return /дерев|wood/.test(text)?'wood_shield':'metal';
+  if (/кожан|кожа|шкур|капюш|leather|hide|hood/.test(text)) return 'leather';
+  if (['armor','helmet','gloves','boots','weapon'].includes(type)||['chest','helmet','gloves','boots','melee','offhand'].includes(slot)) return 'metal';
+  if (type==='backpack'||slot==='backpack') return 'leather';
+  return 'metal';
+}
+const MATERIAL_SCALE=Object.freeze({1:2,2:3,3:5,4:7,5:10,6:14,7:18,8:24,9:32,10:40});
+const RARE_SCALE=Object.freeze({1:0,2:0,3:0,4:1,5:2,6:3,7:4,8:5,9:7,10:10});
+const SPECIAL_SCALE=Object.freeze({1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:1,9:2,10:3});
 function getUpgradeCost(item, targetLevel) {
   const rarity = RARITY_MULTIPLIER[item.rarity] || 1;
   const dust = Math.round((110 + targetLevel * targetLevel * 42) * rarity / 5) * 5;
-  const materials = {};
-  const itemText=`${item.item_key||''} ${item.name||''}`.toLowerCase();
-  const isBow=/лук|арбалет|bow|crossbow/.test(itemText);
-  // Луки и арбалеты улучшаются досками, остальное кузнечное снаряжение — слитками.
-  materials[isBow ? 'board' : 'iron_ingot'] = Math.max(3, Math.ceil(targetLevel * rarity * 2.2));
-  if (targetLevel >= 4) materials.crystal = Math.max(1, Math.ceil((targetLevel - 3) * rarity));
-  if (targetLevel >= 7) materials.essence = Math.max(1, Math.ceil((targetLevel - 6) * rarity));
-  if (targetLevel >= 9) materials.void_crystal = Math.max(1, Math.ceil((targetLevel - 8) * rarity));
-  return { dust, materials };
+  const base=MATERIAL_SCALE[targetLevel]||40, rare=RARE_SCALE[targetLevel]||0, special=SPECIAL_SCALE[targetLevel]||0;
+  const group=classifyUpgradeGroup(item), materials={};
+  const add=(key,qty)=>{if(qty>0)materials[key]=(materials[key]||0)+Math.max(1,Math.ceil(qty));};
+  if(group==='metal') { add('iron_ingot',base); add('gemstone',rare); add('ancient_fragment',special); }
+  else if(group==='leather') { add('beast_hide',base); add('gemstone',rare); add('ancient_fragment',special); }
+  else if(group==='ranged') { add('board',base); add('ancient_wood',rare); add('gemstone',special); }
+  else if(group==='wood_shield') { add('board',base); add(targetLevel>=8?'ancient_wood':'iron_ingot',rare); add('gemstone',special); }
+  else if(group==='staff') { add(targetLevel<=3?'board':targetLevel<=7?'crystal':'crystal',base); add(targetLevel<=7?'gemstone':'void_crystal',rare); add('void_crystal',special); }
+  else if(group==='magic_book') { add(targetLevel<=3?'gemstone':'crystal',base); add(targetLevel<=7?'crystal':'void_crystal',rare); add('void_crystal',special); }
+  else if(group==='jewelry') { add('gemstone',base); add('pearl',rare); add('void_crystal',special); }
+  else if(group==='artifact') { add(targetLevel<=3?'gemstone':targetLevel<=7?'ancient_fragment':'void_crystal',base); add('ancient_fragment',rare); add('void_crystal',special); }
+  return { dust, materials, group };
 }
 function materialRows(userId, requirements) { return resourceRows(userId, requirements); }
 function getUpgradeInfo(userId, inventoryId) {
@@ -73,4 +95,4 @@ function upgradeItem(userId, inventoryId) {
 function getUpgradeHistory(userId,limit=10){
   return db.prepare(`SELECT h.*,i.name,i.rarity FROM hero_upgrade_history h LEFT JOIN hero_items i ON i.item_key=h.item_key WHERE h.user_id=? ORDER BY h.id DESC LIMIT ?`).all(userId,limit);
 }
-module.exports={MAX_UPGRADE,CHANCES,isUpgradeable,getUpgradeCost,getUpgradeInfo,upgradeItem,getUpgradeHistory};
+module.exports={MAX_UPGRADE,CHANCES,isUpgradeable,classifyUpgradeGroup,getUpgradeCost,getUpgradeInfo,upgradeItem,getUpgradeHistory};

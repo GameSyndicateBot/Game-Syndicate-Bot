@@ -61,9 +61,11 @@ function createListing(userId,inventoryId,price){
  let id; const tx=db.transaction(()=>{removeOne(userId,item);id=db.prepare(`INSERT INTO equipment_market_listings(seller_id,item_key,item_name,rarity,upgrade_level,quantity,price) VALUES(?,?,?,?,?,1,?)`).run(userId,item.item_key,item.name,item.rarity,Number(item.upgrade_level||0),price).lastInsertRowid;}); tx();
  return {ok:true,listing:getListing(id)};
 }
-function getListing(id){return db.prepare('SELECT * FROM equipment_market_listings WHERE id=?').get(id)||null;}
-function listOpen(limit=25){return db.prepare("SELECT * FROM equipment_market_listings WHERE status='open' ORDER BY id DESC LIMIT ?").all(limit);}
-function listMine(userId,limit=25){return db.prepare('SELECT * FROM equipment_market_listings WHERE seller_id=? ORDER BY id DESC LIMIT ?').all(userId,limit);}
+const LISTING_SELECT=`SELECT l.*,i.item_type,i.slot,i.description,i.lore,i.bonuses_json
+ FROM equipment_market_listings l LEFT JOIN hero_items i ON i.item_key=l.item_key`;
+function getListing(id){return db.prepare(`${LISTING_SELECT} WHERE l.id=?`).get(id)||null;}
+function listOpen(limit=25){return db.prepare(`${LISTING_SELECT} WHERE l.status='open' ORDER BY l.id DESC LIMIT ?`).all(limit);}
+function listMine(userId,limit=25){return db.prepare(`${LISTING_SELECT} WHERE l.seller_id=? ORDER BY l.id DESC LIMIT ?`).all(userId,limit);}
 function buyListing(userId,id){
  userId=String(userId); id=Number(id);
  try{
@@ -113,4 +115,4 @@ function cancelListing(userId,id){
   return {ok:true,listing:{...result,status:'cancelled'}};
  }catch(e){return {ok:false,reason:e?.code||e?.message||'transaction'};}
 }
-module.exports={duplicateEquipment,sellToBlacksmith,createListing,listOpen,listMine,buyListing,cancelListing};
+module.exports={duplicateEquipment,sellToBlacksmith,createListing,getListing,listOpen,listMine,buyListing,cancelListing};
