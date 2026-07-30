@@ -299,7 +299,7 @@ function buildExpeditionStory(rng, location, outcome, rewards = {}) {
   };
   const middle = {
     great: ['Герой разгадал скрытый механизм и добрался до нетронутого тайника.', 'Опасный противник был побеждён без единой ошибки, открыв путь к редкой добыче.'],
-    success: ['Путь оказался трудным, но осторожность помогла избежать главных ловушек.', 'После короткой схватки герой продолжил поиски и собрал достойную добычу.'],
+    success: ['Путь оказался трудным, но осторожность помогла избежать главных ловушек.', 'После короткой схватки герой продолжил поиски и собрал найденные по пути ресурсы.'],
     partial: ['Непогода и ловушки заставили повернуть назад раньше времени.', 'Часть припасов была потеряна, однако герой сумел сохранить найденное.'],
     fail: ['Засада оказалась слишком хорошо подготовленной, и герою пришлось отступить.', 'Сработавшая ловушка уничтожила припасы и едва не стоила герою жизни.'],
   };
@@ -467,12 +467,12 @@ function getExpeditionCooldown(userId) {
 function cancelExpedition(userId) {
   const expedition=getActiveExpedition(userId);
   if(!expedition) return {ok:false,reason:'none'};
-  const cooldownUntil=new Date(Date.now()+2*60*60*1000).toISOString();
+  const cooldownUntil=new Date(Date.now()+1*60*60*1000).toISOString();
   db.prepare("UPDATE hero_expeditions SET status='cancelled', resolved_at=CURRENT_TIMESTAMP, result_json=? WHERE id=?")
     .run(JSON.stringify({outcome:'cancelled',reason:'player_cancelled',rewards:false}),expedition.id);
   db.prepare("UPDATE heroes SET status='ready', updated_at=CURRENT_TIMESTAMP WHERE user_id=?").run(userId);
   db.prepare(`INSERT INTO hero_expedition_cooldowns(user_id,cooldown_until,reason) VALUES(?,?,'cancelled') ON CONFLICT(user_id) DO UPDATE SET cooldown_until=excluded.cooldown_until,reason=excluded.reason,created_at=CURRENT_TIMESTAMP`).run(userId,cooldownUntil);
-  addHistory(userId,'expedition_cancelled','Экспедиция отменена игроком. Награды потеряны, следующая экспедиция доступна через 2 часа.',{expeditionId:expedition.id,cooldownUntil});
+  addHistory(userId,'expedition_cancelled','Экспедиция отменена игроком. Награды потеряны, следующая экспедиция доступна через 1 час.',{expeditionId:expedition.id,cooldownUntil});
   return {ok:true,expedition,cooldownUntil};
 }
 

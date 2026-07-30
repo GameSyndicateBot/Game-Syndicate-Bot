@@ -6,6 +6,7 @@ const {
   PROFESSIONS,SPECIALIZATIONS,ENERGY_REGEN_PER_HOUR,LEVEL_CAP,xpNeeded,energyMaxForLevel,energyCostForLevel,
   getProfession,chooseProfession,changeProfession,processProfessionMaterial,PROFESSION_CHANGE_COST,work,chooseSpecialization,getProfessionCounts,getMilestones
 } = require('../systems/hero/professionService');
+const {toolInfo,craftTool,TOOL_TIERS}=require('../systems/hero/playerCorrectionService');
 
 function duration(ms){const m=Math.max(1,Math.ceil(ms/60000));return m>=60?`${Math.floor(m/60)} ч ${m%60} мин`:`${m} мин`;}
 function energyBar(value,max){const filled=Math.max(0,Math.min(10,Math.round((value/Math.max(1,max))*10)));return `${'🟪'.repeat(filled)}${'⬛'.repeat(10-filled)}`;}
@@ -24,7 +25,8 @@ module.exports={
   .addSubcommand(s=>s.setName('status').setDescription('Показать профессию, прогрессию и энергию'))
   .addSubcommand(s=>s.setName('work').setDescription('Выполнить работу за энергию'))
   .addSubcommand(s=>s.setName('specialization').setDescription('Выбрать специализацию на 50 уровне').addStringOption(o=>o.setName('specialization').setDescription('Специализация').setRequired(true).addChoices(...specChoices())))
-  .addSubcommand(s=>s.setName('server').setDescription('Показать распределение профессий на сервере')),
+  .addSubcommand(s=>s.setName('server').setDescription('Показать распределение профессий на сервере'))
+  .addSubcommand(s=>s.setName('tool').setDescription('Показать или улучшить рабочий инструмент').addBooleanOption(o=>o.setName('upgrade').setDescription('Создать следующий уровень инструмента'))),
  async execute(interaction){
   if(!getHero(interaction.user.id)) return interaction.reply({content:'❌ Сначала создай героя.',flags:MessageFlags.Ephemeral});
   const sub=interaction.options.getSubcommand();
@@ -59,6 +61,13 @@ module.exports={
    const output=(MATERIALS[result.recipe.output]||ITEMS[result.recipe.output])?.name||result.recipe.output;
    return interaction.reply({embeds:[new EmbedBuilder().setColor(0x22C55E).setTitle('⚒️ Материал обработан').setDescription(`Использовано: **${input} ×${result.consumed}**
 Получено: **${output} ×${result.produced}**`)],flags:MessageFlags.Ephemeral});
+  }
+  if(sub==='tool'){
+   const row=getProfession(interaction.user.id);if(!row)return interaction.reply({content:'❌ Сначала выбери профессию.',flags:MessageFlags.Ephemeral});
+   if(interaction.options.getBoolean('upgrade')){const r=craftTool(interaction.user.id);if(!r.ok){const msg=r.reason==='level'?`❌ Для следующего инструмента нужен уровень профессии **${r.required}**.`:r.reason==='materials'?'❌ Недостаточно обработанных материалов для улучшения инструмента.':r.reason==='max'?'✅ Инструмент уже максимального уровня.':'❌ Не удалось создать инструмент.';return interaction.reply({content:msg,flags:MessageFlags.Ephemeral});}return interaction.reply({content:`🔨 Создан **${r.tool.def.name} ${r.tool.name}** (ур. ${r.tool.tier}). Бонус: +${r.tool.def.qty} к обычной добыче и +${r.tool.def.rare}% к редкой.`,flags:MessageFlags.Ephemeral});}
+   const t=toolInfo(interaction.user.id,row.profession_key);const next=TOOL_TIERS.find(x=>x.tier===t.tier+1);return interaction.reply({content:t.def?`🧰 Твой инструмент: **${t.def.name} ${t.name}** · ур. ${t.tier}
+📦 +${t.def.qty} к обычной добыче · ✨ +${t.def.rare}% к редкой.${next?`
+Следующий уровень инструмента доступен с уровня профессии ${next.level}.`:''}`:`🧰 У тебя пока нет рабочего инструмента. Используй **/profession tool upgrade:true**.`,flags:MessageFlags.Ephemeral});
   }
   if(sub==='server'){
    const counts=getProfessionCounts();

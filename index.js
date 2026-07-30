@@ -42,6 +42,7 @@ const client = new Client({
 
 client.commands = new Collection();
 
+require('./systems/hero/playerCorrectionService');
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 

@@ -1,0 +1,49 @@
+'use strict';
+const { db, addCardDust } = require('../../database/db');
+const { grantItem } = require('./itemService');
+const { grantResource, consumeResources, normalizeResourceKey, resourceMeta } = require('./resourceService');
+
+const TOOL_TIERS = Object.freeze([
+  {tier:1,level:1,name:'Простой',qty:0,rare:0,cost:{board:4,iron_ingot:2}},
+  {tier:2,level:4,name:'Усиленный',qty:1,rare:2,cost:{board:8,iron_ingot:6}},
+  {tier:3,level:8,name:'Стальной',qty:1,rare:5,cost:{board:12,iron_ingot:12,leather:4}},
+  {tier:4,level:15,name:'Рунический',qty:2,rare:8,cost:{ancient_wood:6,crystal:5,gemstone:3}},
+  {tier:5,level:25,name:'Легендарный',qty:3,rare:12,cost:{ancient_wood:12,void_crystal:3,gemstone:8}},
+]);
+const TOOL_NAMES={herbalist:'серп',miner:'кирка',lumberjack:'топор',fisher:'удочка',hunter:'охотничье снаряжение'};
+
+function ensure(){db.exec(`
+CREATE TABLE IF NOT EXISTS hero_profession_tools(user_id TEXT PRIMARY KEY,profession_key TEXT NOT NULL,tier INTEGER NOT NULL DEFAULT 1,crafted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS hero_artifact_equipment(user_id TEXT NOT NULL,slot_no INTEGER NOT NULL CHECK(slot_no BETWEEN 1 AND 2),inventory_id INTEGER NOT NULL,equipped_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,slot_no),UNIQUE(user_id,inventory_id));
+CREATE TABLE IF NOT EXISTS player_correction_migrations(key TEXT PRIMARY KEY,details_json TEXT,applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS item_gift_log(id INTEGER PRIMARY KEY AUTOINCREMENT,from_user_id TEXT NOT NULL,to_user_id TEXT NOT NULL,asset_type TEXT NOT NULL,asset_key TEXT NOT NULL,quantity INTEGER NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+`);}
+function migration(key,fn){ensure();if(db.prepare('SELECT 1 FROM player_correction_migrations WHERE key=?').get(key))return false;db.transaction(()=>{fn();db.prepare('INSERT INTO player_correction_migrations(key,details_json) VALUES(?,?)').run(key,'{}');})();return true;}
+function applyTargetedCorrections(){
+ migration('v19.6.9:denis-treasure-maps-2',()=>grantItem('230011067080769538','treasure_map',2,'player_correction_v19.6.9'));
+ migration('v19.6.9:necromancer-level-5',()=>{
+   db.prepare(`INSERT INTO hero_class_progress(user_id,class_key,level,xp,expeditions_completed) VALUES('1080729129915256843','necromancer',5,0,0)
+   ON CONFLICT(user_id,class_key) DO UPDATE SET level=MAX(level,5),xp=CASE WHEN level<5 THEN 0 ELSE xp END,updated_at=CURRENT_TIMESTAMP`).run();
+   const h=db.prepare('SELECT class_key FROM heroes WHERE user_id=?').get('1080729129915256843');
+   if(h?.class_key==='necromancer'||h?.class_key==='warlock')db.prepare('UPDATE heroes SET level=MAX(level,5),xp=CASE WHEN level<5 THEN 0 ELSE xp END WHERE user_id=?').run('1080729129915256843');
+ });
+ // Remove phantom caravan bear only when it exists both as companion and stale inventory copy.
+ migration('v19.6.9:bear-duplicate-audit-759026090038657034',()=>{
+   const uid='759026090038657034';
+   const bears=db.prepare("SELECT * FROM hero_companions WHERE user_id=? AND lower(name) LIKE '%медвед%'").all(uid);
+   for(const b of bears){
+     const stale=db.prepare('SELECT id,quantity FROM hero_inventory WHERE user_id=? AND item_key=?').get(uid,b.companion_key);
+     if(stale) db.prepare('DELETE FROM hero_inventory WHERE id=?').run(stale.id);
+   }
+ });
+}
+function getTool(userId){ensure();return db.prepare('SELECT * FROM hero_profession_tools WHERE user_id=?').get(String(userId))||null;}
+function toolInfo(userId,profession){const row=getTool(userId);const tier=row&&row.profession_key===profession?Number(row.tier):0;return {tier,def:TOOL_TIERS.find(x=>x.tier===tier)||null,name:TOOL_NAMES[profession]||'инструмент'};}
+function craftTool(userId){ensure();const prof=db.prepare('SELECT * FROM hero_professions WHERE user_id=?').get(String(userId));if(!prof)return {ok:false,reason:'profession'};const current=getTool(userId);const nextTier=(current&&current.profession_key===prof.profession_key?Number(current.tier):0)+1;const def=TOOL_TIERS.find(x=>x.tier===nextTier);if(!def)return {ok:false,reason:'max'};if(Number(prof.level)<def.level)return {ok:false,reason:'level',required:def.level};const result=consumeResources(userId,def.cost);if(!result.ok)return {ok:false,reason:'materials',missing:result.missing};db.prepare(`INSERT INTO hero_profession_tools(user_id,profession_key,tier) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET profession_key=excluded.profession_key,tier=excluded.tier,updated_at=CURRENT_TIMESTAMP`).run(String(userId),prof.profession_key,nextTier);return {ok:true,tool:toolInfo(userId,prof.profession_key),cost:def.cost};}
+function dismantle(userId,inventoryId){ensure();const item=db.prepare(`SELECT hi.*,i.name,i.rarity,i.slot,i.item_type FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key WHERE hi.user_id=? AND hi.id=?`).get(String(userId),Number(inventoryId));if(!item||!item.slot)return {ok:false,reason:'item'};if(db.prepare('SELECT 1 FROM hero_equipment WHERE user_id=? AND inventory_id=? UNION SELECT 1 FROM hero_class_equipment WHERE user_id=? AND inventory_id=?').get(String(userId),item.id,String(userId),item.id))return {ok:false,reason:'equipped'};const name=String(item.name||'').toLowerCase();let key=/сапог|перчат|кож|ботин/.test(name)?'leather':/лук|арбалет/.test(name)?'board':/кольц|амулет|ожерел|обруч/.test(name)?'gemstone':/посох|жезл|книга|гримуар/.test(name)?'crystal':'iron_ingot';const base={common:3,rare:5,epic:8,legendary:12,mythic:18,exclusive:25}[item.rarity]||3;const qty=base+Math.max(0,Number(item.upgrade_level||0))*2;db.transaction(()=>{if(Number(item.quantity)>1)db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=?').run(item.id);else db.prepare('DELETE FROM hero_inventory WHERE id=?').run(item.id);grantResource(userId,key,qty,'equipment_dismantle');})();return {ok:true,item,key,qty,name:resourceMeta(key).name};}
+function giftMaterial(from,to,key,qty){key=normalizeResourceKey(key);qty=Math.max(1,Math.floor(Number(qty)||0));const r=consumeResources(from,{[key]:qty});if(!r.ok)return {ok:false,reason:'materials'};grantResource(to,key,qty,'gift');db.prepare('INSERT INTO item_gift_log(from_user_id,to_user_id,asset_type,asset_key,quantity) VALUES(?,?,?,?,?)').run(String(from),String(to),'material',key,qty);return {ok:true,key,qty,name:resourceMeta(key).name};}
+function giftItem(from,to,inventoryId,qty=1){const row=db.prepare(`SELECT hi.*,i.name,i.slot FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key WHERE hi.user_id=? AND hi.id=?`).get(String(from),Number(inventoryId));if(!row)return {ok:false,reason:'item'};qty=Math.max(1,Math.min(Number(qty)||1,Number(row.quantity)||1));if(db.prepare('SELECT 1 FROM hero_equipment WHERE user_id=? AND inventory_id=? UNION SELECT 1 FROM hero_class_equipment WHERE user_id=? AND inventory_id=?').get(String(from),row.id,String(from),row.id))return {ok:false,reason:'equipped'};db.transaction(()=>{if(qty>=row.quantity)db.prepare('DELETE FROM hero_inventory WHERE id=?').run(row.id);else db.prepare('UPDATE hero_inventory SET quantity=quantity-? WHERE id=?').run(qty,row.id);grantItem(to,row.item_key,qty,'gift');db.prepare('INSERT INTO item_gift_log(from_user_id,to_user_id,asset_type,asset_key,quantity) VALUES(?,?,?,?,?)').run(String(from),String(to),'item',row.item_key,qty);})();return {ok:true,row,qty};}
+function equipArtifact(userId,inventoryId,slot=1){ensure();const row=db.prepare(`SELECT hi.id,i.name,i.item_type FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key WHERE hi.user_id=? AND hi.id=?`).get(String(userId),Number(inventoryId));if(!row||row.item_type!=='artifact')return {ok:false,reason:'item'};slot=Math.max(1,Math.min(2,Number(slot)||1));db.prepare(`INSERT INTO hero_artifact_equipment(user_id,slot_no,inventory_id) VALUES(?,?,?) ON CONFLICT(user_id,slot_no) DO UPDATE SET inventory_id=excluded.inventory_id,equipped_at=CURRENT_TIMESTAMP`).run(String(userId),slot,row.id);return {ok:true,row,slot};}
+function unequipArtifact(userId,slot){ensure();return {ok:db.prepare('DELETE FROM hero_artifact_equipment WHERE user_id=? AND slot_no=?').run(String(userId),Number(slot)).changes>0};}
+ensure();applyTargetedCorrections();
+module.exports={TOOL_TIERS,TOOL_NAMES,getTool,toolInfo,craftTool,dismantle,giftMaterial,giftItem,equipArtifact,unequipArtifact,applyTargetedCorrections};

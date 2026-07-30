@@ -242,8 +242,9 @@ function work(userId){
   const cost=energyCostForLevel(row.level);
   if(row.energy<cost)return {ok:false,reason:'energy',energy:row.energy,maxEnergy:row.energy_max,waitMs:msUntilEnergy(row,cost)};
   const rewards=[];
-  const rareBonus=rareBonusForLevel(row.level);
-  const qtyBonus=quantityBonusForLevel(row.level);
+  const tool=require('./playerCorrectionService').toolInfo(userId,row.profession_key);
+  const rareBonus=rareBonusForLevel(row.level)+(Number(tool.def?.rare||0)/100);
+  const qtyBonus=quantityBonusForLevel(row.level)+Number(tool.def?.qty||0);
   for(const drop of WORK_TABLES[row.profession_key]||[]){
     const spec=specializationBonus(row,drop);
     const chance=Math.min(1,drop.chance+(drop.tier==='rare'?rareBonus:rareBonus/3)+spec.chance);

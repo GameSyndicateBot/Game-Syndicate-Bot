@@ -23,6 +23,11 @@ const COOK_RECIPES = Object.freeze({
     level: 6,
     ingredients: { fresh_fish: 2, shellfish: 2, moon_carp: 1, grain: 3, culinary_herbs: 2 },
   },
+  fisher_soup: { itemKey:'travel_stew', name:'Уха рыбака', level:2, ingredients:{ fresh_fish:3, culinary_herbs:1 } },
+  seafood_platter: { itemKey:'hunters_meal', name:'Морское ассорти', level:4, ingredients:{ shellfish:3, fresh_fish:2, culinary_herbs:1 } },
+  moon_carp_roast: { itemKey:'guild_feast', name:'Запечённый лунный карп', level:7, ingredients:{ moon_carp:1, culinary_herbs:2, grain:2 } },
+  hydra_broth: { itemKey:'guild_feast', name:'Бульон из чешуи гидры', level:10, ingredients:{ hydra_scale:1, shellfish:2, culinary_herbs:3 } }
+
 });
 
 function getOwned(userId, itemKey) { return getResourceQuantity(userId, itemKey); }

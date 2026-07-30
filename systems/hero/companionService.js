@@ -192,6 +192,8 @@ function takeCompanionForTransfer(userId,id){
  if(db.prepare('SELECT 1 FROM hero_active_companions WHERE user_id=? AND companion_id=? UNION SELECT 1 FROM hero_active_mounts WHERE user_id=? AND companion_id=?').get(uid,Number(id),uid,Number(id)))return null;
  const data=companionTransferData(row);
  db.prepare('DELETE FROM hero_companions WHERE user_id=? AND id=?').run(uid,Number(id));
+ // Caravan mounts are mirrored in hero_inventory. Remove that copy atomically so a sold companion cannot reappear.
+ db.prepare('DELETE FROM hero_inventory WHERE user_id=? AND item_key=?').run(uid,row.companion_key);
  return data;
 }
 function giveTransferredCompanion(userId,data){return grantCustomCompanion(String(userId),data.key,data,'market_transfer');}

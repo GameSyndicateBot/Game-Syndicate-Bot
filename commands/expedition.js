@@ -429,11 +429,11 @@ ${preview}
     const loc = LOCATIONS[active.location_key];
     const tactic = getExpeditionTactic(active.tactic_key);
     const ready = Date.now() >= new Date(active.returns_at).getTime();
-    return interaction.reply({ content: ready ? `✅ **${hero.name}** вернулся из локации **${loc?.name || active.location_key}**. Нажми **«Забрать результат»**.` : `⏳ **${hero.name}** исследует **${loc?.name || active.location_key}** и вернётся ${ts(active.returns_at)}.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**`, flags: MessageFlags.Ephemeral });
+    return interaction.reply({ content: ready ? `✅ **${hero.name}** вернулся из локации **${loc?.name || active.location_key}**. Нажми **«Забрать результат»**.` : `⏳ **${hero.name}** исследует **${loc?.name || active.location_key}** и вернётся ${ts(active.returns_at)}.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**`, components: ready?[]:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('expedition:cancel:confirm').setLabel('Прервать экспедицию').setEmoji('🚫').setStyle(ButtonStyle.Danger))], flags: MessageFlags.Ephemeral });
   }
 
   if (action === 'cancel' && parts[2] === 'confirm') {
-    return interaction.update({content:'⚠️ Отменить текущую экспедицию? Награды и использованные расходники не возвращаются. Следующая экспедиция будет доступна через 2 часа.',embeds:[],components:[new ActionRowBuilder().addComponents(
+    return interaction.update({content:'⚠️ Отменить текущую экспедицию? Награды и использованные расходники не возвращаются. Следующая экспедиция будет доступна через 1 час.',embeds:[],components:[new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('expedition:cancel:apply').setLabel('Да, отменить').setEmoji('🚫').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('expedition:status').setLabel('Нет').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
     )]});
@@ -458,8 +458,14 @@ ${preview}
   }
 
   if (action === 'history') {
-    const rows = getLatestExpeditions(interaction.user.id, 8);
-    return interaction.reply({ embeds: expeditionHistoryEmbeds(hero, rows), flags: MessageFlags.Ephemeral });
+    const page=Math.max(0,Number(parts[2]||0));
+    const all=getLatestExpeditions(interaction.user.id,1000);const pageSize=8,totalPages=Math.max(1,Math.ceil(all.length/pageSize));const safe=Math.min(page,totalPages-1);const rows=all.slice(safe*pageSize,safe*pageSize+pageSize);
+    const buttons=new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`expedition:history:${Math.max(0,safe-1)}`).setLabel('Назад').setEmoji('⬅️').setStyle(ButtonStyle.Secondary).setDisabled(safe===0),
+      new ButtonBuilder().setCustomId(`expedition:history:${Math.min(totalPages-1,safe+1)}`).setLabel('Далее').setEmoji('➡️').setStyle(ButtonStyle.Secondary).setDisabled(safe>=totalPages-1)
+    );
+    const payload={embeds:expeditionHistoryEmbeds(hero,rows),components:totalPages>1?[buttons]:[],flags:MessageFlags.Ephemeral};
+    return parts[2]!==undefined?interaction.update(payload):interaction.reply(payload);
   }
 }
 
