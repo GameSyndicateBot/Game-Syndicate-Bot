@@ -4,6 +4,47 @@ const { ITEMS } = require('./itemData');
 const { logEconomyChange } = require('../../services/economyService');
 
 const RESOURCE_ALIASES = Object.freeze({ herb: 'forest_herbs' });
+
+const RESOURCE_RU_FALLBACK = Object.freeze({
+  beast_bone: 'Кость зверя',
+  beast_hide: 'Шкура зверя',
+  beast_heart: 'Сердце зверя',
+  ancient_wood: 'Древняя древесина',
+  iron_ingot: 'Железный слиток',
+  iron_ore: 'Железная руда',
+  void_crystal: 'Кристалл Пустоты',
+  ancient_fragment: 'Древний фрагмент',
+  forest_herbs: 'Лесные травы',
+  culinary_herbs: 'Пряные травы',
+  herb_extract: 'Экстракт трав',
+  fresh_fish: 'Свежая рыба',
+  raw_meat: 'Сырое мясо',
+  shellfish: 'Морепродукты',
+  moon_carp: 'Лунный карп',
+  moon_blossom: 'Лунный цветок',
+  wild_berries: 'Лесные ягоды',
+  forest_mushrooms: 'Лесные грибы',
+  hydra_scale: 'Чешуя гидры',
+  hydra_venom: 'Яд гидры',
+  hydra_heart: 'Сердце гидры',
+  gemstone: 'Самоцвет',
+  pearl: 'Жемчужина',
+  board: 'Доска',
+  leather: 'Кожа',
+  crystal: 'Магический кристалл',
+  essence: 'Эссенция',
+  grain: 'Зерно',
+  hardwood: 'Крепкая древесина',
+});
+
+function readableResourceName(key) {
+  const normalized = normalizeResourceKey(key);
+  if (RESOURCE_RU_FALLBACK[normalized]) return RESOURCE_RU_FALLBACK[normalized];
+  // Last-resort protection: do not show raw snake_case identifiers to players.
+  return String(normalized || 'материал')
+    .replace(/[_-]+/g, ' ')
+    .replace(/^./, ch => ch.toUpperCase());
+}
 function normalizeResourceKey(value) {
   const key = String(value || '').trim().toLowerCase();
   return RESOURCE_ALIASES[key] || key;
@@ -19,7 +60,7 @@ function resourceMeta(key) {
   const source = MATERIALS[normalized] || ITEMS[normalized] || {};
   return {
     key: normalized,
-    name: source.name || normalized,
+    name: source.name || readableResourceName(normalized),
     icon: source.icon || '📦',
     rarity: source.rarity || 'common',
     description: source.description || '',
@@ -186,6 +227,7 @@ module.exports = {
   normalizeResourceKey,
   isResourceKey,
   resourceMeta,
+  readableResourceName,
   migrateLegacyResources,
   getResourceQuantity,
   listResources,

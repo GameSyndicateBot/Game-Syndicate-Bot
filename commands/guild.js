@@ -456,11 +456,11 @@ async function showBlacksmithTools(interaction, notice = '') {
     `Профессия: ${professionData?.icon || '👷'} **${professionData?.name || profession.profession_key}** · уровень **${profession.level}**`,
     '',
     current.def
-      ? `🧰 Текущий инструмент: **${current.def.name} ${current.name}** (ур. ${current.tier})\n📦 Обычная добыча: **+${current.def.qty}** · ✨ редкая добыча: **+${current.def.rare}%**`
+      ? `🧰 Текущий инструмент: **${current.fullName}** (ур. ${current.tier})\n📦 Обычная добыча: **+${current.def.qty}** · ✨ редкая добыча: **+${current.def.rare}%**`
       : `🧰 Инструмента пока нет. Первый инструмент можно создать у Кузнеца.`,
   ];
   if (next) {
-    lines.push('', `### Следующий инструмент: ${next.name} ${current.name}`, `🔓 Требуется уровень профессии: **${next.level}**`, '📦 Материалы:', formatToolCost(next.cost));
+    lines.push('', `### Следующий инструмент: ${current.nextFullName || current.name}`, `🔓 Требуется уровень профессии: **${next.level}**`, '📦 Материалы:', formatToolCost(next.cost));
   } else lines.push('', '🌟 Инструмент уже максимального уровня.');
   const embed = new EmbedBuilder().setColor(0xF59E0B).setTitle('🧰 Рабочие инструменты').setDescription(lines.filter(Boolean).join('\n'));
   const row = new ActionRowBuilder().addComponents(
@@ -1464,7 +1464,7 @@ async function handleComponent(interaction) {
   }
   if (action === 'blacksmith' && parts[2] === 'upgrade') return showUpgrade(interaction, interaction.values?.[0]);
   if (action === 'blacksmith' && parts[2] === 'tools' && parts.length === 3) return showBlacksmithTools(interaction);
-  if (action === 'blacksmith' && parts[2] === 'tools' && parts[3] === 'craft') { const r=craftTool(interaction.user.id); const notice=r.ok?`✅ Создан инструмент: **${r.tool.def.name} ${r.tool.name}**.`:r.reason==='level'?`❌ Нужен уровень профессии **${r.required}**.`:r.reason==='materials'?'❌ Не хватает обработанных материалов.':r.reason==='max'?'✅ Инструмент уже максимального уровня.':'❌ Не удалось создать инструмент.'; return showBlacksmithTools(interaction,notice); }
+  if (action === 'blacksmith' && parts[2] === 'tools' && parts[3] === 'craft') { const r=craftTool(interaction.user.id); const notice=r.ok?`✅ Создан инструмент: **${r.tool.fullName}**.`:r.reason==='level'?`❌ Нужен уровень профессии **${r.required}**.`:r.reason==='materials'?'❌ Не хватает обработанных материалов.':r.reason==='max'?'✅ Инструмент уже максимального уровня.':'❌ Не удалось создать инструмент.'; return showBlacksmithTools(interaction,notice); }
   if (action === 'blacksmith' && parts[2] === 'dismantle') return showDismantleConfirm(interaction, interaction.values?.[0]);
   if (action === 'blacksmith' && parts[2] === 'dismantleconfirm') { const r=dismantle(interaction.user.id,Number(parts[3])); return showBlacksmith(interaction,r.ok?`✅ **${r.item.name}** разобран. Получено: **${r.name} ×${r.qty}**.`:'❌ Не удалось разобрать предмет. Возможно, он надет или уже отсутствует.'); }
   if (action === 'blacksmith' && parts[2] === 'apply') {

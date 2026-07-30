@@ -1,6 +1,7 @@
 const { db, getCardDust, removeCardDust, addCardDust } = require('../../database/db');
 const { ITEMS } = require('./itemData');
 const { MATERIALS } = require('./materialData');
+const { resourceMeta } = require('./resourceService');
 const { RECIPES } = require('./craftingData');
 const { grantItem } = require('./itemService');
 const { getHero } = require('./heroService');
@@ -18,7 +19,7 @@ function hydrateRecipe(key, userId = null) {
     key: materialKey,
     required,
     owned: owned.get(materialKey) || 0,
-    ...(MATERIALS[materialKey] || { name:materialKey, icon:'📦', rarity:'unknown' }),
+    ...resourceMeta(materialKey),
   }));
   const dustBalance = userId ? getCardDust(userId) : 0;
   return {

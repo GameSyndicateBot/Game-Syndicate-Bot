@@ -4,13 +4,35 @@ const { grantItem } = require('./itemService');
 const { grantResource, consumeResources, normalizeResourceKey, resourceMeta } = require('./resourceService');
 
 const TOOL_TIERS = Object.freeze([
-  {tier:1,level:1,name:'Простой',qty:0,rare:0,cost:{board:4,iron_ingot:2}},
-  {tier:2,level:4,name:'Усиленный',qty:1,rare:2,cost:{board:8,iron_ingot:6}},
-  {tier:3,level:8,name:'Стальной',qty:1,rare:5,cost:{board:12,iron_ingot:12,leather:4}},
-  {tier:4,level:15,name:'Рунический',qty:2,rare:8,cost:{ancient_wood:6,crystal:5,gemstone:3}},
-  {tier:5,level:25,name:'Легендарный',qty:3,rare:12,cost:{ancient_wood:12,void_crystal:3,gemstone:8}},
+  {tier:1,level:1,key:'simple',qty:0,rare:0,cost:{board:4,iron_ingot:2}},
+  {tier:2,level:4,key:'reinforced',qty:1,rare:2,cost:{board:8,iron_ingot:6}},
+  {tier:3,level:8,key:'steel',qty:1,rare:5,cost:{board:12,iron_ingot:12,leather:4}},
+  {tier:4,level:15,key:'runic',qty:2,rare:8,cost:{ancient_wood:6,crystal:5,gemstone:3}},
+  {tier:5,level:25,key:'legendary',qty:3,rare:12,cost:{ancient_wood:12,void_crystal:3,gemstone:8}},
 ]);
-const TOOL_NAMES={herbalist:'серп',miner:'кирка',lumberjack:'топор',fisher:'удочка',hunter:'охотничье снаряжение'};
+
+const TOOL_NAMES = Object.freeze({
+  herbalist: {
+    noun: 'серп',
+    tiers: ['Простой серп', 'Усиленный серп', 'Стальной серп', 'Рунический серп', 'Легендарный серп'],
+  },
+  miner: {
+    noun: 'кирка',
+    tiers: ['Простая кирка', 'Усиленная кирка', 'Стальная кирка', 'Руническая кирка', 'Легендарная кирка'],
+  },
+  lumberjack: {
+    noun: 'топор',
+    tiers: ['Простой топор', 'Усиленный топор', 'Стальной топор', 'Рунический топор', 'Легендарный топор'],
+  },
+  fisher: {
+    noun: 'удочка',
+    tiers: ['Простая удочка', 'Усиленная удочка', 'Стальная удочка', 'Руническая удочка', 'Легендарная удочка'],
+  },
+  hunter: {
+    noun: 'охотничье снаряжение',
+    tiers: ['Простое охотничье снаряжение', 'Усиленное охотничье снаряжение', 'Стальное охотничье снаряжение', 'Руническое охотничье снаряжение', 'Легендарное охотничье снаряжение'],
+  },
+});
 
 function ensure(){db.exec(`
 CREATE TABLE IF NOT EXISTS hero_profession_tools(user_id TEXT PRIMARY KEY,profession_key TEXT NOT NULL,tier INTEGER NOT NULL DEFAULT 1,crafted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -38,7 +60,19 @@ function applyTargetedCorrections(){
  });
 }
 function getTool(userId){ensure();return db.prepare('SELECT * FROM hero_profession_tools WHERE user_id=?').get(String(userId))||null;}
-function toolInfo(userId,profession){const row=getTool(userId);const tier=row&&row.profession_key===profession?Number(row.tier):0;return {tier,def:TOOL_TIERS.find(x=>x.tier===tier)||null,name:TOOL_NAMES[profession]||'инструмент'};}
+function toolInfo(userId,profession){
+  const row=getTool(userId);
+  const tier=row&&row.profession_key===profession?Number(row.tier):0;
+  const def=TOOL_TIERS.find(x=>x.tier===tier)||null;
+  const naming=TOOL_NAMES[profession]||{noun:'инструмент',tiers:[]};
+  return {
+    tier,
+    def,
+    name:naming.noun,
+    fullName:tier>0?(naming.tiers[tier-1]||naming.noun):naming.noun,
+    nextFullName:naming.tiers[tier]||null,
+  };
+}
 function craftTool(userId){ensure();const prof=db.prepare('SELECT * FROM hero_professions WHERE user_id=?').get(String(userId));if(!prof)return {ok:false,reason:'profession'};const current=getTool(userId);const nextTier=(current&&current.profession_key===prof.profession_key?Number(current.tier):0)+1;const def=TOOL_TIERS.find(x=>x.tier===nextTier);if(!def)return {ok:false,reason:'max'};if(Number(prof.level)<def.level)return {ok:false,reason:'level',required:def.level};const result=consumeResources(userId,def.cost);if(!result.ok)return {ok:false,reason:'materials',missing:result.missing};db.prepare(`INSERT INTO hero_profession_tools(user_id,profession_key,tier) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET profession_key=excluded.profession_key,tier=excluded.tier,updated_at=CURRENT_TIMESTAMP`).run(String(userId),prof.profession_key,nextTier);return {ok:true,tool:toolInfo(userId,prof.profession_key),cost:def.cost};}
 function dismantle(userId,inventoryId){ensure();const item=db.prepare(`SELECT hi.*,i.name,i.rarity,i.slot,i.item_type FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key WHERE hi.user_id=? AND hi.id=?`).get(String(userId),Number(inventoryId));if(!item||!item.slot)return {ok:false,reason:'item'};if(db.prepare('SELECT 1 FROM hero_equipment WHERE user_id=? AND inventory_id=? UNION SELECT 1 FROM hero_class_equipment WHERE user_id=? AND inventory_id=?').get(String(userId),item.id,String(userId),item.id))return {ok:false,reason:'equipped'};const name=String(item.name||'').toLowerCase();let key=/сапог|перчат|кож|ботин/.test(name)?'leather':/лук|арбалет/.test(name)?'board':/кольц|амулет|ожерел|обруч/.test(name)?'gemstone':/посох|жезл|книга|гримуар/.test(name)?'crystal':'iron_ingot';const base={common:3,rare:5,epic:8,legendary:12,mythic:18,exclusive:25}[item.rarity]||3;const qty=base+Math.max(0,Number(item.upgrade_level||0))*2;db.transaction(()=>{if(Number(item.quantity)>1)db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=?').run(item.id);else db.prepare('DELETE FROM hero_inventory WHERE id=?').run(item.id);grantResource(userId,key,qty,'equipment_dismantle');})();return {ok:true,item,key,qty,name:resourceMeta(key).name};}
 function giftMaterial(from,to,key,qty){key=normalizeResourceKey(key);qty=Math.max(1,Math.floor(Number(qty)||0));const r=consumeResources(from,{[key]:qty});if(!r.ok)return {ok:false,reason:'materials'};grantResource(to,key,qty,'gift');db.prepare('INSERT INTO item_gift_log(from_user_id,to_user_id,asset_type,asset_key,quantity) VALUES(?,?,?,?,?)').run(String(from),String(to),'material',key,qty);return {ok:true,key,qty,name:resourceMeta(key).name};}
