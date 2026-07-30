@@ -11,6 +11,7 @@ const { getOrCreatePlayer } = require('../database/db');
 const { checkAchievements } = require('../utils/checkAchievements');
 
 function ts(value, style = 'R') { return `<t:${Math.floor(new Date(value).getTime() / 1000)}:${style}>`; }
+function cooldownTimer(value) { return `${ts(value, 'R')} (до ${ts(value, 'T')})`; }
 function stars(n) { return '★'.repeat(n) + '☆'.repeat(5 - n); }
 function outcomeLabel(key) { return ({ great:'🌟 Великолепный успех', success:'✅ Успех', partial:'⚠️ Частичный успех', fail:'❌ Провал' })[key] || key; }
 function noHero() { return { content: '❌ Сначала создай героя в постоянном **Guild Hub**.', flags: MessageFlags.Ephemeral }; }
@@ -412,7 +413,9 @@ ${preview}
       boss_active: '❌ Сейчас идёт регистрация или бой с World Boss.',
       boss_window: `❌ Выбранная длительность не помещается до World Boss. Герой не успеет вернуться к бою ${result.nextBossAt ? ts(result.nextBossAt) : ''}.`,
       not_offered: '❌ Эта локация сегодня уже недоступна. Обнови хаб.',
-      cooldown: `⏳ После отмены герой отдыхает. Новая экспедиция доступна ${result.cooldownUntil ? ts(result.cooldownUntil) : 'позже'}.`,
+      cooldown: result.cooldownUntil
+        ? `⏳ **Герой восстанавливается после прерванной экспедиции.**\n\nНовые экспедиции пока недоступны.\n🕐 Осталось: **${cooldownTimer(result.cooldownUntil)}**`
+        : '⏳ После отмены герой ещё не готов к новой экспедиции.',
     };
     if (!result.ok) return interaction.reply({ content: errors[result.reason] || '❌ Не удалось начать экспедицию.', flags: MessageFlags.Ephemeral });
     return interaction.reply({
@@ -433,7 +436,7 @@ ${preview}
   }
 
   if (action === 'cancel' && parts[2] === 'confirm') {
-    return interaction.update({content:'⚠️ Отменить текущую экспедицию? Награды и использованные расходники не возвращаются. Следующая экспедиция будет доступна через 1 час.',embeds:[],components:[new ActionRowBuilder().addComponents(
+    return interaction.update({content:'⚠️ **Прервать текущую экспедицию?**\n\n❌ Вся найденная добыча и использованные расходники будут потеряны.\n⏳ После прерывания новые экспедиции будут недоступны **1 час**.\n\nПосле подтверждения бот покажет живой таймер до следующего доступного похода.',embeds:[],components:[new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('expedition:cancel:apply').setLabel('Да, отменить').setEmoji('🚫').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('expedition:status').setLabel('Нет').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
     )]});
@@ -441,8 +444,7 @@ ${preview}
   if (action === 'cancel' && parts[2] === 'apply') {
     const r=cancelExpedition(interaction.user.id);
     if(!r.ok) return interaction.update({content:'ℹ️ Активной экспедиции уже нет.',embeds:[],components:[]});
-    return interaction.update({content:`🚫 Экспедиция отменена. Награды не выданы.
-⏳ Следующая экспедиция доступна ${ts(r.cooldownUntil)}.`,embeds:[],components:[]});
+    return interaction.update({content:`🚫 **Экспедиция прервана.**\n\n❌ Награды не выданы.\n⏳ Новые экспедиции недоступны в течение 1 часа.\n🕐 Осталось: **${cooldownTimer(r.cooldownUntil)}**`,embeds:[],components:[]});
   }
 
   if (action === 'return') {
