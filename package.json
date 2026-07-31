@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.7.8",
+  "version": "19.8.0",
   "private": true,
-  "description": "Game Syndicate V19.7.8: World Boss class balance, shields, summons and weighted tank aggro",
+  "description": "Game Syndicate V19.8.0: World Boss rebalance, advanced MVP, Pyromancer burn and smarter boss AI",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

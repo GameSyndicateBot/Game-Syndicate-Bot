@@ -59,6 +59,11 @@ function init() {
    PRIMARY KEY(battle_id,user_id)
   );
   CREATE TABLE IF NOT EXISTS world_boss_schedule(date_key TEXT NOT NULL,slot_hour INTEGER NOT NULL,battle_id INTEGER,created_at INTEGER NOT NULL,PRIMARY KEY(date_key,slot_hour));
+  CREATE TABLE IF NOT EXISTS world_boss_player_stats(
+   battle_id INTEGER NOT NULL,user_id TEXT NOT NULL,shield_given INTEGER DEFAULT 0,damage_prevented INTEGER DEFAULT 0,aggro_hits INTEGER DEFAULT 0,
+   support_points INTEGER DEFAULT 0,rage_reduced INTEGER DEFAULT 0,summon_damage INTEGER DEFAULT 0,summon_healing INTEGER DEFAULT 0,dot_damage INTEGER DEFAULT 0,
+   crits INTEGER DEFAULT 0,misses INTEGER DEFAULT 0,executions INTEGER DEFAULT 0,PRIMARY KEY(battle_id,user_id)
+  );
   `);
   const cols = new Set(db.prepare('PRAGMA table_info(world_boss_players)').all().map(x => x.name));
   if (!cols.has('mana')) db.exec('ALTER TABLE world_boss_players ADD COLUMN mana INTEGER DEFAULT 0');
@@ -98,6 +103,31 @@ function hpBar(hp, max, size = 16) { const q = max ? Math.round(clamp(hp / max, 
 function clearTimer(id) { const t = timers.get(Number(id)); if (t) clearTimeout(t); timers.delete(Number(id)); }
 function setTimer(id, fn, ms) { clearTimer(id); const t = setTimeout(fn, Math.max(500, ms)); t.unref?.(); timers.set(Number(id), t); }
 function addLog(b, text) { const s = stateOf(b); s.log = [...(s.log || []), text].slice(-40); saveState(b, s); return s; }
+
+const STAT_COLUMNS = new Set(['shield_given','damage_prevented','aggro_hits','support_points','rage_reduced','summon_damage','summon_healing','dot_damage','crits','misses','executions']);
+function addBattleStat(battleId,userId,key,amount=0){
+  if(!STAT_COLUMNS.has(key)||!userId||!Number.isFinite(Number(amount))||Number(amount)===0)return;
+  db.prepare('INSERT OR IGNORE INTO world_boss_player_stats(battle_id,user_id) VALUES(?,?)').run(battleId,String(userId));
+  db.prepare(`UPDATE world_boss_player_stats SET ${key}=${key}+? WHERE battle_id=? AND user_id=?`).run(Math.round(Number(amount)),battleId,String(userId));
+}
+function battleExtraStats(battleId){
+  const rows=db.prepare('SELECT * FROM world_boss_player_stats WHERE battle_id=?').all(battleId);
+  return Object.fromEntries(rows.map(r=>[String(r.user_id),r]));
+}
+function awardSupportAction(battleId,userId,classKey,action){
+  const points={
+    paladin:{skill:45,skill2:65,ult:120}, guardian:{skill:45,skill2:70,ult:130}, warrior:{skill2:55,ult:80},
+    cleric:{skill:45,skill2:25,ult:80}, priest:{skill:50,skill2:75,ult:110}, bard:{skill:75,skill2:70,ult:150},
+    engineer:{skill:35,skill2:70,ult:75}, necromancer:{skill2:35,ult:70}, mindlord:{skill2:85,ult:120},
+    druid:{skill:65,skill2:80,ult:150}, shaman:{skill:70,skill2:75,ult:160}, chronomancer:{skill:85,skill2:100,ult:180},
+    illusionist:{skill:70,skill2:95,ult:170}, mage:{skill2:70}
+  };
+  addBattleStat(battleId,userId,'support_points',Number(points[classKey]?.[action]||0));
+}
+function weightedPick(items,weightFn){
+  if(!items.length)return null; const weights=items.map(x=>Math.max(0.01,Number(weightFn(x)||0))); let roll=Math.random()*weights.reduce((a,b)=>a+b,0);
+  for(let i=0;i<items.length;i++){roll-=weights[i];if(roll<=0)return items[i];} return items[items.length-1];
+}
 
 function rolePlan(n) {
   const count = Math.max(1, Number(n || 1));
@@ -250,7 +280,8 @@ function buildEmbed(b, players) {
       { name: '💠 Распределение Dust', value: (fs.dustRewards || []).map(r => `<@${r.user_id}> — **+${r.amount}** → ${r.balanceAfter}`).join('\n').slice(0,1024) || '—' },
       { name: '⚔️ Урон', value: fs.damageTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.damage_done}**`).join('\n').slice(0,1024), inline: true },
       { name: '💚 Лечение', value: fs.healTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.healing_done}**`).join('\n').slice(0,1024), inline: true },
-      { name: '🛡️ Принято урона', value: fs.tankTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.damage_taken}**`).join('\n').slice(0,1024), inline: true },
+      { name: '🛡️ Танкование', value: fs.tankTop.slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.tankScore}**`).join('\n').slice(0,1024), inline: true },
+      { name: '✨ Поддержка', value: (fs.supportTop || []).slice(0,6).map((p,i)=>`${i+1}. <@${p.user_id}> — **${p.supportScore}**${p.rage_reduced?` • 💢 -${p.rage_reduced} ярости`:''}`).join('\n').slice(0,1024) || '—', inline: true },
       { name: '🤖 Вклад призывов', value: (fs.summonDetails || []).map(st => {
         const reason = Number(st.damage || 0) > 0 ? ''
           : st.support ? ' • поддержка/лечение'
@@ -259,7 +290,7 @@ function buildEmbed(b, players) {
             : Number(st.misses || 0) >= Number(st.attacks || 0) ? ' • все атаки мимо' : ' • урон не прошёл';
         return `${st.icon || '•'} **${st.name}** игрока <@${st.owner}> — ⚔️ **${st.damage || 0}**${st.healing ? ` • 💚 **${st.healing}**` : ''}${st.absorbed ? ` • 🛡️ **${st.absorbed}**` : ''}${reason}`;
       }).join('\n').slice(0,1024) || 'Призывы не участвовали.' },
-      { name: '🎖️ Дополнительные MVP', value: (fs.categoryAwards || []).map(a => `${a.type === 'damage' ? '⚔️ Урон' : a.type === 'healing' ? '💚 Лечение' : '🛡️ Защита'}: <@${a.user_id}> — **${a.value}** • ${String(a.pack).toUpperCase()} Pack`).join('\n').slice(0,1024) || '—' },
+      { name: '🎖️ Дополнительные MVP', value: (fs.categoryAwards || []).map(a => `${a.type === 'damage' ? '⚔️ Разрушитель' : a.type === 'healing' ? '💚 Спаситель' : a.type === 'tank' ? '🛡️ Непоколебимый' : a.type === 'support' ? '✨ Опора команды' : '👹 Призыватель'}: <@${a.user_id}> — **${a.value}** • ${String(a.pack).toUpperCase()} Pack`).join('\n').slice(0,1024) || '—' },
     );
   }
   if (state.log?.length) e.addFields({ name: 'Последние действия', value: state.log.slice(state.finalStats ? -5 : -7).join('\n').slice(0, 1024) });
@@ -503,10 +534,12 @@ function pickDamageType(profile, fallback = 'physical') {
   return profile[profile.length - 1][0] || fallback;
 }
 function damageTarget(id, target, amount, damageType = 'physical', options = {}) {
-  const e = effects(target); let d = Math.max(0, Math.round(amount * playerResistanceMultiplier(target, damageType)));
+  const e = effects(target); let d = Math.max(0, Math.round(amount * playerResistanceMultiplier(target, damageType))); const mitigatedBase=d;
   if (e.guardianUltRounds > 0) d = Math.round(d * 0.6); else if (e.guardRounds > 0) d = Math.round(d * 0.5); if (e.combatResistanceTurns > 0) d = Math.round(d * (1 - Number(e.combatResistance || 0))); if (e.guildFeastActive) d = Math.round(d * 0.90); if (e.rageTurns > 0 || e.bloodRageTurns > 0) d = Math.round(d * 1.25); if (e.partyGuardRounds > 0) d = Math.round(d * Number(e.partyGuardMultiplier || 0.8));
   let shield = Number(e.shield || 0), absorbed = 0; const hadShield = shield > 0;
-  if (shield) { absorbed = Math.min(shield, d); shield -= absorbed; d -= absorbed; e.shield = shield; const sources=e.shieldSources&&typeof e.shieldSources==='object'?e.shieldSources:{}; let remain=absorbed; for(const owner of Object.keys(sources)){if(remain<=0)break;const used=Math.min(Number(sources[owner]||0),remain);sources[owner]=Math.max(0,Number(sources[owner]||0)-used);remain-=used;if(used>0)db.prepare('UPDATE world_boss_players SET damage_taken=damage_taken+? WHERE battle_id=? AND user_id=?').run(used,id,owner);if(sources[owner]<=0)delete sources[owner];} e.shieldSources=sources; if(shield<=0){delete e.shieldOwner;delete e.shieldSources;} updateEffects(id, target.user_id, e); }
+  if (shield) { absorbed = Math.min(shield, d); shield -= absorbed; d -= absorbed; e.shield = shield; const sources=e.shieldSources&&typeof e.shieldSources==='object'?e.shieldSources:{}; let remain=absorbed; for(const owner of Object.keys(sources)){if(remain<=0)break;const used=Math.min(Number(sources[owner]||0),remain);sources[owner]=Math.max(0,Number(sources[owner]||0)-used);remain-=used;if(used>0){addBattleStat(id,owner,'shield_given',used);addBattleStat(id,owner,'support_points',Math.round(used*0.9));}if(sources[owner]<=0)delete sources[owner];} e.shieldSources=sources; if(shield<=0){delete e.shieldOwner;delete e.shieldSources;} updateEffects(id, target.user_id, e); }
+  const prevented=Math.max(0,mitigatedBase-d); if(prevented>0)addBattleStat(id,target.user_id,'damage_prevented',prevented);
+  const battleState=stateOf(db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id)); if(String(battleState.latestTankAggroUserId||'')===String(target.user_id)&&d>0)addBattleStat(id,target.user_id,'aggro_hits',1);
   const hp = Math.max(0, target.hp - d), diedNow = target.status === 'alive' && target.hp > 0 && hp <= 0;
   if (diedNow) {
     e.deathResourceSnapshot = { energy:Number(target.energy||0), mana:Number(target.mana||0), ultCharge:Number(target.ult_charge||0) };
@@ -764,8 +797,8 @@ async function perform(id, userId, action, auto = false, targetId = null) {
     const rType = resourceType(p.class_key); let energy = Number(p.energy || 0), mana = Number(p.mana || 0), ultCharge = Number(p.ult_charge || 0);
     if (action === 'attack') {
       const miss = auto ? 50 : c.miss; let hit = false;
-      if (Math.random() * 100 < miss) text = `💨 <@${userId}> (${c.name}) ${auto ? 'автоатакой ' : ''}промахивается.`;
-      else { hit = true; let dmg = applyDamageBuff(p, rand(...c.damage)); if(p.class_key==='duelist'){const combo=Math.max(0,Number(e.combo||0));dmg=Math.round(dmg*(1+combo*0.08));if(Math.random()<0.45){e.combo=Math.min(5,combo+1);text+=` ⚔️ Стак Комбо: ${e.combo}/5.`;}} const crit = Math.random() * 100 < CRIT_CHANCE; if (crit) dmg = Math.round(dmg * CRIT_MULTIPLIER); const r = hurtEnemy(b, state, dmg, c.damageType || 'physical', p.class_key); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, userId); text = `🗡️ <@${userId}> наносит **${r.dealt}** → ${r.target}${crit ? ' • 💥 КРИТ!' : ''}.`;
+      if (Math.random() * 100 < miss) { addBattleStat(id,userId,'misses',1); text = `💨 <@${userId}> (${c.name}) ${auto ? 'автоатакой ' : ''}промахивается.`; }
+      else { hit = true; let dmg = applyDamageBuff(p, rand(...c.damage)); if(p.class_key==='duelist'){const combo=Math.max(0,Number(e.combo||0));dmg=Math.round(dmg*(1+combo*0.08));if(Math.random()<0.45){e.combo=Math.min(5,combo+1);text+=` ⚔️ Стак Комбо: ${e.combo}/5.`;}} const crit = Math.random() * 100 < Number(c.critChance || CRIT_CHANCE); if (crit) { dmg = Math.round(dmg * Number(c.critMultiplier || CRIT_MULTIPLIER)); addBattleStat(id,userId,'crits',1); } const r = hurtEnemy(b, state, dmg, c.damageType || 'physical', p.class_key); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, userId); text = `🗡️ <@${userId}> наносит **${r.dealt}** → ${r.target}${crit ? ' • 💥 КРИТ!' : ''}.`;
         if (p.class_key === 'cleric') { const fresh = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id,userId); const healed = healPlayer(id,userId,fresh,20); text += ` ✨ Свет удара восстанавливает **${healed} HP**.`; }
       }
       if (rType === 'mana') mana = clamp(mana + 15, 0, 100);
@@ -795,6 +828,7 @@ async function perform(id, userId, action, auto = false, targetId = null) {
       ultCharge = 0;
       text = useUlt(b, p, c, e, state, targetId); e.ultCd = ULT_CD;
     }
+    awardSupportAction(id,userId,p.class_key,action);
     if (e.rageTurns > 0) e.rageTurns--; if (e.bloodRageTurns > 0 && !(p.class_key === 'berserker' && action === 'ult')) e.bloodRageTurns--; if (e.damageBuffTurns > 0) e.damageBuffTurns--; tickCooldowns(e, action); updateEffects(id, userId, e);
     if (String(state.bossVulnerabilityOwner || '') === String(userId) && action !== 'skill2' && Number(state.bossVulnerabilityOwnerTurns || 0) > 0) {
       state.bossVulnerabilityOwnerTurns--;
@@ -949,7 +983,7 @@ function useSecondSkill(b, p, c, e, state, targetId) {
     }
     case 'mage': {
       const r = hurtEnemy(b, state, rand(65, 85), 'magic', 'mage');
-      state.rage = Math.max(0, Number(state.rage || 0) - 25);
+      { const beforeRage=Number(state.rage||0); state.rage=Math.max(0,beforeRage-25); addBattleStat(id,u,'rage_reduced',beforeRage-state.rage); }
       saveState(b, state);
       db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u);
       return `❄️ <@${u}> применяет Ледяные оковы: **${r.dealt} урона** и снижает ярость босса на **25**.`;
@@ -1032,7 +1066,7 @@ function useUlt(b, p, c, e, state, targetId) {
     case 'pyromancer': { const stacks=Math.max(0,Number(e.pyroBurnStacks||0)); const r=hurtEnemy(b,state,rand(180,220)+stacks*55,'magic','pyromancer'); e.pyroBurnStacks=0; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🔥 <@${u}> выпускает Адское пламя: **${r.dealt}** урона и взрывает **${stacks}** стаков Горения.`; }
     case 'duelist': { const combo=Number(e.combo||0); let total=0; for(let i=0;i<5;i++) total+=hurtEnemy(b,state,Math.round(rand(48,60)*(1+combo*0.10)),'physical','duelist').dealt; e.combo=0; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `⚔️ <@${u}> проводит Идеальную серию: **${total}** урона.`; }
     case 'reaper': { const fresh=db.prepare('SELECT boss_hp,boss_max_hp FROM world_boss_battles WHERE id=?').get(id); const bonus=fresh.boss_hp/fresh.boss_max_hp<0.3?80:0,r=hurtEnemy(b,state,160+bonus,'physical','reaper'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `☠️ <@${u}> выносит Приговор: **${r.dealt}** урона${bonus?' с бонусом добивания':''}.`; }
-    case 'mindlord': { const r=hurtEnemy(b,state,rand(150,180),'magic','mindlord'); state.rage=Math.max(0,Number(state.rage||0)-50); state.bossAccuracyDownRounds=2; state.bossAccuracyDown=0.20; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🧠 <@${u}> контролирует сознание: **${r.dealt}** урона, -50 ярости и -20% точности босса на 2 раунда.`; }
+    case 'mindlord': { const r=hurtEnemy(b,state,rand(150,180),'magic','mindlord'); { const beforeRage=Number(state.rage||0); state.rage=Math.max(0,beforeRage-50); addBattleStat(id,u,'rage_reduced',beforeRage-state.rage); } state.bossAccuracyDownRounds=2; state.bossAccuracyDown=0.20; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🧠 <@${u}> контролирует сознание: **${r.dealt}** урона, -50 ярости и -20% точности босса на 2 раунда.`; }
     case 'druid': { for(const t of validTargets(id,'alive')){const te=effects(t);te.groupDamageRounds=2;te.groupDamage=Math.max(Number(te.groupDamage||0),0.15);te.accuracyBuffRounds=2;te.accuracyBuff=0.15;te.protectionBuffRounds=2;te.protectionBuff=0.15;updateEffects(id,t.user_id,te);} return `🌳 <@${u}> активирует Силу природы: Медведь, Волк и Сова усиливают всю группу на 3 раунда и сам атакует врагов.`; }
     case 'shaman': state.teamDamageTotemRounds=3;state.teamDamageTotem=0.15;state.teamDefenseTotemRounds=3;state.teamDefenseTotem=0.15;state.healTotemRounds=3;state.summons=(state.summons||[]).filter(x=>x.owner!==u||!['strength_totem','defense_totem','healing_spirit'].includes(x.type));state.summons.push({owner:u,type:'strength_totem',icon:'🔥',name:'Тотем силы',hp:60,maxHp:60,rounds:3,support:true},{owner:u,type:'defense_totem',icon:'🛡️',name:'Тотем защиты',hp:80,maxHp:80,rounds:3,support:true},{owner:u,type:'healing_spirit',icon:'👻',name:'Дух исцеления',hp:70,maxHp:70,rounds:3,support:true});saveState(b,state);return `🪬 <@${u}> созывает Совет духов: Тотем силы, Тотем защиты и Дух исцеления действуют 3 раунда.`;
     case 'chronomancer': state.extraActionRound=true; saveState(b,state); return `⏳ <@${u}> открывает Временной разлом: все союзники получают дополнительное действие в следующем раунде.`;
@@ -1096,7 +1130,7 @@ async function summonsAct(b) {
         healingEntries.set(key, current);
 
         state.summonStats[owner] = state.summonStats[owner] || { damage: 0, absorbed: 0, healing: 0 };
-        state.summonStats[owner].healing += healed;
+        state.summonStats[owner].healing += healed; addBattleStat(b.id,owner,'summon_healing',healed);
       }
       // Тотем силы и Тотем защиты дают постоянный эффект через state и не атакуют.
       continue;
@@ -1107,7 +1141,7 @@ async function summonsAct(b) {
     if (Math.random() * 100 >= Number(summon.miss || 0)) {
       const r = hurtEnemy(b, state, rand(...summon.damage), summon.damageType || 'physical', ownerPlayer?.class_key || null);
       dealt = r.dealt;
-      ownerDamage[owner] = (ownerDamage[owner] || 0) + dealt;
+      ownerDamage[owner] = (ownerDamage[owner] || 0) + dealt; addBattleStat(b.id,owner,'summon_damage',dealt);
 
       state.summonStats[owner] = state.summonStats[owner] || { damage: 0, absorbed: 0, healing: 0 };
       state.summonStats[owner].damage += dealt;
@@ -1168,6 +1202,18 @@ function tickOwnerSummons(battleId, ownerId) {
   if (changed) { state.summons = (state.summons || []).filter(x => x.hp > 0 && (x.permanent || Number(x.rounds || 0) > 0)); state.log = state.log.slice(-12); saveState(b, state); }
 }
 
+function applyPyromancerBurnRound(id){
+  let b=db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if(!b||Number(b.boss_hp||0)<=0)return 0;
+  const state=stateOf(b); let total=0;
+  for(const p of battlePlayers(id).filter(x=>x.status==='alive'&&x.class_key==='pyromancer')){
+    const e=effects(p),stacks=Math.max(0,Number(e.pyroBurnStacks||0)); if(!stacks)continue;
+    const r=hurtEnemy(b,state,rand(8,10)*stacks,'magic','pyromancer'); if(r.dealt<=0)continue;
+    total+=r.dealt; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,p.user_id);
+    addBattleStat(id,p.user_id,'dot_damage',r.dealt); state.log.push(`🔥 Горение <@${p.user_id}> наносит **${r.dealt}** урона (${stacks} стак${stacks===1?'':'а'}).`);
+  }
+  state.log=state.log.slice(-40); saveState(b,state); return total;
+}
+
 async function nextTurn(id, previousAlive = null) {
   const before = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
   const previous = before ? currentPlayer(before).p : null;
@@ -1177,6 +1223,10 @@ async function nextTurn(id, previousAlive = null) {
     let roundState = stateOf(b);
     roundState.playerActionsThisRound = 0;
     saveState(b, roundState);
+
+    applyPyromancerBurnRound(id);
+    b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+    if (b.boss_hp <= 0) return finish(id, true);
 
     // Ошибка отдельного призыва или действия босса больше не должна навсегда стопорить бой.
     try {
@@ -1290,11 +1340,13 @@ async function bossTurn(id) {
   const nonTanks = players.filter(x => CLASSES[x.class_key]?.role !== 'tank');
   const chooseSingleTarget = () => {
     if (interceptingTank && Math.random() < Number(effects(interceptingTank).interceptChance || 0.35)) return interceptingTank;
-    const roll=Math.random();
-    if(latestTank && roll<0.55)return latestTank;
-    if(otherTanks.length && roll<0.75)return pick(otherTanks);
-    if(nonTanks.length)return pick(nonTanks);
-    return pick(players);
+    const extras=battleExtraStats(id); const maxDamage=Math.max(1,...players.map(x=>Number(x.damage_done||0))); const maxHeal=Math.max(1,...players.map(x=>Number(x.healing_done||0)));
+    return weightedPick(players,x=>{
+      const role=CLASSES[x.class_key]?.role; const lowHp=1-clamp(Number(x.hp||0)/Math.max(1,Number(x.max_hp||1)),0,1); const ex=extras[x.user_id]||{};
+      let w=1+4*(Number(x.damage_done||0)/maxDamage)+3.5*(Number(x.healing_done||0)/maxHeal)+2.5*(Number(ex.support_points||0)/Math.max(1,...Object.values(extras).map(v=>Number(v.support_points||0))));
+      if(lowHp>0.65)w+=phase>=2?4:2; if(role==='healer')w+=phase>=2?2.2:1; if(role==='support')w+=phase>=3?2:0.7;
+      if(latestTank&&x.user_id===latestTank.user_id)w+=7; else if(role==='tank')w+=2.5; return w;
+    }) || pick(players);
   };
   const target = chooseSingleTarget();
   const attackDamageType = pickDamageType(boss.attackTypes, 'physical');
@@ -1540,16 +1592,17 @@ async function finish(id, win) {
       const progress=grantClassXp(p.user_id,classKey,classXp,{completed:false});
       classXpLines.push(`<@${p.user_id}>: **+${classXp} XP класса** → Lv.${progress?.level||1}`);
     }
-    const maxDamage = Math.max(1, ...ps.map(p => p.damage_done));
-    const maxHeal = Math.max(1, ...ps.map(p => p.healing_done));
-    const maxTank = Math.max(1, ...ps.map(p => p.damage_taken));
-    const ranked = ps.map(p => ({ ...p, mvpScore: (p.damage_done / maxDamage) * 45 + (p.healing_done / maxHeal) * 30 + (p.damage_taken / maxTank) * 25 })).sort((a,b) => b.mvpScore - a.mvpScore);
+    const extraStats=battleExtraStats(id);
+    const enriched=ps.map(p=>{const x=extraStats[p.user_id]||{};const tankScore=Math.round(Number(p.damage_taken||0)*0.30+Number(x.damage_prevented||0)+Number(x.aggro_hits||0)*25);const supportScore=Math.round(Number(x.support_points||0)+Number(x.rage_reduced||0)*5+Number(x.summon_healing||0)*1.1);const mvpScore=Math.round(Number(p.damage_done||0)+Number(p.healing_done||0)*1.2+tankScore+supportScore);return {...p,...x,tankScore,supportScore,mvpScore};});
+    const ranked=[...enriched].sort((a,b)=>b.mvpScore-a.mvpScore);
     const mvp = ranked[0], pack = mvpPack();
     addPack(mvp.user_id, pack, 1);
 
-    const damageTop = [...ps].sort((a,b) => b.damage_done - a.damage_done);
-    const healTop = [...ps].sort((a,b) => b.healing_done - a.healing_done);
-    const tankTop = [...ps].sort((a,b) => b.damage_taken - a.damage_taken);
+    const damageTop = [...enriched].sort((a,b) => b.damage_done - a.damage_done);
+    const healTop = [...enriched].sort((a,b) => b.healing_done - a.healing_done);
+    const tankTop = [...enriched].sort((a,b) => b.tankScore - a.tankScore);
+    const supportTop = [...enriched].sort((a,b) => b.supportScore - a.supportScore);
+    const summonTop = [...enriched].sort((a,b) => (Number(b.summon_damage||0)+Number(b.summon_healing||0))-(Number(a.summon_damage||0)+Number(a.summon_healing||0)));
     const categoryAwards = [];
 
     const awardCategory = (type, player, value) => {
@@ -1561,7 +1614,9 @@ async function finish(id, win) {
 
     awardCategory('damage', damageTop[0], damageTop[0]?.damage_done);
     awardCategory('healing', healTop[0], healTop[0]?.healing_done);
-    awardCategory('tank', tankTop[0], tankTop[0]?.damage_taken);
+    awardCategory('tank', tankTop[0], tankTop[0]?.tankScore);
+    awardCategory('support', supportTop[0], supportTop[0]?.supportScore);
+    awardCategory('summon', summonTop[0], Number(summonTop[0]?.summon_damage||0)+Number(summonTop[0]?.summon_healing||0));
 
     const finalState = stateOf(b);
     const summonStats = finalState.summonStats || {};
@@ -1574,6 +1629,9 @@ async function finish(id, win) {
       damageTop: damageTop.slice(0,10),
       healTop: healTop.slice(0,10),
       tankTop: tankTop.slice(0,10),
+      supportTop: supportTop.slice(0,10),
+      summonTop: summonTop.slice(0,10),
+      playerStats: enriched,
       summonStats,
       summonDetails,
       categoryAwards,
@@ -1581,14 +1639,15 @@ async function finish(id, win) {
     };
 
     const categoryLines = categoryAwards.map(a => {
-      const label = a.type === 'damage' ? '⚔️ MVP урона' : a.type === 'healing' ? '💚 MVP лечения' : '🛡️ MVP защиты';
+      const label = a.type === 'damage' ? '⚔️ Разрушитель' : a.type === 'healing' ? '💚 Спаситель' : a.type === 'tank' ? '🛡️ Непоколебимый' : a.type === 'support' ? '✨ Опора команды' : '👹 Лучший призыватель';
       return `${label}: <@${a.user_id}> — **${a.value}** • 🎁 **${a.pack.toUpperCase()} Pack**`;
     });
 
     lines = [
       `🏆 Победа! Общая награда: **${pool} GS Dust** — поделена между всей группой.`,
       `💠 Каждый участник получил **${each}–${each + (remainder > 0 ? 1 : 0)} GS Dust**.`,
-      `⭐ Общий MVP: <@${mvp.user_id}> • рейтинг **${Math.round(mvp.mvpScore)}**.`,
+      `⭐ Общий MVP: <@${mvp.user_id}> • рейтинг вклада **${Math.round(mvp.mvpScore)}**.`,
+      `📊 MVP учитывает урон, эффективное лечение, предотвращённый урон, щиты, агро, баффы, дебаффы, контроль, призывы и снятую ярость босса.`,
       `🎁 Общий MVP получает **${pack.toUpperCase()} Pack**.`,
       ...categoryLines,
       `📚 **Опыт классов:**\n${classXpLines.join('\n')}`
