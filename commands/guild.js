@@ -1199,22 +1199,34 @@ function showMerchantBuyConfirm(interaction,key){
 }
 
 
-function giftHome(interaction, notice='') {
-  giftDrafts.delete(interaction.user.id);
-  return interaction.update({
+function giftPayload(notice='') {
+  return {
     content:'',
     embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle('🎁 Подарок игроку').setDescription(`${notice ? `${notice}\n\n` : ''}Выбери получателя. Подарок передаётся напрямую и не публикуется на рынке.`)],
     components:[new ActionRowBuilder().addComponents(new UserSelectMenuBuilder().setCustomId('guild:gift:user').setPlaceholder('Выбрать игрока').setMinValues(1).setMaxValues(1)),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:home').setLabel('Назад').setStyle(ButtonStyle.Secondary))]
-  });
+  };
 }
-function giftType(interaction, targetId) {
+function giftHome(interaction, notice='') {
+  giftDrafts.delete(interaction.user.id);
+  const payload=giftPayload(notice);
+  // Кнопка находится в общем хабе, поэтому первое меню всегда создаём отдельным личным ответом.
+  if (!interaction.replied && !interaction.deferred && interaction.isButton?.() && interaction.customId === 'guild:gift') {
+    return interaction.reply({...payload,flags:MessageFlags.Ephemeral});
+  }
+  return interaction.replied||interaction.deferred ? interaction.editReply(payload) : interaction.update(payload);
+}
+async function giftType(interaction, targetId) {
+  targetId=targetId || interaction.users?.first?.()?.id || interaction.values?.[0];
   if (!targetId || String(targetId)===String(interaction.user.id)) return giftHome(interaction,'❌ Нельзя подарить предмет самому себе.');
   giftDrafts.set(interaction.user.id,{targetId:String(targetId)});
-  return interaction.update({content:'',embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle('🎁 Что подарить?').setDescription(`Получатель: <@${targetId}>\n\nМожно передать материалы, предметы и артефакты, а также неактивных питомцев и маунтов.`)],components:[new ActionRowBuilder().addComponents(
+  const payload={content:'',embeds:[new EmbedBuilder().setColor(0xA855F7).setTitle('🎁 Что подарить?').setDescription(`Получатель: <@${targetId}>\n\nМожно передать материалы, предметы и артефакты, а также неактивных питомцев и маунтов.`)],components:[new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('guild:gift:type:material').setLabel('Материалы').setEmoji('📦').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('guild:gift:type:item').setLabel('Предметы и артефакты').setEmoji('💍').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('guild:gift:type:companion').setLabel('Питомцы и маунты').setEmoji('🐾').setStyle(ButtonStyle.Primary)
-  ),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:gift').setLabel('Сменить получателя').setStyle(ButtonStyle.Secondary))]});
+  ),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:gift').setLabel('Сменить получателя').setStyle(ButtonStyle.Secondary))]};
+  // Подтверждаем выбор немедленно, чтобы Discord не показывал «не ответило вовремя».
+  if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
+  return interaction.editReply(payload);
 }
 function giftAssetList(interaction,type,notice='') {
   const draft=giftDrafts.get(interaction.user.id); if(!draft) return giftHome(interaction,'❌ Меню подарка устарело.');
@@ -1231,7 +1243,7 @@ async function handleComponent(interaction) {
   const parts = interaction.customId.split(':');
   const action = parts[1];
   if (action === 'gift' && parts.length===2) return giftHome(interaction);
-  if (action === 'gift' && parts[2] === 'user') return giftType(interaction,interaction.values?.[0]);
+  if (action === 'gift' && parts[2] === 'user') return giftType(interaction,interaction.users?.first?.()?.id || interaction.values?.[0]);
   if (action === 'gift' && parts[2] === 'userback') return giftType(interaction,parts[3]);
   if (action === 'gift' && parts[2] === 'type') return giftAssetList(interaction,parts[3]);
   if (action === 'gift' && parts[2] === 'asset') {

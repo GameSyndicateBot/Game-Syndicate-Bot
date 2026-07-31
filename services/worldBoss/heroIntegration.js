@@ -7,6 +7,12 @@ const { serializeClassProgress, normalizeClassKey, classWorldBossBonuses } = req
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, Number(n) || 0)); }
 
+
+const DPS_CLASS_KEYS = new Set([
+  'assassin', 'archer', 'mage', 'berserker',
+  'pyromancer', 'duelist', 'reaper', 'mindlord',
+]);
+
 const CLASS_EQUIPMENT_PROFILES = Object.freeze({
   warrior: { primary: ['strength', 'defense'], hpWeight: 1.0, resistanceWeight: 1.0 },
   paladin: { primary: ['defense', 'intelligence'], hpWeight: 1.15, resistanceWeight: 1.15 },
@@ -116,9 +122,29 @@ function selectedClassBonuses(player) {
   const equipment = equipmentBonusesForClass(s, key);
   return { level, ...mastery, mastery, equipment };
 }
+function equipmentDexterityDamagePercent(player) {
+  const snapshot = parseSnapshot(player);
+  const classKey = normalizeClassKey(player?.class_key);
+  if (!DPS_CLASS_KEYS.has(classKey)) return 0;
+
+  // Только Ловкость надетой экипировки активного класса. Базовые характеристики
+  // героя, питомцы, маунты и временные эффекты сюда намеренно не входят.
+  const equipped = snapshot?.classEquipmentBonuses?.[classKey] || snapshot?.equipmentBonuses || {};
+  const dexterity = Math.max(0, Number(equipped.dexterity || 0));
+  return Math.round(clamp(dexterity / 2, 0, 30) * 10) / 10;
+}
 function damageMultiplier(player) {
   const s = parseSnapshot(player), cb = selectedClassBonuses(player);
-  return 1 + clamp(Number(s?.combat?.damagePercent || 0) + cb.mastery.damagePercent + cb.equipment.damagePercent + Number(s?.alchemy?.world_boss_damage || 0), 0, 55) / 100;
+  const dexterityDamage = equipmentDexterityDamagePercent(player);
+  return 1 + clamp(
+    Number(s?.combat?.damagePercent || 0)
+      + cb.mastery.damagePercent
+      + cb.equipment.damagePercent
+      + dexterityDamage
+      + Number(s?.alchemy?.world_boss_damage || 0),
+    0,
+    85
+  ) / 100;
 }
 function hpMultiplier(player) {
   const s = parseSnapshot(player), cb = selectedClassBonuses(player);
@@ -135,4 +161,4 @@ function heroSummary(player) {
   return parts.join(' • ');
 }
 
-module.exports = { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, hpMultiplier, resistancePercent, heroSummary, selectedClassBonuses, equipmentBonusesForClass };
+module.exports = { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, equipmentDexterityDamagePercent, hpMultiplier, resistancePercent, heroSummary, selectedClassBonuses, equipmentBonusesForClass };
