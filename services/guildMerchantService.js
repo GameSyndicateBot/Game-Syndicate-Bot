@@ -116,7 +116,9 @@ function sellableEquipment(userId){
     .filter(i=>i.slot)
     .map(i=>{
       const equippedQuantity=reserved.get(Number(i.id))||0;
-      const sellableQuantity=Math.max(0,Number(i.quantity||0)-equippedQuantity);
+      // Разрешаем продажу даже единственного экземпляра. При подтверждении
+      // он автоматически снимается со всех комплектов и затем передаётся торговцу.
+      const sellableQuantity=Math.max(0,Number(i.quantity||0));
       return {...i,equippedQuantity,sellableQuantity,unitPrice:equipmentBuyPrice(i)};
     })
     .filter(i=>i.sellableQuantity>0);
@@ -143,10 +145,14 @@ function sellEquipment(userId,id){
     const current=db.prepare('SELECT quantity FROM hero_inventory WHERE id=? AND user_id=?').get(Number(id),userId);
     if(!current||Number(current.quantity)<1)throw new Error('missing');
     const reserved=equippedReservationMap(userId).get(Number(id))||0;
-    if(Number(current.quantity)-reserved<1)throw new Error('equipped');
+    if(reserved>0){
+      db.prepare('DELETE FROM hero_equipment WHERE user_id=? AND inventory_id=?').run(String(userId),Number(id));
+      db.prepare('DELETE FROM hero_class_equipment WHERE user_id=? AND inventory_id=?').run(String(userId),Number(id));
+      try{db.prepare('DELETE FROM hero_artifact_equipment WHERE user_id=? AND inventory_id=?').run(String(userId),Number(id));}catch(_){}
+    }
     const changed=Number(current.quantity)===1
       ? db.prepare('DELETE FROM hero_inventory WHERE id=? AND user_id=?').run(Number(id),userId)
-      : db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=? AND user_id=? AND quantity>?').run(Number(id),userId,reserved);
+      : db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=? AND user_id=?').run(Number(id),userId);
     if(!changed.changes)throw new Error('missing');
     addCardDust(userId,total);
     db.prepare('INSERT INTO guild_merchant_sales(user_id,asset_type,asset_key,quantity,dust_paid,unit_price) VALUES(?,?,?,?,?,?)').run(userId,'equipment',item.item_key,1,total,total);

@@ -69,7 +69,7 @@ function cook(userId, recipeKey) {
 
   try {
     const produced = db.transaction(() => {
-      const consumed = consumeResources(userId, recipe.ingredients);
+      const consumed = consumeResources(userId, recipe.ingredients.reduce((acc, ingredient) => { acc[ingredient.key] = ingredient.required; return acc; }, {}));
       if (!consumed.ok) throw new Error('Insufficient ingredients');
       return grantItem(userId, recipe.itemKey, 1, `cook:${recipeKey}`);
     })();

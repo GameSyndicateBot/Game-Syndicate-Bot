@@ -502,7 +502,7 @@ function pickDamageType(profile, fallback = 'physical') {
   for (const [type, weight] of profile) { roll -= Number(weight || 0); if (roll < 0) return type; }
   return profile[profile.length - 1][0] || fallback;
 }
-function damageTarget(id, target, amount, damageType = 'physical') {
+function damageTarget(id, target, amount, damageType = 'physical', options = {}) {
   const e = effects(target); let d = Math.max(0, Math.round(amount * playerResistanceMultiplier(target, damageType)));
   if (e.guardianUltRounds > 0) d = Math.round(d * 0.6); else if (e.guardRounds > 0) d = Math.round(d * 0.5); if (e.combatResistanceTurns > 0) d = Math.round(d * (1 - Number(e.combatResistance || 0))); if (e.guildFeastActive) d = Math.round(d * 0.90); if (e.rageTurns > 0 || e.bloodRageTurns > 0) d = Math.round(d * 1.25); if (e.partyGuardRounds > 0) d = Math.round(d * Number(e.partyGuardMultiplier || 0.8));
   let shield = Number(e.shield || 0), absorbed = 0; const hadShield = shield > 0;
@@ -518,6 +518,39 @@ function damageTarget(id, target, amount, damageType = 'physical') {
   if (['rage','holiness','bloodlust'].includes(resourceType(target.class_key)) && d > 0) {
     const gained = Math.min(25, Math.max(5, Math.ceil(d / 3)));
     db.prepare('UPDATE world_boss_players SET energy=MIN(100,energy+?) WHERE battle_id=? AND user_id=?').run(gained, id, target.user_id);
+  }
+
+  // Повелитель Цепей: при получении реального HP-урона цепь перепрыгивает
+  // на другого живого игрока и наносит ему часть полученного урона.
+  if (!options.skipChainTransfer && d > 0 && !diedNow && Number(e.chainBound || 0) > 0) {
+    const battle = db.prepare('SELECT boss_card_id FROM world_boss_battles WHERE id=?').get(id);
+    const bossCfg = BOSSES.find(x => Number(x.cardId) === Number(battle?.boss_card_id));
+    if (bossCfg?.mechanic === 'chain_mastery') {
+      const candidates = battlePlayers(id).filter(p => p.status === 'alive' && p.user_id !== target.user_id);
+      if (candidates.length) {
+        const next = pick(candidates);
+        delete e.chainBound;
+        delete e.chainSourceRound;
+        updateEffects(id, target.user_id, e);
+
+        const nextEffects = effects(next);
+        nextEffects.chainBound = 1;
+        nextEffects.chainSourceRound = Number(nextEffects.chainSourceRound || 0);
+        updateEffects(id, next.user_id, nextEffects);
+
+        const echoDamage = clamp(Math.round(d * 0.35), 8, 30);
+        const echo = damageTarget(id, next, echoDamage, 'magic', { skipChainTransfer: true });
+        if (echo.diedNow) {
+          const deadEffects = effects(db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, next.user_id));
+          delete deadEffects.chainBound;
+          delete deadEffects.chainSourceRound;
+          updateEffects(id, next.user_id, deadEffects);
+          pushCombatEvent(id, `⛓️ Цепь переходит с <@${target.user_id}> на <@${next.user_id}>, наносит **${echo.hpDamage} HP** и обрывается после гибели цели.`, 'players');
+        } else {
+          pushCombatEvent(id, `⛓️ Цепь переходит с <@${target.user_id}> на <@${next.user_id}> и наносит **${echo.hpDamage} HP**.`, 'players');
+        }
+      }
+    }
   }
   return { hpDamage: d, absorbed, damageType, diedNow, shieldBroken: hadShield && shield <= 0 && absorbed > 0 };
 }
@@ -1190,6 +1223,27 @@ async function bossTurn(id) {
   if (boss.mechanic === 'chaos_rift') { const rift=state.minions.find(m=>m.isChaosRift); if(rift){rift.riftAge=Number(rift.riftAge||0)+1;if(rift.riftAge>=2){const eliteId=pick([2049,2050]),ec=MINIONS[eliteId];state.minions=state.minions.filter(m=>m!==rift);state.minions.push({cardId:eliteId,instanceId:`elite-${Date.now()}`,provoking:Boolean(ec.provoking),ownerBossCardId:boss.cardId,name:ec.name,hp:ec.maxHp,maxHp:ec.maxHp,damage:ec.damage,miss:ec.miss,damageType:ec.damageType||'magic'});state.log.push(`🌀 Разлом не уничтожен — выходит элитный **${ec.name}**!`);}} if(Number(b.round_no)%3===0&&!state.minions.some(m=>m.isChaosRift)){state.minions.push({cardId:9039,instanceId:`rift-${Date.now()}`,name:'Разлом Хаоса',hp:180,maxHp:180,damage:[0,0],miss:100,damageType:'magic',isChaosRift:true,riftAge:0,provoking:false});state.log.push('🌀 Архонт открывает **Разлом Хаоса**. Уничтожьте его за 2 раунда!');} }
   if (boss.mechanic === 'decay_curse' && Number(b.round_no)%2===0) { const victim=pick(players),e=effects(victim);e.decayCurseStacks=Math.min(3,Number(e.decayCurseStacks||0)+1);e.healingPenaltyTurns=Math.max(Number(e.healingPenaltyTurns||0),3);e.healingPenalty=0.50;updateEffects(id,victim.user_id,e);state.log.push(`☠️ <@${victim.user_id}> получает **Проклятие Разложения** (${e.decayCurseStacks}/3).`); }
   if (boss.mechanic === 'ice_shackles' && Number(b.round_no)%3===0) { const victim=pick(players),e=effects(victim);e.skillSilencedTurns=Math.max(Number(e.skillSilencedTurns||0),1);e.ultSilencedTurns=Math.max(Number(e.ultSilencedTurns||0),1);updateEffects(id,victim.user_id,e);state.log.push(`❄️ **Ледяные оковы:** на следующем ходу <@${victim.user_id}> доступна только обычная атака.`); }
+  if (boss.mechanic === 'chain_mastery' && (Number(b.round_no) === 1 || Number(b.round_no) % 2 === 0)) {
+    const alreadyChained = players.filter(p => Number(effects(p).chainBound || 0) > 0);
+    const pool = players.filter(p => !alreadyChained.some(x => x.user_id === p.user_id));
+    const victim = pick(pool.length ? pool : players);
+    if (victim) {
+      // На поле одновременно остаётся только одна активная цепь.
+      for (const p of players) {
+        const pe = effects(p);
+        if (p.user_id !== victim.user_id && Number(pe.chainBound || 0) > 0) {
+          delete pe.chainBound;
+          delete pe.chainSourceRound;
+          updateEffects(id, p.user_id, pe);
+        }
+      }
+      const e = effects(victim);
+      e.chainBound = 1;
+      e.chainSourceRound = Number(b.round_no || 0);
+      updateEffects(id, victim.user_id, e);
+      state.log.push(`⛓️ **Клеймо Цепей:** <@${victim.user_id}> скован. При следующем полученном HP-уроне цепь перепрыгнет на другого игрока и передаст ему 35% урона.`);
+    }
+  }
 
   const hpRatio = b.boss_max_hp ? b.boss_hp / b.boss_max_hp : 1;
   const phase = hpRatio <= 0.25 ? 3 : hpRatio <= 0.5 ? 2 : 1;
