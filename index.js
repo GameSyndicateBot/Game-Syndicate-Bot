@@ -210,7 +210,7 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        if (interaction.isStringSelectMenu() || interaction.isChannelSelectMenu() || interaction.isButton()) {
+        if (interaction.isStringSelectMenu() || interaction.isUserSelectMenu() || interaction.isChannelSelectMenu() || interaction.isButton()) {
 
             if (interaction.customId.startsWith('control:')) {
                 const command = client.commands.get('control');

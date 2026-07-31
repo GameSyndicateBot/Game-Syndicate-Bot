@@ -131,7 +131,7 @@ function equipmentDexterityDamagePercent(player) {
   // героя, питомцы, маунты и временные эффекты сюда намеренно не входят.
   const equipped = snapshot?.classEquipmentBonuses?.[classKey] || snapshot?.equipmentBonuses || {};
   const dexterity = Math.max(0, Number(equipped.dexterity || 0));
-  return Math.round(clamp(dexterity / 2, 0, 30) * 10) / 10;
+  return Math.round(clamp(dexterity, 0, 40) * 10) / 10;
 }
 function damageMultiplier(player) {
   const s = parseSnapshot(player), cb = selectedClassBonuses(player);

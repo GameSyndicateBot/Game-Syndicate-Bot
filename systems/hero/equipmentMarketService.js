@@ -33,13 +33,14 @@ function sellableEquipmentCount(userId,item){
 }
 function duplicateEquipment(userId){
  return getInventory(userId,{limit:200})
-  .filter(x=>x.slot)
+  .filter(x=>x.slot || x.item_type==='artifact')
   .map(x=>({...x,sellable:sellableEquipmentCount(userId,x)}))
   .filter(x=>x.sellable>0);
 }
 function unequipInventoryItem(userId,inventoryId){
  db.prepare('DELETE FROM hero_equipment WHERE user_id=? AND inventory_id=?').run(String(userId),Number(inventoryId));
  db.prepare('DELETE FROM hero_class_equipment WHERE user_id=? AND inventory_id=?').run(String(userId),Number(inventoryId));
+ db.prepare('DELETE FROM hero_artifact_equipment WHERE user_id=? AND inventory_id=?').run(String(userId),Number(inventoryId));
 }
 function removeOne(userId,item){
  if(Number(item.quantity)<=1){
@@ -48,7 +49,7 @@ function removeOne(userId,item){
  } else db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=? AND user_id=?').run(item.id,userId);
 }
 function sellToBlacksmith(userId,inventoryId){
- const item=getInventoryItem(userId,inventoryId); if(!item||!item.slot)return {ok:false,reason:'not_found'};
+ const item=getInventoryItem(userId,inventoryId); if(!item||(!item.slot&&item.item_type!=='artifact'))return {ok:false,reason:'not_found'};
  if(sellableEquipmentCount(userId,item)<1)return {ok:false,reason:'missing'};
  const earned=(BLACKSMITH_PRICES[item.rarity]||20)+Number(item.upgrade_level||0)*15;
  const tx=db.transaction(()=>{removeOne(userId,item);addCardDust(userId,earned);}); tx();
@@ -56,7 +57,7 @@ function sellToBlacksmith(userId,inventoryId){
 }
 function createListing(userId,inventoryId,price){
  price=Math.floor(Number(price)); if(price<1||price>10000000)return {ok:false,reason:'price'};
- const item=getInventoryItem(userId,inventoryId); if(!item||!item.slot)return {ok:false,reason:'not_found'};
+ const item=getInventoryItem(userId,inventoryId); if(!item||(!item.slot&&item.item_type!=='artifact'))return {ok:false,reason:'not_found'};
  if(sellableEquipmentCount(userId,item)<1)return {ok:false,reason:'missing'};
  let id; const tx=db.transaction(()=>{removeOne(userId,item);id=db.prepare(`INSERT INTO equipment_market_listings(seller_id,item_key,item_name,rarity,upgrade_level,quantity,price) VALUES(?,?,?,?,?,1,?)`).run(userId,item.item_key,item.name,item.rarity,Number(item.upgrade_level||0),price).lastInsertRowid;}); tx();
  return {ok:true,listing:getListing(id)};
