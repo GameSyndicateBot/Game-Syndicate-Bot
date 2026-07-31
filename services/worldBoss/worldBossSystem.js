@@ -506,7 +506,7 @@ function damageTarget(id, target, amount, damageType = 'physical', options = {})
   const e = effects(target); let d = Math.max(0, Math.round(amount * playerResistanceMultiplier(target, damageType)));
   if (e.guardianUltRounds > 0) d = Math.round(d * 0.6); else if (e.guardRounds > 0) d = Math.round(d * 0.5); if (e.combatResistanceTurns > 0) d = Math.round(d * (1 - Number(e.combatResistance || 0))); if (e.guildFeastActive) d = Math.round(d * 0.90); if (e.rageTurns > 0 || e.bloodRageTurns > 0) d = Math.round(d * 1.25); if (e.partyGuardRounds > 0) d = Math.round(d * Number(e.partyGuardMultiplier || 0.8));
   let shield = Number(e.shield || 0), absorbed = 0; const hadShield = shield > 0;
-  if (shield) { absorbed = Math.min(shield, d); shield -= absorbed; d -= absorbed; e.shield = shield; const shieldOwner=String(e.shieldOwner||''); if(absorbed>0 && shieldOwner){ db.prepare('UPDATE world_boss_players SET damage_taken=damage_taken+? WHERE battle_id=? AND user_id=?').run(absorbed,id,shieldOwner); } if(shield<=0) delete e.shieldOwner; updateEffects(id, target.user_id, e); }
+  if (shield) { absorbed = Math.min(shield, d); shield -= absorbed; d -= absorbed; e.shield = shield; const sources=e.shieldSources&&typeof e.shieldSources==='object'?e.shieldSources:{}; let remain=absorbed; for(const owner of Object.keys(sources)){if(remain<=0)break;const used=Math.min(Number(sources[owner]||0),remain);sources[owner]=Math.max(0,Number(sources[owner]||0)-used);remain-=used;if(used>0)db.prepare('UPDATE world_boss_players SET damage_taken=damage_taken+? WHERE battle_id=? AND user_id=?').run(used,id,owner);if(sources[owner]<=0)delete sources[owner];} e.shieldSources=sources; if(shield<=0){delete e.shieldOwner;delete e.shieldSources;} updateEffects(id, target.user_id, e); }
   const hp = Math.max(0, target.hp - d), diedNow = target.status === 'alive' && target.hp > 0 && hp <= 0;
   if (diedNow) {
     e.deathResourceSnapshot = { energy:Number(target.energy||0), mana:Number(target.mana||0), ultCharge:Number(target.ult_charge||0) };
@@ -550,6 +550,17 @@ function damageTarget(id, target, amount, damageType = 'physical', options = {})
           pushCombatEvent(id, `⛓️ Цепь переходит с <@${target.user_id}> на <@${next.user_id}> и наносит **${echo.hpDamage} HP**.`, 'players');
         }
       }
+    }
+  }
+  if (d > 0 && !diedNow && target.class_key === 'duelist' && e.counterAttack && !options.skipCounterAttack) {
+    e.counterAttack = false;
+    updateEffects(id, target.user_id, e);
+    const battle = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+    if (battle && Number(battle.boss_hp || 0) > 0) {
+      const st = stateOf(battle);
+      const counter = hurtEnemy(battle, st, rand(55, 72), 'physical', 'duelist');
+      db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(counter.dealt,counter.dealt,id,target.user_id);
+      pushCombatEvent(id, `⚔️ <@${target.user_id}> отвечает контратакой и наносит **${counter.dealt}** → ${counter.target}.`);
     }
   }
   return { hpDamage: d, absorbed, damageType, diedNow, shieldBroken: hadShield && shield <= 0 && absorbed > 0 };
@@ -632,7 +643,7 @@ function healPlayer(id, healerId, target, amount) { const te = effects(target); 
 function validTargets(id, kind) { const ps = battlePlayers(id); return kind === 'dead' ? ps.filter(x => x.status === 'dead') : ps.filter(x => x.status === 'alive'); }
 function actionTargets(id, player, action, kind) { let list = validTargets(id, kind); if (player.class_key === 'cleric' && action === 'skill') list = list.filter(x => x.user_id !== player.user_id); return list; }
 function targetKind(classKey, action) {
-  if (action === 'skill' && ['paladin','cleric','bard','chronomancer'].includes(classKey)) return 'alive';
+  if (action === 'skill' && ['cleric','bard','chronomancer'].includes(classKey)) return 'alive';
   if (action === 'skill2' && classKey === 'chronomancer') return 'alive';
   if (action === 'ult' && ['cleric'].includes(classKey)) return 'alive';
   if (action === 'ult' && classKey === 'priest') return 'dead';
@@ -815,27 +826,52 @@ async function perform(id, userId, action, auto = false, targetId = null) {
   } finally { busy = false; }
 }
 function targetById(id, targetId, status = 'alive') { return battlePlayers(id).find(x => x.user_id === String(targetId) && x.status === status); }
+
+function addTrackedShield(effect, amount, ownerId, mode = 'add') {
+  const value = Math.max(0, Math.round(Number(amount || 0)));
+  const previous = Math.max(0, Number(effect.shield || 0));
+  const next = mode === 'max' ? Math.max(previous, value) : previous + value;
+  const added = Math.max(0, next - previous);
+  effect.shield = next;
+  effect.shieldSources = effect.shieldSources && typeof effect.shieldSources === 'object' ? effect.shieldSources : {};
+  if (added > 0) effect.shieldSources[String(ownerId)] = Number(effect.shieldSources[String(ownerId)] || 0) + added;
+  return added;
+}
+function shieldBreakdown(player, effect) {
+  const total = Math.max(0, Number(effect.shield || 0));
+  if (!total) return '';
+  const sources = effect.shieldSources && typeof effect.shieldSources === 'object' ? effect.shieldSources : {};
+  const own = Math.min(total, Math.max(0, Number(sources[String(player.user_id)] || 0)));
+  const foreign = Math.max(0, total - own);
+  if (!foreign) return `🛡️ ${total} (свой)`;
+  if (!own) return `🛡️ ${total} (чужой)`;
+  return `🛡️ ${total} (свой ${own} • чужой ${foreign})`;
+}
+function markLatestTankAggro(state, userId) {
+  state.latestTankAggroUserId = String(userId);
+  state.latestTankAggroRounds = 3;
+}
 function useSkill(b, p, c, e, state, targetId) {
   const id = b.id, u = p.user_id;
   switch (p.class_key) {
-    case 'warrior': { const r = hurtEnemy(b, state, rand(55,70), 'physical', 'warrior'); for (const m of state.minions || []) { if (m.hp > 0) { const splash = Math.min(m.hp, rand(20,30)); m.hp -= splash; } } state.minions = (state.minions || []).filter(m => m.hp > 0); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.warriorAggroRounds = 2; e.warriorAggroBonus = 0.15; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `⚔️ <@${u}> использует Рассекающий удар: **${r.dealt}** урона → ${r.target}, задевает миньонов и получает +15% агро на 2 раунда.`; }
-    case 'paladin': { const t = targetById(id, targetId) || p, te = effects(t); te.shield = Math.max(Number(te.shield || 0), 50); te.shieldOwner=String(u); updateEffects(id, t.user_id, te); e.shield = Math.max(Number(e.shield || 0), 25); e.shieldOwner=String(u); e.guardRounds = Math.max(Number(e.guardRounds || 0), 1); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); return `✨ <@${u}> накладывает на <@${t.user_id}> щит **50 HP**, сам получает щит **25 HP**, снижает входящий урон на 1 ход и провоцирует босса с миньонами на 3 раунда.`; }
-    case 'guardian': e.guardRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); e.interceptChance = 0.35; return `🛡️ <@${u}> снижает входящий урон на 50%, провоцирует босса на 2 атаки и получает 35% шанс перехватить одиночный удар по союзнику.`;
-    case 'cleric': { const t = targetById(id, targetId) || p, sacrifice = Math.min(rand(24, 34), Math.max(0, p.hp - 1)); if (sacrifice <= 0) return `💔 <@${u}> не хватает HP для жертвы.`; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(p.hp - sacrifice, id, u); const healed = healPlayer(id, u, t, rand(58, 76)); const te = effects(t); const shield = Math.max(1, Math.round(healed * 0.15)); te.shield = Number(te.shield || 0) + shield; updateEffects(id, t.user_id, te); return `💚 <@${u}> жертвует **${sacrifice} HP**, лечит <@${t.user_id}> на **${healed} HP** и даёт щит **${shield} HP**.`; }
-    case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 75, maxHp: 75, heal: [14, 20], rounds: 4, support: true }); saveState(b, state); return `👼 <@${u}> призывает Ангела-хранителя на 4 хода. В конце каждого раунда ангел лечит всю живую группу.`; }
-    case 'bard': { const t = targetById(id, targetId) || p, te = effects(t); te.damageBuffTurns = 3; te.damageBuff = 0.15; updateEffects(id, t.user_id, te); return `🎵 <@${u}> усиливает <@${t.user_id}> на 15% на 3 хода.`; }
+    case 'warrior': { const r = hurtEnemy(b, state, rand(55,70), 'physical', 'warrior'); for (const m of state.minions || []) { if (m.hp > 0) { const splash = Math.min(m.hp, rand(20,30)); m.hp -= splash; } } state.minions = (state.minions || []).filter(m => m.hp > 0); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.warriorAggroRounds = 2; e.warriorAggroBonus = 0.15; markLatestTankAggro(state,u); saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `⚔️ <@${u}> использует Рассекающий удар: **${r.dealt}** урона → ${r.target}, задевает миньонов и получает +15% агро на 2 раунда.`; }
+    case 'paladin': { const t = targetById(id, targetId) || p; if (t.user_id === u) { addTrackedShield(e, 70, u, 'add'); } else { const te = effects(t); addTrackedShield(te, 55, u, 'add'); updateEffects(id, t.user_id, te); addTrackedShield(e, 30, u, 'add'); } e.guardRounds = Math.max(Number(e.guardRounds || 0), 1); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); markLatestTankAggro(state,u); saveState(b,state); return t.user_id === u ? `✨ <@${u}> не выбирает цель и накладывает **щит 70 HP на себя**, снижает входящий урон на 1 ход и повышает агро.` : `✨ <@${u}> накладывает на <@${t.user_id}> щит **55 HP**, себе — **30 HP**, снижает входящий урон на 1 ход и повышает агро.`; }
+    case 'guardian': e.guardRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); markLatestTankAggro(state,u); saveState(b,state); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); e.interceptChance = 0.35; return `🛡️ <@${u}> снижает входящий урон на 50%, провоцирует босса на 2 атаки и получает 35% шанс перехватить одиночный удар по союзнику.`;
+    case 'cleric': { const t = targetById(id, targetId) || p, sacrifice = Math.min(rand(20, 30), Math.max(0, p.hp - 1)); if (sacrifice <= 0) return `💔 <@${u}> не хватает HP для жертвы.`; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(p.hp - sacrifice, id, u); const healed = healPlayer(id, u, t, rand(68, 88)); const te = effects(t); const shield = Math.max(1, Math.round(healed * 0.20)); te.shield = Number(te.shield || 0) + shield; updateEffects(id, t.user_id, te); return `💚 <@${u}> жертвует **${sacrifice} HP**, лечит <@${t.user_id}> на **${healed} HP** и даёт щит **${shield} HP**.`; }
+    case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 100, maxHp: 100, heal: [15, 21], rounds: 5, support: true }); saveState(b, state); return `👼 <@${u}> призывает усиленного Ангела-хранителя на 5 ходов. В конце каждого раунда ангел лечит всю живую группу.`; }
+    case 'bard': { const t = targetById(id, targetId) || p, te = effects(t); te.damageBuffTurns = 3; te.damageBuff = 0.20; updateEffects(id, t.user_id, te); return `🎵 <@${u}> усиливает <@${t.user_id}> на 20% на 3 хода.`; }
     case 'assassin': { const r = hurtEnemy(b, state, rand(75, 95), 'physical', 'assassin', 0.5); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `🗡️ <@${u}> наносит **${r.dealt}** теневого урона.`; }
     case 'archer': { let total = 0; const shots = []; for (let i = 0; i < 3; i++) { if (Math.random() * 100 < c.miss) { shots.push(`Стрела ${i + 1}: ❌ промах`); continue; } const r = hurtEnemy(b, state, rand(30, 38), 'physical', 'archer'); total += r.dealt; shots.push(`Стрела ${i + 1}: 💥 ${r.dealt} → ${r.target}`); } db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total, total, id, u); return `🏹 <@${u}> использует **Три выстрела**:\n${shots.join('\n')}\n**Всего: ${total} урона**.`; }
-    case 'mage': { const r = hurtEnemy(b, state, rand(60, 80), 'magic', 'mage'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `🔥 <@${u}> наносит **${r.dealt}** магического урона.`; }
+    case 'mage': { const r = hurtEnemy(b, state, rand(68, 88), 'magic', 'mage'); let splash=0; for(const m of state.minions||[]){const d=Math.min(m.hp,rand(35,50));m.hp-=d;splash+=d;} state.minions=(state.minions||[]).filter(m=>m.hp>0); saveState(b,state); const total=r.dealt+splash; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `🔥 <@${u}> бросает массовый Огненный шар: **${r.dealt}** → ${r.target}${splash?` и **${splash}** урона всем миньонам`:''}.`; }
     case 'berserker': { let total = 0, hits = 0; for (let i = 0; i < 3; i++) { if (Math.random() * 100 < c.miss) continue; const r = hurtEnemy(b, state, Math.round(applyDamageBuff(p, rand(...c.damage)) * 0.62), 'physical', 'berserker'); total += r.dealt; hits++; } db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `🪓 <@${u}> проводит тройной удар: **${hits}/3** попаданий, **${total}** урона.`; }
-    case 'engineer': state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'turret'); state.summons.push({ owner: u, type: 'turret', icon: '🔫', name: 'Турель', hp: 80, maxHp: 80, damage: [22, 30], miss: 8, permanent: true, damageType: 'physical' }); saveState(b, state); return `🔧 <@${u}> устанавливает турель. Она остаётся в бою, пока не будет уничтожена или заменена новой.`;
+    case 'engineer': state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'turret'); state.summons.push({ owner: u, type: 'turret', icon: '🔫', name: 'Турель', hp: 105, maxHp: 105, damage: [28, 38], miss: 8, permanent: true, damageType: 'physical' }); saveState(b, state); return `🔧 <@${u}> устанавливает турель. Она остаётся в бою, пока не будет уничтожена или заменена новой.`;
     case 'necromancer': { const r=hurtEnemy(b,state,rand(55,70),'magic','necromancer'); let curse=''; if(Math.random()<0.30){state.necromancerCurseRounds=2;state.necromancerCurseDamage=18;curse=' и накладывает Порчу на 2 хода';} saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🌑 <@${u}> наносит **${r.dealt} магического урона**${curse}.`; }
 
     case 'pyromancer': { const stacks=Math.max(0,Number(e.pyroBurnStacks||0)); const r=hurtEnemy(b,state,rand(65,85)+stacks*8,'magic','pyromancer'); e.pyroBurnStacks=Math.min(5,stacks+1); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🔥 <@${u}> использует Огненное копьё: **${r.dealt}** урона. Горение босса: **${e.pyroBurnStacks}/5**.`; }
-    case 'duelist': { const combo=Number(e.combo||0); const r=hurtEnemy(b,state,Math.round(rand(55,70)*(1+combo*0.08)),'physical','duelist'); e.combo=Math.min(5,combo+1); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `⚔️ <@${u}> делает выпад на **${r.dealt}** урона. Комбо: ${e.combo}/5.`; }
+    case 'duelist': { const combo=Number(e.combo||0); const r=hurtEnemy(b,state,Math.round(rand(65,82)*(1+combo*0.10)),'physical','duelist'); e.combo=Math.min(5,combo+1); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `⚔️ <@${u}> делает выпад на **${r.dealt}** урона. Комбо: ${e.combo}/5.`; }
     case 'reaper': { const r=hurtEnemy(b,state,rand(70,90),'physical','reaper'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `☠️ <@${u}> применяет Жатву: **${r.dealt}** урона.`; }
     case 'mindlord': { const r=hurtEnemy(b,state,rand(60,80),'magic','mindlord'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🧠 <@${u}> наносит **${r.dealt}** психического урона.`; }
-    case 'druid': { const r=hurtEnemy(b,state,rand(45,60),'magic','druid'); state.bossWeakenRounds=2; state.bossWeaken=0.15; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🌿 <@${u}> опутывает босса: **${r.dealt}** урона и -15% урона босса на 2 раунда.`; }
+    case 'druid': { const r=hurtEnemy(b,state,rand(45,60),'magic','druid'); state.bossWeakenRounds=2; state.bossWeaken=0.15; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🌿 <@${u}> опутывает босса: **${r.dealt}** урона и -15% урона босса на 3 раунда и сам атакует врагов.`; }
     case 'shaman': state.teamDamageTotemRounds=3; state.teamDamageTotem=0.15; state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='strength_totem'); state.summons.push({owner:u,type:'strength_totem',icon:'🔥',name:'Тотем силы',hp:60,maxHp:60,rounds:3,support:true}); saveState(b,state); return `🪬 <@${u}> устанавливает Тотем силы на 3 раунда: +15% урона союзников.`;
     case 'chronomancer': { const targets=validTargets(id,'alive').filter(x=>x.user_id!==u); const t=targetById(id,targetId)||targets[0]||p; if(resourceType(t.class_key)==='mana') db.prepare('UPDATE world_boss_players SET mana=MIN(100,mana+30) WHERE battle_id=? AND user_id=?').run(id,t.user_id); else db.prepare('UPDATE world_boss_players SET energy=MIN(100,energy+30) WHERE battle_id=? AND user_id=?').run(id,t.user_id); return `⏳ <@${u}> ускоряет <@${t.user_id}> и восстанавливает 30 ресурса.`; }
     case 'illusionist': state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='illusion'); state.summons.push({owner:u,type:'illusion',icon:'🎭',name:'Иллюзия',hp:40,maxHp:40,damage:[0,0],miss:100,rounds:4,support:true}); saveState(b,state); return `🎭 <@${u}> создаёт иллюзию с 40 HP, способную принять атаку.`;
@@ -868,24 +904,24 @@ function useSecondSkill(b, p, c, e, state, targetId) {
       return `🪨 <@${u}> принимает Каменную стойку: **щит 70 HP** и -50% входящего урона на 2 хода.`;
     }
     case 'cleric': {
-      const r = hurtEnemy(b, state, rand(48, 68), 'holy', 'cleric');
+      const r = hurtEnemy(b, state, rand(55, 75), 'holy', 'cleric');
       let healed = 0;
-      for (const t of validTargets(id, 'alive')) healed += healPlayer(id, u, t, 16);
+      for (const t of validTargets(id, 'alive')) healed += healPlayer(id, u, t, 20);
       db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt + healed, id, u);
       return `🌤️ <@${u}> применяет Карающий свет: **${r.dealt} урона** и **${healed} HP** лечения группе.`;
     }
     case 'priest': {
       let total = 0;
-      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, rand(20, 28));
+      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, rand(16, 22));
       return `🙏 <@${u}> читает Массовую молитву и восстанавливает группе **${total} HP**.`;
     }
     case 'bard': {
-      const r = hurtEnemy(b, state, rand(55, 75), 'magic', 'bard');
-      state.bossWeakenRounds = 1;
-      state.bossWeaken = 0.12;
+      const r = hurtEnemy(b, state, rand(70, 90), 'magic', 'bard');
+      state.bossWeakenRounds = 2;
+      state.bossWeaken = 0.18;
       saveState(b, state);
       db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u);
-      return `🎻 <@${u}> создаёт Диссонанс: **${r.dealt} магического урона**, следующая атака босса ослаблена на 12%.`;
+      return `🎻 <@${u}> создаёт Диссонанс: **${r.dealt} магического урона**, урон босса ослаблен на 18% на 2 раунда.`;
     }
     case 'assassin': {
       const r = hurtEnemy(b, state, rand(100, 120), 'physical', 'assassin', 0.45);
@@ -943,18 +979,18 @@ function useSecondSkill(b, p, c, e, state, targetId) {
     }
     case 'necromancer': {
       state.summons=state.summons||[];
-      const hp=rand(80,100);
+      const hp=rand(105,130);
       state.summons=state.summons.filter(x=>x.owner!==u||x.type!=='skeleton');
-      state.summons.push({owner:u,type:'skeleton',icon:'💀',name:'Скелет',hp,maxHp:hp,damage:[24,32],miss:10,permanent:true,damageType:'physical'});
+      state.summons.push({owner:u,type:'skeleton',icon:'💀',name:'Скелет',hp,maxHp:hp,damage:[30,40],miss:10,permanent:true,damageType:'physical'});
       saveState(b,state);
       return `💀 <@${u}> призывает скелета с **${hp} HP**. Скелет атакует одного врага и остаётся в бою, пока не будет уничтожен или заменён.`;
     }
 
     case 'pyromancer': { const stacks=Math.max(0,Number(e.pyroBurnStacks||0)); const r=hurtEnemy(b,state,rand(85,110)+stacks*10,'magic','pyromancer'); e.pyroBurnStacks=Math.min(5,stacks+2); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🔥 <@${u}> применяет Пламя: **${r.dealt}** урона и накладывает 2 стака. Горение босса: **${e.pyroBurnStacks}/5**.`; }
-    case 'duelist': e.counterAttack=true; return `⚔️ <@${u}> готовит Ответный удар и контратакует первую атаку босса до своего следующего хода.`;
+    case 'duelist': { e.counterAttack=true; let dmg=applyDamageBuff(p,rand(...c.damage)); const r=hurtEnemy(b,state,dmg,'physical','duelist'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `⚔️ <@${u}> делает автоматическую атаку по ${r.target} на **${r.dealt} урона** и готовит Ответный удар на первую полученную атаку.`; }
     case 'reaper': { const hp=Math.max(1,p.hp-20); db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(hp,id,u); e.doubleNext=true; return `🩸 <@${u}> платит 20 HP. Следующая атака наносит двойной урон.`; }
     case 'mindlord': { const r=hurtEnemy(b,state,rand(65,75),'magic','mindlord'); state.magicVulnerabilityRounds=2; state.magicVulnerability=0.20; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🧠 <@${u}> наносит **${r.dealt}** урона и повышает получаемый магический урон цели на 20% на 2 раунда.`; }
-    case 'druid': { const spirit=String(targetId||'wolf'); for(const t of validTargets(id,'alive')){const te=effects(t);if(spirit==='bear'){te.protectionBuffRounds=2;te.protectionBuff=Math.max(Number(te.protectionBuff||0),0.25);}else if(spirit==='owl'){te.accuracyBuffRounds=2;te.accuracyBuff=Math.max(Number(te.accuracyBuff||0),0.25);}else{te.groupDamageRounds=2;te.groupDamage=Math.max(Number(te.groupDamage||0),0.25);}updateEffects(id,t.user_id,te);} const meta=spirit==='bear'?{icon:'🐻',name:'Медведя',bonus:'+25% защиты'}:spirit==='owl'?{icon:'🦉',name:'Совы',bonus:'+25% точности'}:{icon:'🐺',name:'Волка',bonus:'+25% урона'};state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='beast_spirit');state.summons.push({owner:u,type:'beast_spirit',icon:meta.icon,name:`Дух ${meta.name}`,hp:1,maxHp:1,rounds:2,support:true});saveState(b,state);return `${meta.icon} <@${u}> призывает Дух ${meta.name}: группа получает **${meta.bonus}** на 2 раунда.`; }
+    case 'druid': { const spirit=String(targetId||'wolf'); for(const t of validTargets(id,'alive')){const te=effects(t);if(spirit==='bear'){te.protectionBuffRounds=2;te.protectionBuff=Math.max(Number(te.protectionBuff||0),0.25);}else if(spirit==='owl'){te.accuracyBuffRounds=2;te.accuracyBuff=Math.max(Number(te.accuracyBuff||0),0.25);}else{te.groupDamageRounds=2;te.groupDamage=Math.max(Number(te.groupDamage||0),0.25);}updateEffects(id,t.user_id,te);} const meta=spirit==='bear'?{icon:'🐻',name:'Медведя',bonus:'+25% защиты'}:spirit==='owl'?{icon:'🦉',name:'Совы',bonus:'+25% точности'}:{icon:'🐺',name:'Волка',bonus:'+25% урона'};state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='beast_spirit');state.summons.push({owner:u,type:'beast_spirit',icon:meta.icon,name:`Дух ${meta.name}`,hp:75,maxHp:75,damage:[20,28],miss:8,rounds:3,support:false,damageType:'magic'});saveState(b,state);return `${meta.icon} <@${u}> призывает Дух ${meta.name}: группа получает **${meta.bonus}** на 3 раунда и сам атакует врагов.`; }
     case 'shaman': state.teamDefenseTotemRounds=3; state.teamDefenseTotem=0.15; state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='defense_totem'); state.summons.push({owner:u,type:'defense_totem',icon:'🛡️',name:'Тотем защиты',hp:80,maxHp:80,rounds:3,support:true}); saveState(b,state); return `🛡️ <@${u}> устанавливает Тотем защиты на 3 раунда: -15% входящего урона.`;
     case 'chronomancer': { const targets=validTargets(id,'alive').filter(x=>x.user_id!==u); const t=targetById(id,targetId)||targets[0]||p,te=effects(t); te.skillCd=Math.max(0,Number(te.skillCd||0)-1); te.skill2Cd=Math.max(0,Number(te.skill2Cd||0)-1); updateEffects(id,t.user_id,te); return `⏪ <@${u}> уменьшает КД способности <@${t.user_id}> на 1 ход.`; }
     case 'illusionist': state.bossAccuracyDownRounds=2; state.bossAccuracyDown=0.20; saveState(b,state); return `🌫️ <@${u}> создаёт Мираж: точность босса снижена на 20% на 2 раунда.`;
@@ -966,9 +1002,9 @@ function useSecondSkill(b, p, c, e, state, targetId) {
 function useUlt(b, p, c, e, state, targetId) {
   const id = b.id, u = p.user_id;
   switch (p.class_key) {
-    case 'warrior': { const r=hurtEnemy(b,state,rand(110,140),'physical','warrior'); e.shield=Math.max(Number(e.shield||0),60); e.guardRounds=Math.max(Number(e.guardRounds||0),2); e.tauntRounds=Math.max(Number(e.tauntRounds||0),2); e.damageBuffTurns=Math.max(Number(e.damageBuffTurns||0),1); e.damageBuff=Math.max(Number(e.damageBuff||0),0.30); db.prepare('UPDATE world_boss_players SET energy=MIN(100,energy+20),damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `💥 <@${u}> совершает Неудержимый натиск: **${r.dealt}** урона → ${r.target}, щит **60 HP**, +30% урона на следующий ход и провокация на 2 раунда.`; }
-    case 'paladin': for (const t of validTargets(id, 'alive')) { const te = effects(t); te.shield = Math.max(Number(te.shield || 0), t.user_id === u ? 60 : 40); te.shieldOwner=String(u); updateEffects(id, t.user_id, te); } e.guardRounds = Math.max(Number(e.guardRounds || 0), 2); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); return `✨ <@${u}> накладывает союзникам щиты по **40 HP**, себе **60 HP**, получает -50% входящего урона на 2 хода и провоцирует босса с миньонами на 3 раунда.`;
-    case 'guardian': { e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.guardianUltRounds = Math.max(Number(e.guardianUltRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); for (const t of validTargets(id, 'alive')) { if (t.user_id === u) continue; const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); te.partyGuardMultiplier = 0.8; updateEffects(id, t.user_id, te); } return `🛡️ <@${u}> применяет абсолютную провокацию: следующие 2 одиночные атаки направлены в Стража, он получает -40% урона, союзники — -20% урона.`; }
+    case 'warrior': { markLatestTankAggro(state,u); saveState(b,state); const r=hurtEnemy(b,state,rand(110,140),'physical','warrior'); e.shield=Math.max(Number(e.shield||0),60); e.guardRounds=Math.max(Number(e.guardRounds||0),2); e.tauntRounds=Math.max(Number(e.tauntRounds||0),2); e.damageBuffTurns=Math.max(Number(e.damageBuffTurns||0),1); e.damageBuff=Math.max(Number(e.damageBuff||0),0.30); db.prepare('UPDATE world_boss_players SET energy=MIN(100,energy+20),damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `💥 <@${u}> совершает Неудержимый натиск: **${r.dealt}** урона → ${r.target}, щит **60 HP**, +30% урона на следующий ход и провокация на 2 раунда.`; }
+    case 'paladin': markLatestTankAggro(state,u); saveState(b,state); for (const t of validTargets(id, 'alive')) { const te = effects(t); addTrackedShield(te, t.user_id === u ? 60 : 40, u, 'add'); updateEffects(id, t.user_id, te); } e.guardRounds = Math.max(Number(e.guardRounds || 0), 2); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); return `✨ <@${u}> накладывает союзникам щиты по **40 HP**, себе **60 HP**, получает -50% входящего урона на 2 хода и провоцирует босса с миньонами на 3 раунда.`;
+    case 'guardian': { markLatestTankAggro(state,u); saveState(b,state); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.guardianUltRounds = Math.max(Number(e.guardianUltRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); for (const t of validTargets(id, 'alive')) { if (t.user_id === u) continue; const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); te.partyGuardMultiplier = 0.8; updateEffects(id, t.user_id, te); } return `🛡️ <@${u}> применяет абсолютную провокацию: следующие 2 одиночные атаки направлены в Стража, он получает -40% урона, союзники — -20% урона.`; }
     case 'cleric': { const t = targetById(id, targetId) || p, healed = healPlayer(id, u, t, t.max_hp); return `🌟 <@${u}> полностью исцеляет <@${t.user_id}> на **${healed} HP**.`; }
     case 'priest': { const dead = targetById(id, targetId, 'dead'); if (!dead) return `✨ Нет выбранной погибшей цели.`; const de=effects(dead),snap=de.deathResourceSnapshot||{}; const restoredEnergy=Number(snap.energy ?? dead.energy ?? 0),restoredMana=Number(snap.mana ?? dead.mana ?? 0),restoredUlt=Number(snap.ultCharge ?? dead.ult_charge ?? 0); db.prepare("UPDATE world_boss_players SET status='alive',hp=ROUND(max_hp*0.5),energy=?,mana=?,ult_charge=? WHERE battle_id=? AND user_id=?").run(restoredEnergy,restoredMana,restoredUlt,id,dead.user_id); delete de.deathResourceSnapshot; updateEffects(id,dead.user_id,de); return `✨ <@${u}> воскрешает <@${dead.user_id}>! Игрок возвращается с **${Math.round(dead.max_hp * 0.5)} HP**, а ресурс и заряд ульты восстановлены до значений перед смертью.`; }
     case 'bard': {
@@ -977,27 +1013,27 @@ function useUlt(b, p, c, e, state, targetId) {
       for (const t of validTargets(id, 'alive')) {
         const te = effects(t);
         te.groupDamageRounds = 2;
-        te.groupDamage = 0.2;
+        te.groupDamage = 0.25;
         updateEffects(id, t.user_id, te);
-        const amount = Math.max(1, Math.round(Number(t.max_hp || 0) * 0.20));
+        const amount = Math.max(1, Math.round(Number(t.max_hp || 0) * 0.25));
         const healed = healPlayer(id, u, t, amount);
         totalHealed += healed;
         if (healed > 0) healedTargets.push(`<@${t.user_id}> +${healed}`);
       }
-      return `🎼 <@${u}> исполняет Гимн героев: вся группа получает **+20% урона на 2 раунда** и восстанавливает **20% максимального HP**${totalHealed ? ` — всего **${totalHealed} HP** (${healedTargets.join(', ')})` : ''}.`;
+      return `🎼 <@${u}> исполняет Гимн героев: вся группа получает **+25% урона на 2 раунда** и восстанавливает **25% максимального HP**${totalHealed ? ` — всего **${totalHealed} HP** (${healedTargets.join(', ')})` : ''}.`;
     }
     case 'assassin': { const r = hurtEnemy(b, state, rand(170, 210), 'physical', 'assassin', 1); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `☠️ <@${u}> наносит **${r.dealt}** смертельного урона.`; }
     case 'archer': { const enemies = 1 + (state.minions || []).length; const pool = 240; const share = Math.floor(pool / Math.max(1, enemies)); let total = 0; for (const m of state.minions || []) { const d = Math.min(m.hp, share); const died = m.hp > 0 && m.hp - d <= 0; m.hp -= d; total += d; if (died) { state.log.push(`💀 Миньон босса **${m.name}** уничтожен градом стрел!`); state.deathStats = state.deathStats || { players: 0, bossMinions: 0, playerSummons: 0 }; state.deathStats.bossMinions = Number(state.deathStats.bossMinions || 0) + 1; } } state.minions = (state.minions || []).filter(x => x.hp > 0); const bossDamage = Math.min(b.boss_hp, pool - share * (enemies - 1)); db.prepare('UPDATE world_boss_battles SET boss_hp=MAX(0,boss_hp-?) WHERE id=?').run(bossDamage,id); total += bossDamage; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `🏹 <@${u}> обрушивает град стрел: **${total}** общего урона, распределённого между ${enemies} противниками.`; }
-    case 'mage': { const r = hurtEnemy(b, state, rand(160, 210), 'magic', 'mage'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `☄️ <@${u}> вызывает метеор: **${r.dealt}** урона.`; }
+    case 'mage': { const r = hurtEnemy(b, state, rand(175, 225), 'magic', 'mage'); let splash=0; for(const m of state.minions||[]){const d=Math.min(m.hp,rand(75,105));m.hp-=d;splash+=d;} state.minions=(state.minions||[]).filter(m=>m.hp>0); saveState(b,state); const total=r.dealt+splash; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `☄️ <@${u}> вызывает Метеор: **${r.dealt}** по основной цели${splash?` и **${splash}** по всем миньонам`:''}. Общий урон: **${total}**.`; }
     case 'berserker': e.bloodRageTurns = 6; return `🔥 <@${u}> входит в Кровавую ярость на 6 своих ходов: двойной исходящий урон и +25% входящего урона.`;
-    case 'engineer': state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'golem'); state.summons.push({ owner: u, type: 'golem', icon: '🤖', name: 'Голем', hp: 220, maxHp: 220, damage: [38, 52], miss: 5, permanent: true, damageType: 'physical' }); saveState(b, state); return `🤖 <@${u}> призывает голема. Он остаётся в бою, пока не будет уничтожен или заменён новым.`;
-    case 'necromancer': state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='army'); for(let i=0;i<3;i++){const hp=rand(100,120);state.summons.push({owner:u,type:'army',icon:'🦴',name:`Скелет армии ${i+1}`,hp,maxHp:hp,damage:[28,36],miss:8,rounds:2,attackAll:true,damageType:'physical'});} saveState(b,state); return `💀 <@${u}> поднимает **3 скелетов** с 100–120 HP. В течение 2 раундов они атакуют всех врагов.`;
+    case 'engineer': state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'golem'); state.summons.push({ owner: u, type: 'golem', icon: '🤖', name: 'Голем', hp: 260, maxHp: 260, damage: [46, 62], miss: 5, permanent: true, damageType: 'physical' }); saveState(b, state); return `🤖 <@${u}> призывает голема. Он остаётся в бою, пока не будет уничтожен или заменён новым.`;
+    case 'necromancer': state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='army'); for(let i=0;i<3;i++){const hp=rand(125,150);state.summons.push({owner:u,type:'army',icon:'🦴',name:`Скелет армии ${i+1}`,hp,maxHp:hp,damage:[34,44],miss:8,rounds:3,attackAll:true,damageType:'physical'});} saveState(b,state); return `💀 <@${u}> поднимает **3 скелетов** с 100–120 HP. В течение 3 раундов они атакуют всех врагов.`;
 
     case 'pyromancer': { const stacks=Math.max(0,Number(e.pyroBurnStacks||0)); const r=hurtEnemy(b,state,rand(180,220)+stacks*55,'magic','pyromancer'); e.pyroBurnStacks=0; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🔥 <@${u}> выпускает Адское пламя: **${r.dealt}** урона и взрывает **${stacks}** стаков Горения.`; }
-    case 'duelist': { const combo=Number(e.combo||0); let total=0; for(let i=0;i<5;i++) total+=hurtEnemy(b,state,Math.round(rand(40,50)*(1+combo*0.08)),'physical','duelist').dealt; e.combo=0; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `⚔️ <@${u}> проводит Идеальную серию: **${total}** урона.`; }
+    case 'duelist': { const combo=Number(e.combo||0); let total=0; for(let i=0;i<5;i++) total+=hurtEnemy(b,state,Math.round(rand(48,60)*(1+combo*0.10)),'physical','duelist').dealt; e.combo=0; db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total,total,id,u); return `⚔️ <@${u}> проводит Идеальную серию: **${total}** урона.`; }
     case 'reaper': { const fresh=db.prepare('SELECT boss_hp,boss_max_hp FROM world_boss_battles WHERE id=?').get(id); const bonus=fresh.boss_hp/fresh.boss_max_hp<0.3?80:0,r=hurtEnemy(b,state,160+bonus,'physical','reaper'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `☠️ <@${u}> выносит Приговор: **${r.dealt}** урона${bonus?' с бонусом добивания':''}.`; }
     case 'mindlord': { const r=hurtEnemy(b,state,rand(150,180),'magic','mindlord'); state.rage=Math.max(0,Number(state.rage||0)-50); state.bossAccuracyDownRounds=2; state.bossAccuracyDown=0.20; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🧠 <@${u}> контролирует сознание: **${r.dealt}** урона, -50 ярости и -20% точности босса на 2 раунда.`; }
-    case 'druid': { for(const t of validTargets(id,'alive')){const te=effects(t);te.groupDamageRounds=2;te.groupDamage=Math.max(Number(te.groupDamage||0),0.15);te.accuracyBuffRounds=2;te.accuracyBuff=0.15;te.protectionBuffRounds=2;te.protectionBuff=0.15;updateEffects(id,t.user_id,te);} return `🌳 <@${u}> активирует Силу природы: Медведь, Волк и Сова усиливают всю группу на 2 раунда.`; }
+    case 'druid': { for(const t of validTargets(id,'alive')){const te=effects(t);te.groupDamageRounds=2;te.groupDamage=Math.max(Number(te.groupDamage||0),0.15);te.accuracyBuffRounds=2;te.accuracyBuff=0.15;te.protectionBuffRounds=2;te.protectionBuff=0.15;updateEffects(id,t.user_id,te);} return `🌳 <@${u}> активирует Силу природы: Медведь, Волк и Сова усиливают всю группу на 3 раунда и сам атакует врагов.`; }
     case 'shaman': state.teamDamageTotemRounds=3;state.teamDamageTotem=0.15;state.teamDefenseTotemRounds=3;state.teamDefenseTotem=0.15;state.healTotemRounds=3;state.summons=(state.summons||[]).filter(x=>x.owner!==u||!['strength_totem','defense_totem','healing_spirit'].includes(x.type));state.summons.push({owner:u,type:'strength_totem',icon:'🔥',name:'Тотем силы',hp:60,maxHp:60,rounds:3,support:true},{owner:u,type:'defense_totem',icon:'🛡️',name:'Тотем защиты',hp:80,maxHp:80,rounds:3,support:true},{owner:u,type:'healing_spirit',icon:'👻',name:'Дух исцеления',hp:70,maxHp:70,rounds:3,support:true});saveState(b,state);return `🪬 <@${u}> созывает Совет духов: Тотем силы, Тотем защиты и Дух исцеления действуют 3 раунда.`;
     case 'chronomancer': state.extraActionRound=true; saveState(b,state); return `⏳ <@${u}> открывает Временной разлом: все союзники получают дополнительное действие в следующем раунде.`;
     case 'illusionist': for(let i=0;i<2;i++)state.summons.push({owner:u,type:'illusion',icon:'🎭',name:'Зеркальная копия',hp:60,maxHp:60,damage:[0,0],miss:100,rounds:3,support:true});state.bossAccuracyDownRounds=3;state.bossAccuracyDown=0.35;saveState(b,state);return `🪞 <@${u}> создаёт две копии по 60 HP и снижает точность всех врагов на 35% на 3 раунда.`;
@@ -1247,15 +1283,17 @@ async function bossTurn(id) {
 
   const hpRatio = b.boss_max_hp ? b.boss_hp / b.boss_max_hp : 1;
   const phase = hpRatio <= 0.25 ? 3 : hpRatio <= 0.5 ? 2 : 1;
-  const tauntingTank = players.find(x => CLASSES[x.class_key]?.role === 'tank' && effects(x).tauntRounds > 0);
   const interceptingTank = players.find(x => x.class_key === 'guardian' && effects(x).interceptRounds > 0);
   const tanks = players.filter(x => CLASSES[x.class_key]?.role === 'tank');
-  const wounded = players.filter(x => x.hp / Math.max(1, x.max_hp) <= 0.25);
+  const latestTank = players.find(x => x.user_id === String(state.latestTankAggroUserId || '') && CLASSES[x.class_key]?.role === 'tank');
+  const otherTanks = tanks.filter(x => !latestTank || x.user_id !== latestTank.user_id);
+  const nonTanks = players.filter(x => CLASSES[x.class_key]?.role !== 'tank');
   const chooseSingleTarget = () => {
-    if (tauntingTank) return tauntingTank;
     if (interceptingTank && Math.random() < Number(effects(interceptingTank).interceptChance || 0.35)) return interceptingTank;
-    if (wounded.length && Math.random() < 0.65) return pick(wounded);
-    if (tanks.length && Math.random() < 0.70) return pick(tanks);
+    const roll=Math.random();
+    if(latestTank && roll<0.55)return latestTank;
+    if(otherTanks.length && roll<0.75)return pick(otherTanks);
+    if(nonTanks.length)return pick(nonTanks);
     return pick(players);
   };
   const target = chooseSingleTarget();
@@ -1425,8 +1463,7 @@ async function bossTurn(id) {
     const aliveNow = battlePlayers(id).filter(x => x.status === 'alive');
     if (!aliveNow.length) break;
     const liveTanks = aliveNow.filter(x => CLASSES[x.class_key]?.role === 'tank');
-    const forcedTank = aliveNow.find(x => CLASSES[x.class_key]?.role === 'tank' && effects(x).tauntRounds > 0);
-    const t = forcedTank || (liveTanks.length && Math.random() < 0.72 ? pick(liveTanks) : pick(aliveNow));
+    const latestTank = aliveNow.find(x => x.user_id === String(state.latestTankAggroUserId || '') && CLASSES[x.class_key]?.role === 'tank'); const others=liveTanks.filter(x=>!latestTank||x.user_id!==latestTank.user_id); const nonTanks=aliveNow.filter(x=>CLASSES[x.class_key]?.role!=='tank'); const roll=Math.random(); const t = latestTank&&roll<0.55?latestTank:others.length&&roll<0.75?pick(others):nonTanks.length?pick(nonTanks):pick(aliveNow);
     if (Math.random() * 100 >= m.miss) {
       const minionType = m.damageType || 'physical';
       const r = damageTarget(id, t, rand(...m.damage), minionType);
@@ -1439,7 +1476,7 @@ async function bossTurn(id) {
     if (summonDamage) state.log.push(`🎯 Босс и его миньоны дополнительно атакуют призывы игроков: **${summonDamage} урона**.`);
   }
 
-  state.log = state.log.slice(-12);
+  if(Number(state.latestTankAggroRounds||0)>0){state.latestTankAggroRounds--;if(state.latestTankAggroRounds<=0)state.latestTankAggroUserId=null;} state.log = state.log.slice(-12);
   saveState(b, state);
   for (const p of battlePlayers(id)) {
     const e = effects(p);
@@ -1707,7 +1744,7 @@ async function handle(interaction) {
   if (interaction.customId === `wb_status_${id}`) {
     const c = CLASSES[p.class_key], e = effects(p), file = cardFile(c.cardId, 'class');
     const content = `⚔️ ${heroSummary(p)}\n${roleIcon(c.role)} **${c.name}**
-❤️ ${p.hp}/${p.max_hp}${e.shield ? ` • 🛡️ ${e.shield}` : ''}
+❤️ ${p.hp}/${p.max_hp}${e.shield ? ` • ${shieldBreakdown(p,e)}` : ''}
 ${resourceMeta(p.class_key).icon} ${resourceMeta(p.class_key).label}: ${skillResourceValue(p)}/100
 💥 Заряд ульты: ${p.ult_charge || 0}/100
 🗡️ Урон ${c.damage[0]}–${c.damage[1]} • тип: ${c.damageType === 'magic' ? 'магический' : c.damageType === 'holy' ? 'святой' : 'физический'} • промах ${c.miss}% • крит ${CRIT_CHANCE}% ×${CRIT_MULTIPLIER}

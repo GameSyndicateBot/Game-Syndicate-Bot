@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags} = require('discord.js');
+const { AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, MessageFlags} = require('discord.js');
 const { db, getOrCreatePlayer, addCardDust } = require('../database/db');
 const { addPack } = require('../utils/packInventory');
 const { createQuickEventCard, createQuickEventWinnerCard } = require('../images/quickEvent/createQuickEventCard');
@@ -1500,6 +1500,87 @@ function memoryButton(roundId){
   );
 }
 
+
+function mafiaPlayerList(ids, deadIds = []) {
+  const dead = new Set(deadIds || []);
+  return (ids || []).map((id, index) => `${index + 1}. <@${id}>${dead.has(id) ? ' — 💀 выбыл' : ' — 🟢 жив'}`).join('\n') || 'Участников нет.';
+}
+
+async function mafiaSelectOptions(client, ids) {
+  const options = [];
+  for (const id of (ids || []).slice(0, 25)) {
+    const user = await client.users.fetch(id).catch(() => null);
+    options.push({
+      label: String(user?.globalName || user?.username || `Игрок ${id}`).slice(0, 100),
+      description: `ID: ${id}`.slice(0, 100),
+      value: String(id),
+    });
+  }
+  return options;
+}
+
+async function sendMafiaKillMenu(channel, roundId, payload) {
+  const mafia = await channel.client.users.fetch(payload.mafiaId).catch(() => null);
+  if (!mafia) return false;
+  const targets = (payload.alive || []).filter(id => id !== payload.mafiaId);
+  const options = await mafiaSelectOptions(channel.client, targets);
+  if (!options.length) return false;
+  const row = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`quickevent_mafia_kill_${roundId}`)
+      .setPlaceholder('Выбери игрока для убийства')
+      .addOptions(options)
+  );
+  await mafia.send({
+    content: `## 🔪 Твой ночной ход — ночь ${payload.roundNo}\nВыбери жертву в меню ниже. Бот **не выберет случайную цель**, если ты не успеешь.\n\n**Живые участники:**\n${mafiaPlayerList(payload.alive)}`,
+    components: [row],
+    allowedMentions: { parse: [] },
+  }).catch(() => null);
+  return true;
+}
+
+async function mafiaVoteRow(client, roundId, alive) {
+  const options = await mafiaSelectOptions(client, alive);
+  if (!options.length) return [];
+  return [new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`quickevent_mafia_vote_${roundId}`)
+      .setPlaceholder('Выбери, кого изгнать')
+      .addOptions(options)
+  )];
+}
+
+async function handleMafiaKillSelect(interaction, roundId) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => null);
+  const round = db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='mafia_light' AND status='active'").get(roundId);
+  if (!round) return interaction.editReply({ content: 'Игра уже завершена.', components: [] }).catch(() => null);
+  const payload = JSON.parse(round.payload_json || '{}');
+  if (payload.phase !== 'night' || payload.mafiaId !== interaction.user.id) {
+    return interaction.editReply({ content: 'Сейчас ты не можешь выбирать ночную цель.', components: [] }).catch(() => null);
+  }
+  const target = interaction.values?.[0];
+  if (!target || !payload.alive?.includes(target) || target === payload.mafiaId) {
+    return interaction.editReply({ content: 'Эта цель недоступна.', components: [] }).catch(() => null);
+  }
+  payload.nightVictimId = target;
+  db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(payload), roundId);
+  return interaction.editReply({ content: `🔪 Цель выбрана: <@${target}>. До конца ночи выбор можно изменить повторным использованием последнего меню.`, components: [], allowedMentions: { parse: [] } }).catch(() => null);
+}
+
+async function handleMafiaVoteSelect(interaction, roundId) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => null);
+  const round = db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='mafia_light' AND status='active'").get(roundId);
+  if (!round) return interaction.editReply('Игра уже завершена.').catch(() => null);
+  const payload = JSON.parse(round.payload_json || '{}');
+  const target = interaction.values?.[0];
+  if (payload.phase !== 'day' || !payload.alive?.includes(interaction.user.id)) return interaction.editReply('Сейчас ты не можешь голосовать.').catch(() => null);
+  if (!target || !payload.alive.includes(target)) return interaction.editReply('Эта цель уже выбыла.').catch(() => null);
+  payload.votes = payload.votes || {};
+  payload.votes[interaction.user.id] = target;
+  db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(payload), roundId);
+  return interaction.editReply({ content: `🗳️ Твой голос принят: <@${target}>. До окончания дня его можно изменить.`, allowedMentions: { parse: [] } }).catch(() => null);
+}
+
 async function handleMafiaJoin(interaction,roundId){
   const round=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND type='mafia_light' AND status='active'").get(roundId);
   if(!round)return interaction.reply({content:'Игра уже завершена.',flags:MessageFlags.Ephemeral});
@@ -1521,23 +1602,33 @@ async function startMafia(channel,roundId){
   if(round.message_id){
     const registrationMessage=await channel.messages.fetch(round.message_id).catch(()=>null);
     if(registrationMessage)await registrationMessage.edit({
-      content:`## 🔫 MAFIA LITE — регистрация завершена\nУчастников: **${p.players.length}**. Игра начинается, роли отправляются в личные сообщения.`,
+      content:`## 🔫 MAFIA LITE — регистрация завершена\nУчастников: **${p.players.length}**. Игра начинается.\n\n**Список участников:**\n${mafiaPlayerList(p.players)}`,
       components:[],
       allowedMentions:{parse:[]},
     }).catch(()=>{});
   }
-  for(const id of p.players){const u=await channel.client.users.fetch(id).catch(()=>null);if(u)await u.send(id===p.mafiaId?'🔪 Ты убийца в Mafia Lite. Ночью отправь мне: `убить ID_игрока` или упомяни жертву.':'🙂 Ты мирный в Mafia Lite. Днём голосуй сообщением `голос @игрок`.').catch(()=>{});}
-  await channel.send(`## 🌙 Mafia Lite — ночь ${p.roundNo}\nРоли отправлены в ЛС. Убийца выбирает жертву. Ночь длится **45 секунд**.`);
+  for(const id of p.players){
+    const u=await channel.client.users.fetch(id).catch(()=>null);
+    if(u && id!==p.mafiaId) await u.send(`🙂 Ты мирный в Mafia Lite. Днём голосуй через меню в игровом канале.\n\n**Участники:**\n${mafiaPlayerList(p.players)}`).catch(()=>{});
+  }
+  await sendMafiaKillMenu(channel,roundId,p);
+  await channel.send({content:`## 🌙 Mafia Lite — ночь ${p.roundNo}\nРоли отправлены в ЛС. Убийца получил личное меню выбора жертвы. Ночь длится **45 секунд**.\n\n**Участники:**\n${mafiaPlayerList(p.players)}`,allowedMentions:{parse:[]}});
   addRuntimeTimer(roundId,setTimeout(()=>resolveMafiaNight(channel,roundId).catch(console.error),45*1000));
 }
 async function resolveMafiaNight(channel,roundId){
   const r=db.prepare("SELECT * FROM quick_event_rounds WHERE id=? AND status='active'").get(roundId);if(!r)return;
   const p=JSON.parse(r.payload_json||'{}');if(p.phase!=='night')return;
-  let victim=p.nightVictimId;
-  if(!victim||!p.alive.includes(victim)||victim===p.mafiaId) victim=pick(p.alive.filter(x=>x!==p.mafiaId));
-  p.alive=p.alive.filter(x=>x!==victim);p.phase='day';p.votes={};delete p.nightVictimId;
+  const victim=p.nightVictimId;
+  const validVictim=Boolean(victim&&p.alive.includes(victim)&&victim!==p.mafiaId);
+  if(validVictim)p.alive=p.alive.filter(x=>x!==victim);
+  p.phase='day';p.votes={};delete p.nightVictimId;
   db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(p),roundId);
-  await channel.send(`## ☀️ Mafia Lite — день ${p.roundNo}\nНочью погиб <@${victim}>.\nЖивые игроки голосуют: **голос @игрок**. На голосование 60 секунд.`);
+  const components=await mafiaVoteRow(channel.client,roundId,p.alive);
+  await channel.send({
+    content:`## ☀️ Mafia Lite — день ${p.roundNo}\n${validVictim?`Ночью погиб <@${victim}>.`:'Убийца не выбрал цель — этой ночью никто не погиб.'}\nВыберите игрока для изгнания в меню ниже. На голосование **60 секунд**.\n\n**Участники:**\n${mafiaPlayerList(p.players,p.players.filter(id=>!p.alive.includes(id)))}`,
+    components,
+    allowedMentions:{parse:[]},
+  });
   if(await checkMafiaEnd(channel,r,p))return;
   addRuntimeTimer(roundId,setTimeout(()=>resolveMafiaVote(channel,roundId).catch(console.error),60*1000));
 }
@@ -1549,7 +1640,8 @@ async function resolveMafiaVote(channel,roundId){
   if(kicked){p.alive=p.alive.filter(x=>x!==kicked);await channel.send(`🗳️ По итогам голосования выгнан <@${kicked}>.`);}else await channel.send('🗳️ Голоса не собраны — никто не выгнан.');
   if(await checkMafiaEnd(channel,r,p))return;
   p.phase='night';p.roundNo=Number(p.roundNo||1)+1;p.votes={};db.prepare('UPDATE quick_event_rounds SET payload_json=? WHERE id=?').run(JSON.stringify(p),roundId);
-  await channel.send(`## 🌙 Mafia Lite — ночь ${p.roundNo}\nУбийца снова выбирает жертву. 45 секунд.`);
+  await sendMafiaKillMenu(channel,roundId,p);
+  await channel.send({content:`## 🌙 Mafia Lite — ночь ${p.roundNo}\nУбийца получил новое личное меню выбора жертвы. **45 секунд**.\n\n**Живые участники:**\n${mafiaPlayerList(p.alive)}`,allowedMentions:{parse:[]}});
   addRuntimeTimer(roundId,setTimeout(()=>resolveMafiaNight(channel,roundId).catch(console.error),45*1000));
 }
 async function checkMafiaEnd(channel,round,p){
@@ -1572,6 +1664,8 @@ async function resolveBomb(channel,roundId){
 
 async function handleQuickEventComponent(interaction){
   if(interaction.customId.startsWith('quickevent_mafia_join_')) return handleMafiaJoin(interaction,Number(interaction.customId.slice('quickevent_mafia_join_'.length)));
+  if(interaction.customId.startsWith('quickevent_mafia_kill_') && interaction.isStringSelectMenu()) return handleMafiaKillSelect(interaction,Number(interaction.customId.slice('quickevent_mafia_kill_'.length)));
+  if(interaction.customId.startsWith('quickevent_mafia_vote_') && interaction.isStringSelectMenu()) return handleMafiaVoteSelect(interaction,Number(interaction.customId.slice('quickevent_mafia_vote_'.length)));
   if(!interaction.isButton())return false;
   initTables();
 
