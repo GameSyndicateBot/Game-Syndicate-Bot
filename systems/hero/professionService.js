@@ -109,6 +109,74 @@ ensureColumn('orders_completed', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('dust_earned', 'INTEGER NOT NULL DEFAULT 0');
 db.prepare("UPDATE hero_professions SET energy_updated_at=COALESCE(energy_updated_at,updated_at,created_at,CURRENT_TIMESTAMP)").run();
 
+db.exec(`
+CREATE TABLE IF NOT EXISTS hero_profession_adventures (
+  user_id TEXT NOT NULL,
+  profession_key TEXT NOT NULL,
+  streak INTEGER NOT NULL DEFAULT 0,
+  best_streak INTEGER NOT NULL DEFAULT 0,
+  successes INTEGER NOT NULL DEFAULT 0,
+  failures INTEGER NOT NULL DEFAULT 0,
+  last_approach TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id, profession_key)
+);
+`);
+
+const ADVENTURE_APPROACHES = Object.freeze({
+  safe: { name:'Безопасный путь', icon:'🟢', success:0.92, commonQty:1, rareBonus:-0.02, description:'Надёжная добыча и больше обычных ресурсов.' },
+  balanced: { name:'Обычная добыча', icon:'⚖️', success:0.80, commonQty:0, rareBonus:0.03, description:'Сбалансированный шанс успеха и редких находок.' },
+  risky: { name:'Рискованный поиск', icon:'🔴', success:0.64, commonQty:0, rareBonus:0.12, description:'Высокий риск, но лучший шанс редкой добычи.' },
+});
+
+const ADVENTURE_SCENES = Object.freeze({
+  herbalist: {
+    title:'🌿 Поход травника', intro:'Перед тобой три маршрута среди лугов, болот и лесных троп.',
+    safe:'Ты обследуешь знакомую поляну и бережно собираешь растения.',
+    balanced:'Ты уходишь глубже в лес в поисках необычных трав.',
+    risky:'Ты пробираешься к опасным зарослям, где редко бывают другие собиратели.'
+  },
+  miner: {
+    title:'⛏️ Шахтёрская вылазка', intro:'В старой шахте расходятся три тоннеля.',
+    safe:'Ты работаешь у устойчивой и хорошо знакомой жилы.',
+    balanced:'Ты исследуешь заброшенный боковой тоннель.',
+    risky:'Ты спускаешься на глубокий уровень с редкими, но нестабильными жилами.'
+  },
+  lumberjack: {
+    title:'🪓 Лесная заготовка', intro:'Перед тобой безопасная опушка, чаща и древняя роща.',
+    safe:'Ты заготавливаешь древесину на знакомой опушке.',
+    balanced:'Ты идёшь в чащу за более ценной добычей.',
+    risky:'Ты входишь в древнюю рощу, где путь опаснее, а находки ценнее.'
+  },
+  fisher: {
+    title:'🎣 Рыбацкий выход', intro:'Можно выбрать тихую заводь, открытую воду или опасную глубину.',
+    safe:'Ты забрасываешь снасти в тихой и проверенной заводи.',
+    balanced:'Ты выходишь на открытую воду в поисках хорошего улова.',
+    risky:'Ты направляешься к глубине, где встречается самый редкий улов.'
+  },
+  hunter: {
+    title:'🏹 Охотничья вылазка', intro:'Следы ведут к окраине леса, в чащу и к опасному логову.',
+    safe:'Ты идёшь по свежему и понятному следу у окраины леса.',
+    balanced:'Ты выслеживаешь зверя в густой чаще.',
+    risky:'Ты направляешься к опасному логову ради редкого трофея.'
+  },
+});
+
+function getAdventureStats(userId, professionKey){
+  const id=String(userId), key=String(professionKey);
+  db.prepare(`INSERT OR IGNORE INTO hero_profession_adventures(user_id,profession_key) VALUES(?,?)`).run(id,key);
+  return db.prepare('SELECT * FROM hero_profession_adventures WHERE user_id=? AND profession_key=?').get(id,key);
+}
+
+function streakBonuses(streak){
+  const n=Math.max(0,Number(streak)||0);
+  if(n>=10) return { rare:0.15, quantityChance:0.05, label:'🔥 Серия 10+: +15% к редкой добыче и 5% шанс +1 ресурса' };
+  if(n>=5) return { rare:0.10, quantityChance:0, label:'🔥 Серия 5+: +10% к редкой добыче' };
+  if(n>=3) return { rare:0.05, quantityChance:0, label:'🔥 Серия 3+: +5% к редкой добыче' };
+  return { rare:0, quantityChance:0, label:null };
+}
+
+
 function xpNeeded(level) { return Math.floor(80 + Math.max(0, Number(level) - 1) * 45 + Math.pow(Math.max(0, Number(level)-1), 1.35) * 4); }
 function energyMaxForLevel(level) { return BASE_ENERGY_MAX + Math.floor(Math.max(0, Number(level)-1) / 5) * 5; }
 function energyCostForLevel(level) { return Number(level) >= 40 ? 17 : Number(level) >= 20 ? 19 : BASE_ENERGY_COST; }
@@ -237,29 +305,54 @@ function specializationBonus(row, drop) {
   }
   return {chance:0,quantity:0};
 }
-function work(userId){
+function work(userId,approachKey='balanced'){
   const row=getProfession(userId); if(!row)return {ok:false,reason:'missing'};
+  const approach=ADVENTURE_APPROACHES[approachKey];
+  if(!approach)return {ok:false,reason:'approach'};
   const cost=energyCostForLevel(row.level);
   if(row.energy<cost)return {ok:false,reason:'energy',energy:row.energy,maxEnergy:row.energy_max,waitMs:msUntilEnergy(row,cost)};
+
+  const stats=getAdventureStats(userId,row.profession_key);
+  const currentStreak=Math.max(0,Number(stats.streak)||0);
+  const activeStreakBonus=streakBonuses(currentStreak);
+  const success=Math.random()<=approach.success;
+  const now=new Date().toISOString().replace('T',' ').replace('Z','');
   const rewards=[];
-  const tool=require('./playerCorrectionService').toolInfo(userId,row.profession_key);
-  const rareBonus=rareBonusForLevel(row.level)+(Number(tool.def?.rare||0)/100);
-  const qtyBonus=quantityBonusForLevel(row.level)+Number(tool.def?.qty||0);
-  for(const drop of WORK_TABLES[row.profession_key]||[]){
-    const spec=specializationBonus(row,drop);
-    const chance=Math.min(1,drop.chance+(drop.tier==='rare'?rareBonus:rareBonus/3)+spec.chance);
-    if(Math.random()<=chance){
-      const q=randomInt(drop.min,drop.max)+(drop.tier==='common'?qtyBonus:0)+spec.quantity;
-      grantItem(userId,drop.key,q,'profession');
-      rewards.push([drop.key,q]);
+
+  if(success){
+    const tool=require('./playerCorrectionService').toolInfo(userId,row.profession_key);
+    const rareBonus=rareBonusForLevel(row.level)+(Number(tool.def?.rare||0)/100)+approach.rareBonus+activeStreakBonus.rare;
+    const qtyBonus=quantityBonusForLevel(row.level)+Number(tool.def?.qty||0)+approach.commonQty;
+    for(const drop of WORK_TABLES[row.profession_key]||[]){
+      const spec=specializationBonus(row,drop);
+      const chance=Math.min(1,Math.max(0,drop.chance+(drop.tier==='rare'?rareBonus:rareBonus/3)+spec.chance));
+      if(Math.random()<=chance){
+        let q=randomInt(drop.min,drop.max)+(drop.tier==='common'?qtyBonus:0)+spec.quantity;
+        if(activeStreakBonus.quantityChance>0 && Math.random()<activeStreakBonus.quantityChance) q+=1;
+        grantItem(userId,drop.key,q,'profession_adventure');
+        rewards.push([drop.key,q]);
+      }
     }
   }
-  const totalResources=rewards.reduce((s,[,q])=>s+q,0);
-  const now=new Date().toISOString().replace('T',' ').replace('Z','');
+
+  const totalResources=rewards.reduce((sum,[,q])=>sum+q,0);
   db.prepare('UPDATE hero_professions SET energy=?,energy_updated_at=?,work_count=work_count+1,last_work_at=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?')
     .run(row.energy-cost,now,now,userId);
-  const progress=addProfessionXp(userId,35,{resources:totalResources});
-  return {ok:true,rewards,energy:Math.min(progress.row.energy,energyMaxForLevel(progress.level)),maxEnergy:energyMaxForLevel(progress.level),cost,level:progress.level,xp:progress.xp,leveled:progress.gained>0,gained:progress.gained};
+
+  let nextStreak=0, bestStreak=Math.max(0,Number(stats.best_streak)||0);
+  if(success){ nextStreak=currentStreak+1; bestStreak=Math.max(bestStreak,nextStreak); }
+  db.prepare(`UPDATE hero_profession_adventures SET streak=?,best_streak=?,successes=successes+?,failures=failures+?,last_approach=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND profession_key=?`)
+    .run(nextStreak,bestStreak,success?1:0,success?0:1,approachKey,String(userId),row.profession_key);
+
+  const xpGain=success?35:12;
+  const progress=addProfessionXp(userId,xpGain,{resources:totalResources});
+  return {
+    ok:true,success,approach:approachKey,approachData:approach,rewards,
+    energy:Math.min(progress.row.energy,energyMaxForLevel(progress.level)),maxEnergy:energyMaxForLevel(progress.level),cost,
+    level:progress.level,xp:progress.xp,xpGain,leveled:progress.gained>0,gained:progress.gained,
+    streak:nextStreak,previousStreak:currentStreak,bestStreak,streakBonus:streakBonuses(nextStreak),
+    scene:ADVENTURE_SCENES[row.profession_key]||null
+  };
 }
 function chooseSpecialization(userId,key){
   const row=getProfession(userId); if(!row)return {ok:false,reason:'missing'};
@@ -297,8 +390,8 @@ function getMilestones(level){
 }
 
 module.exports={
-  PROFESSIONS,SPECIALIZATIONS,WORK_TABLES,BASE_ENERGY_MAX,BASE_ENERGY_COST,ENERGY_REGEN_PER_HOUR,LEVEL_CAP,
-  xpNeeded,energyMaxForLevel,energyCostForLevel,rareBonusForLevel,getProfession,chooseProfession,changeProfession,processProfessionMaterial,PROFESSION_CHANGE_COST,work,
+  PROFESSIONS,SPECIALIZATIONS,WORK_TABLES,ADVENTURE_APPROACHES,ADVENTURE_SCENES,BASE_ENERGY_MAX,BASE_ENERGY_COST,ENERGY_REGEN_PER_HOUR,LEVEL_CAP,
+  xpNeeded,energyMaxForLevel,energyCostForLevel,rareBonusForLevel,getProfession,getAdventureStats,streakBonuses,chooseProfession,changeProfession,processProfessionMaterial,PROFESSION_CHANGE_COST,work,
   chooseSpecialization,addProfessionXp,getProfessionCounts,listProfessionMembers,getProfessionLeaders,
   getAllProfessionLeaders,getMilestones
 };
