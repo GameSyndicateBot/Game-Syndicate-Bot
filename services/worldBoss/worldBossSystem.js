@@ -192,11 +192,23 @@ function chooseUniqueBoss() {
   return pick(available.length ? available : BOSSES);
 }
 
+function raidSizeMultiplier(n) {
+  const players = clamp(Math.round(Number(n || 6)), 4, 20);
+  // Базовые параметры конфигурации рассчитаны на 6 участников.
+  // До 6 человек масштаб мягко снижается, после 6 — растёт почти линейно.
+  if (players <= 6) return 0.72 + (players - 4) * 0.14; // 4=0.72, 5=0.86, 6=1.00
+  return Math.min(2.20, 1 + (players - 6) * 0.15);      // 12=1.90
+}
 function scaledHp(base, n) {
-  const players = Math.max(4, Number(n || 4));
-  const multiplier = Math.min(3.5, 1 + 0.22 * Math.pow(players - 4, 0.85));
-  // V17.0.3: небольшой общий запас прочности, чтобы бой не заканчивался слишком быстро.
-  return Math.round(base * multiplier * 1.08);
+  return Math.round(Number(base || 1) * raidSizeMultiplier(n));
+}
+function bossMinionHpMultiplier(n) {
+  const players = clamp(Math.round(Number(n || 6)), 4, 20);
+  return Math.min(1.75, players <= 6 ? 0.90 + (players - 4) * 0.05 : 1 + (players - 6) * 0.10);
+}
+function bossMinionDamageMultiplier(n) {
+  const players = clamp(Math.round(Number(n || 6)), 4, 20);
+  return Math.min(1.30, players <= 6 ? 0.94 + (players - 4) * 0.03 : 1 + (players - 6) * 0.04);
 }
 
 function buttons(b) {
@@ -512,7 +524,7 @@ async function startCombat(id) {
     s.log.push(`💣 <@${p.user_id}> наносит боссу **${flat}** алхимического урона.`);
   }
   const startHp = Math.max(0, hp - bombTotal);
-  if (boss?.mechanic === 'dragon_eggs') { const egg=MINIONS[2058]; s.minions=s.minions||[]; for(let i=0;i<2;i++) s.minions.push({cardId:2058,instanceId:`2058-start-${Date.now()}-${i}`,provoking:false,ownerBossCardId:boss.cardId,name:egg.name,hp:200,maxHp:200,damage:[0,0],miss:0,damageType:'magic',isDragonEgg:true}); s.log.push('🥚 Багровый Дракон начинает бой с двумя Драконьими яйцами.'); }
+  if (boss?.mechanic === 'dragon_eggs') { const egg=MINIONS[2058]; const eggHp=Math.round(egg.maxHp*bossMinionHpMultiplier(ps.length)); s.minions=s.minions||[]; for(let i=0;i<2;i++) s.minions.push({cardId:2058,instanceId:`2058-start-${Date.now()}-${i}`,provoking:false,ownerBossCardId:boss.cardId,name:egg.name,hp:eggHp,maxHp:eggHp,damage:[0,0],miss:0,damageType:'magic',isDragonEgg:true}); s.log.push(`🥚 Багровый Дракон начинает бой с двумя Драконьими яйцами по **${eggHp} HP**.`); }
   s.log.push(`⚔️ Инициатива определена. Бой начался!${bombTotal ? ` Бомбы наносят суммарно **${bombTotal}** урона.` : ''}`); saveState(b, s);
   db.prepare("UPDATE world_boss_battles SET status='active',boss_hp=?,boss_max_hp=?,round_no=1,turn_index=0,turn_deadline=? WHERE id=?").run(startHp, hp, Date.now() + TURN_MS, id); await refresh(id); if (startHp <= 0) return finish(id, true); armTurn(id);
 }
@@ -609,6 +621,38 @@ function holyBonus(target, sourceClass) {
   if (sourceClass !== 'priest') return 1;
   return target?.undead || target?.dark ? 1.35 : 1;
 }
+function activateShadowDome(b, state, cfg) {
+  if (state.shadowDomeTriggered) return;
+  state.shadowDomeTriggered = true;
+  state.shadowDomeActive = true;
+  const raidSize = battlePlayers(b.id).filter(x => x.status === 'alive').length || battlePlayers(b.id).length || 6;
+  const shadowIds = [2045, 2046];
+  // Купол всегда получает собственных защитников. Старые тени заменяются,
+  // чтобы механика не зависела от случайного состояния призывов перед 35% HP.
+  state.minions = (state.minions || []).filter(m => !shadowIds.includes(Number(m.cardId)));
+  for (const minionId of shadowIds) {
+    const mc = MINIONS[minionId];
+    const hp = Math.round(mc.maxHp * bossMinionHpMultiplier(raidSize));
+    const dmgScale = bossMinionDamageMultiplier(raidSize);
+    state.minions.push({
+      cardId:minionId,
+      instanceId:`dome-${minionId}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      provoking:Boolean(mc.provoking),
+      ownerBossCardId:cfg.cardId,
+      name:mc.name,
+      hp,
+      maxHp:hp,
+      damage:[Math.round(mc.damage[0]*dmgScale),Math.round(mc.damage[1]*dmgScale)],
+      miss:mc.miss,
+      damageType:mc.damageType || 'magic',
+      physicalResist:mc.physicalResist || 0,
+      magicResist:mc.magicResist || 0,
+      dark:Boolean(mc.dark),
+      isDomeShadow:true,
+    });
+  }
+  state.log.push('🛡️ Теневой купол активирован: призваны две тени, а входящий урон по боссу снижен на 70% до их уничтожения.');
+}
 function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null, pierce = 0) {
   const cfg = BOSSES.find(x => x.cardId === b.boss_card_id) || {};
   const minions = (state.minions || []).filter(x => Number(x.hp || 0) > 0);
@@ -637,15 +681,15 @@ function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null
       }
     }
     state.minions = state.minions.filter(x => x.hp > 0);
-    if (cfg.mechanic === 'shadow_dome' && state.shadowDomeActive && !state.minions.length) { state.shadowDomeActive=false; state.log.push('✨ Все тени уничтожены — Теневой купол исчезает.'); }
+    if (cfg.mechanic === 'shadow_dome' && state.shadowDomeActive && !(state.minions||[]).some(x=>x.hp>0 && x.isDomeShadow)) { state.shadowDomeActive=false; state.log.push('✨ Все тени уничтожены — Теневой купол исчезает.'); }
     saveState(b,state);
     return {dealt,target:targetMinion.name,minion:true,died};
   }
 
   const hpRatio = Number(b.boss_hp||0)/Math.max(1,Number(b.boss_max_hp||1));
-  if (cfg.mechanic === 'shadow_dome' && !state.shadowDomeTriggered && hpRatio <= 0.35) { state.shadowDomeTriggered=true; state.shadowDomeActive=true; state.log.push('🛡️ Теневой Страж активирует **Теневой купол**!'); }
-  if (cfg.mechanic === 'shadow_dome' && state.shadowDomeActive && (state.minions||[]).some(x=>x.hp>0)) amount *= 0.20;
-  if (cfg.mechanic === 'shadow_dome' && state.shadowDomeActive && !(state.minions||[]).some(x=>x.hp>0)) state.shadowDomeActive=false;
+  if (cfg.mechanic === 'shadow_dome' && !state.shadowDomeTriggered && hpRatio <= 0.35) activateShadowDome(b, state, cfg);
+  if (cfg.mechanic === 'shadow_dome' && state.shadowDomeActive && (state.minions||[]).some(x=>x.hp>0 && x.isDomeShadow)) amount *= 0.30;
+  if (cfg.mechanic === 'shadow_dome' && state.shadowDomeActive && !(state.minions||[]).some(x=>x.hp>0 && x.isDomeShadow)) state.shadowDomeActive=false;
 
   const overheatMul = cfg.mechanic === 'overheat' && Number(state.overheatVulnerableRounds||0)>0 ? 1.25 : 1;
   const vulnerability = (Number(state.bossVulnerabilityOwnerTurns||0)>0 ? 1+Number(state.bossVulnerability||0) : 1) * overheatMul;
@@ -653,8 +697,8 @@ function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null
   const dealt = Math.min(adjusted,b.boss_hp);
   db.prepare('UPDATE world_boss_battles SET boss_hp=MAX(0,boss_hp-?) WHERE id=?').run(adjusted,b.id);
   const rageGain = cfg.mechanic === 'dragon_birth'
-    ? Math.min(4, Math.max(1, Math.ceil(dealt / 90)))
-    : Math.min(14, Math.max(2, Math.ceil(dealt / 30)));
+    ? Math.min(3, Math.max(1, Math.ceil(dealt / 140)))
+    : Math.min(5, Math.max(1, Math.ceil(dealt / 85)));
   state.rage = clamp(Number(state.rage||0) + rageGain, 0, 100);
   if (cfg.mechanic === 'overheat') {
     const last = Number(state.lastOverheatRound || -99);
@@ -667,7 +711,7 @@ function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null
     }
   }
   const freshHp=Math.max(0,Number(b.boss_hp||0)-dealt);
-  if (cfg.mechanic === 'shadow_dome' && !state.shadowDomeTriggered && freshHp/Math.max(1,Number(b.boss_max_hp||1))<=0.35) {state.shadowDomeTriggered=true;state.shadowDomeActive=true;state.log.push('🛡️ Теневой купол активирован: пока живы тени, урон снижен на 80%.');}
+  if (cfg.mechanic === 'shadow_dome' && !state.shadowDomeTriggered && freshHp/Math.max(1,Number(b.boss_max_hp||1))<=0.35) activateShadowDome(b, state, cfg);
   saveState(b,state);
   return {dealt,target:b.boss_name,minion:false};
 }
@@ -852,7 +896,7 @@ async function perform(id, userId, action, auto = false, targetId = null) {
       addLog(b, curseText);
     }
     b=db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const uniqueBoss=BOSSES.find(x=>x.cardId===b.boss_card_id);
-    if(uniqueBoss?.mechanic === 'storm_charge'){const ss=stateOf(b);ss.stormCharge=clamp(Number(ss.stormCharge||0)+20,0,100);ss.log.push(`⚡ Накопление грозы: **${ss.stormCharge}%**.`);if(ss.stormCharge>=100){const victims=shuffle(battlePlayers(id).filter(x=>x.status==='alive')).slice(0,3);let total=0;for(const v of victims)total+=damageTarget(id,v,rand(60,80),'magic').hpDamage;ss.stormCharge=0;ss.log.push(`⚡ **Цепная молния!** ${victims.map(v=>`<@${v.user_id}>`).join(', ')} получают суммарно **${total} HP**.`);}saveState(b,ss);}
+    if(uniqueBoss?.mechanic === 'storm_charge'){const ss=stateOf(b);ss.stormCharge=clamp(Number(ss.stormCharge||0)+20,0,100);ss.log.push(`⚡ Накопление грозы: **${ss.stormCharge}%**.`);if(ss.stormCharge>=100){const victims=shuffle(battlePlayers(id).filter(x=>x.status==='alive')).slice(0,3);let total=0;for(const v of victims)total+=damageTarget(id,v,rand(45,62),'magic').hpDamage;ss.stormCharge=0;ss.log.push(`⚡ **Цепная молния!** ${victims.map(v=>`<@${v.user_id}>`).join(', ')} получают суммарно **${total} HP**.`);}saveState(b,ss);}
     await triggerImmediateBossRage(id);
     if (!battlePlayers(id).some(x => x.status === 'alive')) return finish(id, false);
 
@@ -1306,7 +1350,7 @@ async function bossTurn(id) {
 
   if (boss.mechanic === 'overheat' && state.skipNextBossTurn) { state.skipNextBossTurn=false; state.log.push('🔥 Железный Колосс перегрет и **пропускает ход**.'); if(Number(state.overheatVulnerableRounds||0)>0)state.overheatVulnerableRounds--; saveState(b,state); return; }
   if (boss.mechanic === 'void_absorption' && Number(b.round_no)%4===0) { const victim=pick(players),meta=resourceMeta(victim.class_key),key=meta.key,current=Number(victim[key]||0),drained=Math.min(40,current); db.prepare(`UPDATE world_boss_players SET ${key}=MAX(0,${key}-?) WHERE battle_id=? AND user_id=?`).run(drained,id,victim.user_id); state.log.push(`🕳️ **Поглощение Пустоты:** <@${victim.user_id}> теряет **${drained} ${meta.label.toLowerCase()}**.`); }
-  if (boss.mechanic === 'chaos_rift') { const rift=state.minions.find(m=>m.isChaosRift); if(rift){rift.riftAge=Number(rift.riftAge||0)+1;if(rift.riftAge>=2){const eliteId=pick([2049,2050]),ec=MINIONS[eliteId];state.minions=state.minions.filter(m=>m!==rift);state.minions.push({cardId:eliteId,instanceId:`elite-${Date.now()}`,provoking:Boolean(ec.provoking),ownerBossCardId:boss.cardId,name:ec.name,hp:ec.maxHp,maxHp:ec.maxHp,damage:ec.damage,miss:ec.miss,damageType:ec.damageType||'magic'});state.log.push(`🌀 Разлом не уничтожен — выходит элитный **${ec.name}**!`);}} if(Number(b.round_no)%3===0&&!state.minions.some(m=>m.isChaosRift)){state.minions.push({cardId:9039,instanceId:`rift-${Date.now()}`,name:'Разлом Хаоса',hp:180,maxHp:180,damage:[0,0],miss:100,damageType:'magic',isChaosRift:true,riftAge:0,provoking:false});state.log.push('🌀 Архонт открывает **Разлом Хаоса**. Уничтожьте его за 2 раунда!');} }
+  if (boss.mechanic === 'chaos_rift') { const rift=state.minions.find(m=>m.isChaosRift); if(rift){rift.riftAge=Number(rift.riftAge||0)+1;if(rift.riftAge>=2){const eliteId=pick([2049,2050]),ec=MINIONS[eliteId];state.minions=state.minions.filter(m=>m!==rift);state.minions.push({cardId:eliteId,instanceId:`elite-${Date.now()}`,provoking:Boolean(ec.provoking),ownerBossCardId:boss.cardId,name:ec.name,hp:ec.maxHp,maxHp:ec.maxHp,damage:ec.damage,miss:ec.miss,damageType:ec.damageType||'magic'});state.log.push(`🌀 Разлом не уничтожен — выходит элитный **${ec.name}**!`);}} if(Number(b.round_no)%3===0&&!state.minions.some(m=>m.isChaosRift)){state.minions.push({cardId:9039,instanceId:`rift-${Date.now()}`,name:'Разлом Хаоса',hp:Math.round(180*bossMinionHpMultiplier(players.length)),maxHp:Math.round(180*bossMinionHpMultiplier(players.length)),damage:[0,0],miss:100,damageType:'magic',isChaosRift:true,riftAge:0,provoking:false});state.log.push('🌀 Архонт открывает **Разлом Хаоса**. Уничтожьте его за 2 раунда!');} }
   if (boss.mechanic === 'decay_curse' && Number(b.round_no)%2===0) { const victim=pick(players),e=effects(victim);e.decayCurseStacks=Math.min(3,Number(e.decayCurseStacks||0)+1);e.healingPenaltyTurns=Math.max(Number(e.healingPenaltyTurns||0),3);e.healingPenalty=0.50;updateEffects(id,victim.user_id,e);state.log.push(`☠️ <@${victim.user_id}> получает **Проклятие Разложения** (${e.decayCurseStacks}/3).`); }
   if (boss.mechanic === 'ice_shackles' && Number(b.round_no)%3===0) { const victim=pick(players),e=effects(victim);e.skillSilencedTurns=Math.max(Number(e.skillSilencedTurns||0),1);e.ultSilencedTurns=Math.max(Number(e.ultSilencedTurns||0),1);updateEffects(id,victim.user_id,e);state.log.push(`❄️ **Ледяные оковы:** на следующем ходу <@${victim.user_id}> доступна только обычная атака.`); }
   if (boss.mechanic === 'chain_mastery' && (Number(b.round_no) === 1 || Number(b.round_no) % 2 === 0)) {
@@ -1374,15 +1418,22 @@ async function bossTurn(id) {
     for (let i = 0; i < summonCount; i++) {
       const minionId = pick(allowed);
       const cfg = MINIONS[minionId];
+      const hpScale = bossMinionHpMultiplier(players.length);
+      const damageScale = bossMinionDamageMultiplier(players.length);
+      const scaledMinionHp = Math.max(1, Math.round(cfg.maxHp * hpScale));
+      const scaledMinionDamage = [
+        Math.max(0, Math.round(Number(cfg.damage?.[0] || 0) * damageScale)),
+        Math.max(0, Math.round(Number(cfg.damage?.[1] || 0) * damageScale)),
+      ];
       state.minions.push({
         cardId: minionId,
         instanceId: `${minionId}-${Date.now()}-${i}-${Math.random().toString(36).slice(2,7)}`,
         provoking: Boolean(cfg.provoking),
         ownerBossCardId: boss.cardId,
         name: cfg.name,
-        hp: cfg.maxHp,
-        maxHp: cfg.maxHp,
-        damage: cfg.damage,
+        hp: scaledMinionHp,
+        maxHp: scaledMinionHp,
+        damage: scaledMinionDamage,
         miss: cfg.miss,
         damageType: cfg.damageType || 'physical',
         physicalResist: cfg.physicalResist || 0,
@@ -1390,7 +1441,7 @@ async function bossTurn(id) {
         undead: Boolean(cfg.undead),
         dark: Boolean(cfg.dark),
       });
-      summoned.push(`**${cfg.name}** — ❤️ ${cfg.maxHp}`);
+      summoned.push(`**${cfg.name}** — ❤️ ${scaledMinionHp}`);
     }
 
     state.lastSummonRound = b.round_no;
@@ -1405,7 +1456,9 @@ async function bossTurn(id) {
     let total = 0;
     const rageType = pickDamageType(boss.attackTypes, attackDamageType);
     const totalBudget = Math.max(120, Number(boss.ultimateTotal || Math.round(((boss.damage[0] + boss.damage[1]) / 2) * 3.2)));
-    const perTargetBase = Math.max(12, Math.round(totalBudget / Math.max(1, players.length)));
+    // Для рейдов 6–12 человек ульта должна оставаться опасной для каждого,
+    // а не становиться слабее из-за деления фиксированного бюджета на большую группу.
+    const perTargetBase = Math.max(12, Number(boss.ultimatePerTarget || Math.round(totalBudget / Math.max(1, players.length))));
     for (const p of players) {
       const r = damageTarget(id, p, Math.round(perTargetBase * bossDamageMultiplier), rageType);
       total += r.hpDamage;
