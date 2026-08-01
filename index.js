@@ -234,7 +234,7 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
-            if (interaction.customId.startsWith('profwork:')) {
+            if (interaction.customId.startsWith('profwork:') || interaction.customId.startsWith('profmenu:')) {
                 const command = client.commands.get('profession');
                 if (command?.handleComponent) return await command.handleComponent(interaction);
             }
