@@ -310,18 +310,42 @@ function rewardPreview(location, tacticKey='balanced', durationHours=4) {
   const dustMax=Math.max(dustMin,Math.round(location.dust[1]*1.45*Number(tactic.dust||1)*dm.reward));
   return { durationHours:dm.hours, heroXp:[xpMin,xpMax], classXp:[Math.max(10,Math.round(xpMin*0.75)),Math.max(10,Math.round(xpMax*0.75))], dust:[dustMin,dustMax], rareBonus:dm.rare+Number(tactic.rare||0), materialMultiplier:Math.round(Number(tactic.materials||1)*dm.materials*100)/100 };
 }
+const EXPEDITION_BASE_SUCCESS_BY_RARITY = Object.freeze({
+  common: 70,
+  rare: 60,
+  epic: 50,
+  legendary: 40,
+  mythic: 30,
+  exclusive: 20,
+  // Текущие особые мировые маршруты считаются уровнем Exclusive.
+  world: 20,
+});
+
 function computeSuccessChance(hero, location, extraBonuses = {}, tacticKey = 'balanced') {
   const relevant = Number(hero[location.stat] || 0);
   const levelPower = (hero.level - 1) * 2.2;
   const classPower = Math.max(0, relevant - 7) * 1.15;
   const luckPower = hero.luck * 0.55;
   const origin = originBonus(hero.origin_key, location);
-  const difficultyPenalty = location.difficulty * 11;
   const equipment = getEquipmentBonuses(hero.user_id);
   const dailyThemeBonus = Number(location.dailyTheme?.success || 0);
   const weatherBonus = Number(location.weather?.success || 0);
   const tacticBonus = Number(getExpeditionTactic(tacticKey).success || 0);
-  return Math.max(24, Math.min(96, 72 + dailyThemeBonus + weatherBonus + tacticBonus + levelPower + classPower + luckPower + origin + (equipment.expedition_success || 0) + (Number(extraBonuses.expedition_success) || 0) - difficultyPenalty));
+  const rarityKey = String(location.rarity || 'common').toLowerCase();
+  const baseChance = EXPEDITION_BASE_SUCCESS_BY_RARITY[rarityKey] ?? EXPEDITION_BASE_SUCCESS_BY_RARITY.common;
+  const totalChance = baseChance
+    + dailyThemeBonus
+    + weatherBonus
+    + tacticBonus
+    + levelPower
+    + classPower
+    + luckPower
+    + origin
+    + Number(equipment.expedition_success || 0)
+    + Number(extraBonuses.expedition_success || 0);
+
+  // Экипировка и остальные бонусы прибавляются к базе, но итог не выше 90%.
+  return Math.max(0, Math.min(90, totalChance));
 }
 function ensurePlayer(userId) {
   db.prepare(`INSERT OR IGNORE INTO players (user_id, username) VALUES (?, ?)`).run(userId, `Hero ${String(userId).slice(-4)}`);
