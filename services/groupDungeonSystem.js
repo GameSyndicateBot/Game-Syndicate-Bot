@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS dungeon_members(group_id INTEGER NOT NULL,user_id TEX
 CREATE TABLE IF NOT EXISTS dungeon_valuable_luck(user_id TEXT PRIMARY KEY,penalty REAL NOT NULL DEFAULT 0,last_valuable_at TEXT,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS dungeon_window_spawns(guild_id TEXT NOT NULL,window_key TEXT NOT NULL,dungeon_name TEXT NOT NULL,difficulty_key TEXT NOT NULL,difficulty_name TEXT NOT NULL,difficulty_icon TEXT NOT NULL,base_chance REAL NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(guild_id,window_key));
 CREATE TABLE IF NOT EXISTS dungeon_window_entries(guild_id TEXT NOT NULL,window_key TEXT NOT NULL,user_id TEXT NOT NULL,group_id INTEGER NOT NULL,entered_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(guild_id,window_key,user_id));
+CREATE TABLE IF NOT EXISTS dungeon_reward_claims(guild_id TEXT NOT NULL,window_key TEXT NOT NULL,user_id TEXT NOT NULL,claimed_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(guild_id,window_key,user_id));
+CREATE TABLE IF NOT EXISTS dungeon_help_xp_claims(guild_id TEXT NOT NULL,window_key TEXT NOT NULL,user_id TEXT NOT NULL,group_id INTEGER NOT NULL,class_xp INTEGER NOT NULL DEFAULT 0,claimed_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(guild_id,window_key,user_id,group_id));
+CREATE INDEX IF NOT EXISTS idx_dungeon_help_xp_window_user ON dungeon_help_xp_claims(guild_id,window_key,user_id);
 CREATE INDEX IF NOT EXISTS idx_dungeon_groups_status ON dungeon_groups(guild_id,status);
 CREATE INDEX IF NOT EXISTS idx_dungeon_entries_group ON dungeon_window_entries(group_id);
 `);
@@ -109,7 +112,7 @@ function hubEmbed(guildId,imageUrl){
   .setDescription(`${state}\n\nСоберите отряд, выберите героев и изучите **актуальный шанс прохождения** до запуска. Состав, классы и экипировка пересчитываются автоматически.`)
   .addFields(
    {name:'⚔️ Состояние рейдов',value:`🟡 Собираются: **${forming}**\n🟢 Уже в данже: **${active}**\n👥 Героев в походах: **${inRaid}**`,inline:true},
-   {name:'🗝️ Условия входа',value:'Минимум: **4 героя**\nМаксимум: **5 героев**\nОдин поход на человека в каждом окне.',inline:true},
+   {name:'🗝️ Условия входа',value:'Минимум: **4 героя**\nМаксимум: **5 героев**\nМожно участвовать несколько раз. Полная награда — 1 раз за окно; за первые 3 помощи — 25% XP класса.',inline:true},
    {name:'📊 Перед стартом',value:'Откройте группу и нажмите **«Анализ состава»**, чтобы увидеть силу отряда, роли, бонусы и итоговый процент успеха.',inline:false}
   )
   .setImage(imageUrl)
@@ -151,7 +154,6 @@ async function disband(interaction,id){const g=getGroup(id);if(!g||g.status!=='f
 
 async function createGroup(interaction){
  const spawn=getWindowSpawn(interaction.guildId);if(!spawn)return ephemeral(interaction,{content:'Окно данжей сейчас закрыто.'});
- if(usedWindow(interaction.guildId,interaction.user.id,spawn.window_key))return ephemeral(interaction,{content:`Вы уже ходили в подземелье в это окно (${windowLabel(spawn.window)}). Следующий поход будет доступен в следующем окне.`});
  if(userActiveGroup(interaction.guildId,interaction.user.id))return ephemeral(interaction,{content:'Ваш герой уже находится в другой группе или данже.'});
  const hero=getHero(interaction.user.id);if(!hero)return ephemeral(interaction,{content:'Сначала создайте героя в Гильдии.'});
  const expedition=db.prepare("SELECT 1 FROM hero_expeditions WHERE user_id=? AND status='active' LIMIT 1").get(interaction.user.id);if(expedition||hero.status==='expedition')return ephemeral(interaction,{content:'❌ Герой находится в экспедиции и не может создавать группу подземелья.'});if(hero.status!=='ready')return ephemeral(interaction,{content:`❌ Герой сейчас занят: **${hero.status}**.`});
@@ -165,7 +167,7 @@ async function join(interaction,id){
  const g=getGroup(id);if(!g||g.status!=='forming')return ephemeral(interaction,{content:'Эта группа уже недоступна.'});
  if(members(id).length>=MAX_PLAYERS)return ephemeral(interaction,{content:`В этой группе уже максимум участников: **${MAX_PLAYERS}**.`});
  const ctx=windowContext();if(!ctx||g.window_key!==ctx.key)return ephemeral(interaction,{content:'Окно этой группы уже завершилось. Создайте новую группу в актуальное окно.'});
- if(usedWindow(interaction.guildId,interaction.user.id,g.window_key))return ephemeral(interaction,{content:`Вы уже использовали свой поход в это окно (${windowLabel(ctx.window)}).`});
+ 
  if(userActiveGroup(interaction.guildId,interaction.user.id))return ephemeral(interaction,{content:'Вы уже состоите в активной группе.'});
  const hero=getHero(interaction.user.id);if(!hero)return ephemeral(interaction,{content:'Сначала создайте героя.'});const expedition=db.prepare("SELECT 1 FROM hero_expeditions WHERE user_id=? AND status='active' LIMIT 1").get(interaction.user.id);if(expedition||hero.status==='expedition')return ephemeral(interaction,{content:'❌ Герой находится в экспедиции и не может вступить в группу подземелья.'});if(hero.status!=='ready')return ephemeral(interaction,{content:`❌ Герой сейчас занят: **${hero.status}**.`});
  db.prepare('INSERT OR IGNORE INTO dungeon_members(group_id,user_id,class_key,hero_snapshot_json) VALUES(?,?,?,?)').run(id,interaction.user.id,normalizeClassKey(hero.class_key),JSON.stringify(buildHeroSnapshot(interaction.user.id)||{}));const ng=getGroup(id);return interaction.update({embeds:[groupEmbed(id)],components:groupRows(ng,interaction.user.id)});
@@ -178,19 +180,15 @@ async function start(interaction,id){
  const g=getGroup(id);if(!g||g.status!=='forming'||g.leader_id!==interaction.user.id)return ephemeral(interaction,{content:'Начать рейд может только лидер.'});if(!canStartNow())return ephemeral(interaction,{content:'Время старта истекло. Новый рейд можно запустить только до 12:09 или 19:09 МСК.'});
  const ctx=windowContext();if(!ctx||g.window_key!==ctx.key)return ephemeral(interaction,{content:'Эта группа создана для прошлого окна данжей. Создайте новую группу.'});
  const ms=members(id);if(ms.length<MIN_PLAYERS)return ephemeral(interaction,{content:`Нужно минимум ${MIN_PLAYERS} участника. Сейчас: ${ms.length}.`});if(ms.length>MAX_PLAYERS)return ephemeral(interaction,{content:`В один поход можно взять максимум ${MAX_PLAYERS} героев. Сейчас: ${ms.length}.`});
- const already=ms.filter(m=>usedWindow(interaction.guildId,m.user_id,g.window_key));if(already.length)return ephemeral(interaction,{content:`❌ Рейд не запущен. Эти участники уже ходили в данж в текущее окно:
-${already.map(m=>`• <@${m.user_id}>`).join('\n')}
-
-Один человек может пойти только один раз утром и один раз вечером.`});
  const busy=ms.filter(m=>{const h=getHero(m.user_id);const expedition=db.prepare("SELECT 1 FROM hero_expeditions WHERE user_id=? AND status='active' LIMIT 1").get(m.user_id);return !h||h.status!=='ready'||Boolean(expedition);});if(busy.length)return ephemeral(interaction,{content:`❌ Рейд не запущен. Эти герои заняты или находятся в экспедиции:
 ${busy.map(m=>`• <@${m.user_id}>`).join('\n')}
 
 Пусть они завершат активность или покинут группу.`});
  const a=analyze(id),now=Date.now(),end=now+RAID_DURATION_MS;const tx=db.transaction(()=>{
-  for(const m of ms)db.prepare('INSERT INTO dungeon_window_entries(guild_id,window_key,user_id,group_id) VALUES(?,?,?,?)').run(interaction.guildId,g.window_key,m.user_id,id);
+  for(const m of ms)db.prepare('INSERT OR REPLACE INTO dungeon_window_entries(guild_id,window_key,user_id,group_id,entered_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)').run(interaction.guildId,g.window_key,m.user_id,id);
   const changedGroup=db.prepare("UPDATE dungeon_groups SET status='active',success_chance=?,started_at=?,ends_at=? WHERE id=? AND status='forming'").run(a.chance,new Date(now).toISOString(),new Date(end).toISOString(),id);if(!changedGroup.changes)throw new Error('group-changed');
   for(const m of ms){const changed=db.prepare("UPDATE heroes SET status='dungeon',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND status='ready'").run(m.user_id);if(!changed.changes)throw new Error(`busy:${m.user_id}`);}
- });try{tx();}catch(error){return ephemeral(interaction,{content:'❌ Не удалось запустить рейд: кто-то уже использовал поход в это окно или состояние героя изменилось. Обновите группу и повторите запуск.'});}await interaction.update({embeds:[groupEmbed(id,false)],components:[]});await ensureHub(interaction.client,interaction.guildId);
+ });try{tx();}catch(error){return ephemeral(interaction,{content:'❌ Не удалось запустить рейд: состояние одного из героев изменилось. Обновите группу и повторите запуск.'});}await interaction.update({embeds:[groupEmbed(id,false)],components:[]});await ensureHub(interaction.client,interaction.guildId);
 }
 
 function ensureDungeonPlayer(userId){
@@ -238,12 +236,19 @@ async function resolveGroup(client,g){
  const tx=db.transaction(()=>{
   for(const m of ms){
    ensureDungeonPlayer(m.user_id);
-   const dust=Math.round((success?120:30)*diff.reward+Math.random()*(success?80:20));
-   addCardDust(m.user_id,dust,`Награда данжа #${g.id}: ${g.dungeon_name}`);
-   const classXp=Math.round((success?90:25)*diff.reward);
-   grantClassXp(m.user_id,m.class_key,classXp,{completed:success});
+   const rewardWindowKey = g.window_key || `${g.guild_id}:${g.difficulty_key}`;
+   const alreadyRewarded = Boolean(db.prepare('SELECT 1 FROM dungeon_reward_claims WHERE guild_id=? AND window_key=? AND user_id=?').get(g.guild_id,rewardWindowKey,m.user_id));
+   const canReward = !alreadyRewarded;
+   const dust=canReward ? Math.round((success?120:30)*diff.reward+Math.random()*(success?80:20)) : 0;
+   if(canReward) addCardDust(m.user_id,dust,`Награда данжа #${g.id}: ${g.dungeon_name}`);
+   const fullClassXp=Math.round((success?90:25)*diff.reward);
+   const helpCount=alreadyRewarded ? Number(db.prepare('SELECT COUNT(*) AS count FROM dungeon_help_xp_claims WHERE guild_id=? AND window_key=? AND user_id=?').get(g.guild_id,rewardWindowKey,m.user_id)?.count||0) : 0;
+   const canReceiveHelpXp=alreadyRewarded && helpCount<3;
+   const classXp=canReward ? fullClassXp : (canReceiveHelpXp ? Math.max(1,Math.round(fullClassXp*0.25)) : 0);
+   if(classXp>0) grantClassXp(m.user_id,m.class_key,classXp,{completed:canReward&&success});
+   if(canReceiveHelpXp && classXp>0) db.prepare('INSERT OR IGNORE INTO dungeon_help_xp_claims(guild_id,window_key,user_id,group_id,class_xp) VALUES(?,?,?,?,?)').run(g.guild_id,rewardWindowKey,m.user_id,g.id,classXp);
    let valuableName=null,valuableKey=null,valuableItem=null;
-   const won=winnerIds.has(String(m.user_id));
+   const won=canReward && winnerIds.has(String(m.user_id));
    if(won){
     const item=chooseDungeonItem(diff);
     if(item){
@@ -253,7 +258,8 @@ async function resolveGroup(client,g){
     }
    }
    updateValuableLuck(m.user_id,Boolean(valuableName));
-   rewards.push({userId:m.user_id,classKey:m.class_key,dust,classXp,valuable:valuableName,valuableKey,valuableItem});
+   rewards.push({userId:m.user_id,classKey:m.class_key,dust,classXp,valuable:valuableName,valuableKey,valuableItem,repeatParticipation:!canReward,helpXpAwarded:canReceiveHelpXp&&classXp>0,helpRunsUsed:canReceiveHelpXp?helpCount+1:helpCount,helpRunsLimit:3});
+   if(success && canReward) db.prepare('INSERT OR IGNORE INTO dungeon_reward_claims(guild_id,window_key,user_id) VALUES(?,?,?)').run(g.guild_id,rewardWindowKey,m.user_id);
    db.prepare("UPDATE heroes SET status='ready',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND status='dungeon'").run(m.user_id);
   }
   db.prepare("UPDATE dungeon_groups SET status='resolved',resolved_at=CURRENT_TIMESTAMP,success=?,result_json=? WHERE id=?").run(success?1:0,JSON.stringify({version:4,dungeon:g.dungeon_name,difficulty:diff.key,chance:fixedChance,roll:Math.round(successRoll*10000)/10000,rewards}),g.id);
@@ -278,8 +284,8 @@ function dungeonHistoryEmbed(group,page,total){const {rewards}=getDungeonHistory
 function dungeonHistoryComponents(page,total){return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`dng_history_page:${Math.max(0,page-1)}`).setEmoji('⬅️').setLabel('Назад').setStyle(ButtonStyle.Secondary).setDisabled(page<=0),new ButtonBuilder().setCustomId(`dng_history_page:${Math.min(total-1,page+1)}`).setEmoji('➡️').setLabel('Далее').setStyle(ButtonStyle.Secondary).setDisabled(page>=total-1))];}
 async function dungeonHistory(interaction,page=0){const rows=resolvedDungeonRows(interaction.guildId);if(!rows.length)return ephemeral(interaction,{content:'📜 История завершённых подземелий пока пуста.'});const safePage=clamp(Number(page)||0,0,rows.length-1);const payload={embeds:[dungeonHistoryEmbed(rows[safePage],safePage,rows.length)],components:dungeonHistoryComponents(safePage,rows.length)};if((interaction.customId||'').startsWith('dng_history_page:'))return interaction.update(payload);return ephemeral(interaction,payload);}
 
-async function rules(interaction){return ephemeral(interaction,{embeds:[new EmbedBuilder().setColor(0x7c3aed).setTitle('📖 Как работают групповые данжи').setDescription('🌞 Окно: **11:00–12:09 МСК**, запуск до **12:09**.\n🌙 Окно: **18:00–19:09 МСК**, запуск до **19:09**.\n\nКаждый рейд длится **50 минут**. В каждом временном окне для всех появляется одно общее подземелье одной редкости, но проходить его могут несколько независимых групп. Каждый человек может сходить только один раз утром и один раз вечером. Минимум — **4 героя**, максимум — **5 героев**.\n\nШанс зависит от уровня героя и класса, экипировки, силы состава, наличия танка, лекаря и контроля. До старта процент пересчитывается автоматически. После старта он фиксируется.\n\nВсе получают награду. Редкую добычу получают лишь некоторые. После ценной награды личный шанс временно снижается, но никогда не становится нулевым.') ]});}
-async function rewards(interaction){return ephemeral(interaction,{embeds:[new EmbedBuilder().setColor(0xf59e0b).setTitle('🎁 Награды данжей').setDescription('**При победе каждый получает:**\n• GS Dust\n• опыт выбранного класса\n• шанс на найденную экипировку\n\nЧем выше сложность, тем больше обычная награда и шанс ценного предмета. Система распределения уменьшает повторное выпадение редкой добычи одному и тому же игроку, но повторная ценная награда всё равно возможна.\n\nПри поражении выдаются небольшие утешительные Dust и опыт.') ]});}
+async function rules(interaction){return ephemeral(interaction,{embeds:[new EmbedBuilder().setColor(0x7c3aed).setTitle('📖 Как работают групповые данжи').setDescription('🌞 Окно: **11:00–12:09 МСК**, запуск до **12:09**.\n🌙 Окно: **18:00–19:09 МСК**, запуск до **19:09**.\n\nКаждый рейд длится **50 минут**. В каждом временном окне для всех появляется одно общее подземелье одной редкости, но проходить его могут несколько независимых групп. Каждый человек может участвовать несколько раз в одном окне. Полная награда выдаётся только за первое успешное прохождение; после этого можно помогать другим группам. За первые **3 повторных похода** в том же окне выдаётся **25% опыта выбранного класса**, без Dust и предметов. Минимум — **4 героя**, максимум — **5 героев**.\n\nШанс зависит от уровня героя и класса, экипировки, силы состава, наличия танка, лекаря и контроля. До старта процент пересчитывается автоматически. После старта он фиксируется.\n\nВсе получают награду. Редкую добычу получают лишь некоторые. После ценной награды личный шанс временно снижается, но никогда не становится нулевым.') ]});}
+async function rewards(interaction){return ephemeral(interaction,{embeds:[new EmbedBuilder().setColor(0xf59e0b).setTitle('🎁 Награды данжей').setDescription('**Первое успешное прохождение за окно:**\n• GS Dust\n• полный опыт выбранного класса\n• шанс на найденную экипировку\n\n**Повторная помощь:**\n• 25% обычного опыта класса за первые 3 повторных похода\n• без Dust и предметов\n• начиная с 4-й помощи — без наград\n\nЧем выше сложность, тем больше обычная награда и шанс ценного предмета. При поражении до получения основной награды выдаются небольшие утешительные Dust и опыт, а право на полную награду сохраняется.') ]});}
 
 async function handle(interaction){const id=interaction.customId;if(id==='dng_history_open')return dungeonHistory(interaction,0);if(id.startsWith('dng_history_page:'))return dungeonHistory(interaction,Number(id.split(':')[1]||0));if(id==='dng_create')return createGroup(interaction);if(id==='dng_find')return listGroups(interaction,['forming']);if(id==='dng_active')return listGroups(interaction,['active']);if(id==='dng_my'){const g=userActiveGroup(interaction.guildId,interaction.user.id);return g?ephemeral(interaction,{embeds:[groupEmbed(g.id,g.status==='forming')],components:groupRows(g,interaction.user.id)}):ephemeral(interaction,{content:'Вы сейчас не состоите в группе.'});}if(id==='dng_rules')return rules(interaction);if(id==='dng_rewards')return rewards(interaction);if(id==='dng_open_group')return openGroup(interaction,Number(interaction.values[0]));const [action,raw]=id.split(':');const gid=Number(raw);if(action==='dng_join')return join(interaction,gid);if(action==='dng_class')return classMenu(interaction,gid);if(action==='dng_set_class')return setClass(interaction,gid,interaction.values[0]);if(action==='dng_analyze')return analyzeView(interaction,gid);if(action==='dng_leave')return leave(interaction,gid);if(action==='dng_disband')return disband(interaction,gid);if(action==='dng_start')return start(interaction,gid);if(action==='dng_refresh')return interaction.update({embeds:[groupEmbed(gid)],components:groupRows(getGroup(gid),interaction.user.id)});}
 
