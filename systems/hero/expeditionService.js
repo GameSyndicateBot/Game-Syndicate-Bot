@@ -311,14 +311,14 @@ function rewardPreview(location, tacticKey='balanced', durationHours=4) {
   return { durationHours:dm.hours, heroXp:[xpMin,xpMax], classXp:[Math.max(10,Math.round(xpMin*0.75)),Math.max(10,Math.round(xpMax*0.75))], dust:[dustMin,dustMax], rareBonus:dm.rare+Number(tactic.rare||0), materialMultiplier:Math.round(Number(tactic.materials||1)*dm.materials*100)/100 };
 }
 const EXPEDITION_BASE_SUCCESS_BY_RARITY = Object.freeze({
-  common: 70,
-  rare: 60,
-  epic: 50,
-  legendary: 40,
-  mythic: 30,
-  exclusive: 20,
+  common: 50,
+  rare: 45,
+  epic: 40,
+  legendary: 30,
+  mythic: 20,
+  exclusive: 10,
   // Текущие особые мировые маршруты считаются уровнем Exclusive.
-  world: 20,
+  world: 10,
 });
 
 function computeSuccessChance(hero, location, extraBonuses = {}, tacticKey = 'balanced') {
