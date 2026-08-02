@@ -15,6 +15,7 @@ const PROFESSION_KEYS = {
 };
 const RARITY_MULT = { common:1, rare:1.55, epic:2.5, legendary:4.2, mythic:7, exclusive:10 };
 const EQUIPMENT_BASE = { common:140, rare:380, epic:950, legendary:2400, mythic:5600, exclusive:8500 };
+const CONSUMABLE_BASE = { common:18, rare:45, epic:110, legendary:260, mythic:600, exclusive:900 };
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS guild_merchant_sales (
@@ -159,6 +160,35 @@ function sellEquipment(userId,id){
   });
   try{tx();return {ok:true,total,item,balance:getCardDust(userId)};}catch(e){return {ok:false,reason:e.message};}
 }
+
+function consumableBuyPrice(item){
+  const rarity=item?.rarity||'common';
+  return Math.max(5,Math.round(CONSUMABLE_BASE[rarity]||18));
+}
+function sellableConsumables(userId){
+  return getInventory(userId,{type:'consumable',limit:100})
+    .filter(i=>Number(i.quantity||0)>0)
+    .map(i=>({...i,unitPrice:consumableBuyPrice(i)}));
+}
+function sellConsumable(userId,id,quantity=1){
+  const item=sellableConsumables(userId).find(x=>Number(x.id)===Number(id));
+  if(!item)return {ok:false,reason:'missing'};
+  const qty=Math.max(1,Math.min(Number(quantity)||1,Number(item.quantity)||0));
+  if(qty<1)return {ok:false,reason:'missing'};
+  const unit=consumableBuyPrice(item),total=unit*qty;
+  try{return db.transaction(()=>{
+    const current=db.prepare('SELECT quantity FROM hero_inventory WHERE id=? AND user_id=?').get(Number(id),String(userId));
+    if(!current||Number(current.quantity)<qty)throw new Error('missing');
+    const changed=Number(current.quantity)===qty
+      ? db.prepare('DELETE FROM hero_inventory WHERE id=? AND user_id=?').run(Number(id),String(userId))
+      : db.prepare('UPDATE hero_inventory SET quantity=quantity-? WHERE id=? AND user_id=? AND quantity>=?').run(qty,Number(id),String(userId),qty);
+    if(!changed.changes)throw new Error('missing');
+    addCardDust(userId,total);
+    db.prepare('INSERT INTO guild_merchant_sales(user_id,asset_type,asset_key,quantity,dust_paid,unit_price) VALUES(?,?,?,?,?,?)').run(String(userId),'consumable',item.item_key,qty,total,unit);
+    return {ok:true,total,qty,unit,item,balance:getCardDust(userId)};
+  })();}catch(e){return {ok:false,reason:e.message};}
+}
+
 function buyMaterial(userId,key,quantity=1){
   const date=moscowDateKey();
   const row=db.prepare('SELECT * FROM guild_merchant_stock WHERE stock_date=? AND material_key=? AND quantity>=?').get(date,key,quantity);
@@ -183,4 +213,4 @@ function marketSummary(){
   const sorted=Object.entries(PROFESSION_KEYS).map(([key])=>({key,count:Number(counts[key]||0)})).sort((a,b)=>a.count-b.count);
   return {counts,scarce:sorted[0],abundant:sorted.at(-1)};
 }
-module.exports={materialBuyPrice,equipmentBuyPrice,companionBuyPrice,sellableMaterials,sellableEquipment,sellableCompanionRows,sellMaterial,sellEquipment,sellCompanion,saleStock,buyMaterial,marketSummary,professionForMaterial};
+module.exports={materialBuyPrice,equipmentBuyPrice,consumableBuyPrice,companionBuyPrice,sellableMaterials,sellableEquipment,sellableConsumables,sellableCompanionRows,sellMaterial,sellEquipment,sellConsumable,sellCompanion,saleStock,buyMaterial,marketSummary,professionForMaterial};

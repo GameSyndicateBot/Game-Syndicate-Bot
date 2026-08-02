@@ -1,47 +1,15 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { getHero } = require('../systems/hero/heroService');
 const { ITEMS } = require('../systems/hero/itemData');
 const { MATERIALS } = require('../systems/hero/materialData');
 const {
-  PROFESSIONS,SPECIALIZATIONS,ADVENTURE_APPROACHES,ADVENTURE_SCENES,ENERGY_REGEN_PER_HOUR,LEVEL_CAP,xpNeeded,energyMaxForLevel,energyCostForLevel,
-  getProfession,getAdventureStats,chooseProfession,changeProfession,processProfessionMaterial,PROFESSION_CHANGE_COST,work,chooseSpecialization,getProfessionCounts,getMilestones
+  PROFESSIONS,SPECIALIZATIONS,ENERGY_REGEN_PER_HOUR,LEVEL_CAP,xpNeeded,energyMaxForLevel,energyCostForLevel,
+  getProfession,chooseProfession,changeProfession,processProfessionMaterial,PROFESSION_CHANGE_COST,work,chooseSpecialization,getProfessionCounts,getMilestones
 } = require('../systems/hero/professionService');
 const {toolInfo,craftTool,TOOL_TIERS}=require('../systems/hero/playerCorrectionService');
 
 function duration(ms){const m=Math.max(1,Math.ceil(ms/60000));return m>=60?`${Math.floor(m/60)} ч ${m%60} мин`:`${m} мин`;}
 function energyBar(value,max){const filled=Math.max(0,Math.min(10,Math.round((value/Math.max(1,max))*10)));return `${'🟪'.repeat(filled)}${'⬛'.repeat(10-filled)}`;}
-
-function materialName(key){return (MATERIALS[key]||ITEMS[key])?.name||key;}
-function professionAdventureRows(ownerId){
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`profwork:${ownerId}:safe`).setLabel(ADVENTURE_APPROACHES.safe.name).setEmoji(ADVENTURE_APPROACHES.safe.icon).setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`profwork:${ownerId}:balanced`).setLabel(ADVENTURE_APPROACHES.balanced.name).setEmoji(ADVENTURE_APPROACHES.balanced.icon).setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`profwork:${ownerId}:risky`).setLabel(ADVENTURE_APPROACHES.risky.name).setEmoji(ADVENTURE_APPROACHES.risky.icon).setStyle(ButtonStyle.Danger)
-    )
-  ];
-}
-function adventureStartEmbed(row){
-  const p=PROFESSIONS[row.profession_key];
-  const scene=ADVENTURE_SCENES[row.profession_key];
-  const stats=getAdventureStats(row.user_id,row.profession_key);
-  const approaches=Object.values(ADVENTURE_APPROACHES).map(a=>`${a.icon} **${a.name}** — ${a.description}`).join('\n');
-  return new EmbedBuilder().setColor(0x8B5CF6).setTitle(scene?.title||`${p.icon} Добыча ресурсов`)
-    .setDescription(`${scene?.intro||'Выбери способ добычи.'}
-
-${approaches}
-
-🔥 Текущая серия: **${stats?.streak||0}** · рекорд: **${stats?.best_streak||0}**
-⚡ Стоимость: **${energyCostForLevel(row.level)}** энергии · запас: **${row.energy}/${row.energy_max}**
-
-Новые ресурсы не добавляются: добываются только существующие материалы профессии.`);
-}
-function professionResultRows(ownerId, approach){
-  return [new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`profwork:${ownerId}:${approach}`).setLabel('Повторить путь').setEmoji('🔄').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`profmenu:${ownerId}`).setLabel('Назад к выбору').setEmoji('⬅️').setStyle(ButtonStyle.Secondary)
-  )];
-}
 function specChoices(){
   const values=[];
   for(const [profession,specs] of Object.entries(SPECIALIZATIONS)){
@@ -123,47 +91,11 @@ module.exports={
     const spec=row.specialization_key?SPECIALIZATIONS[row.profession_key]?.[row.specialization_key]:null;
     const milestone=getMilestones(row.level);
     return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${p.icon} ${p.name} · Ур. ${row.level}/${LEVEL_CAP}`)
-      .setDescription(`${p.description}\n\n${energyBar(row.energy,row.energy_max)}\n⚡ Энергия: **${row.energy}/${row.energy_max}**\nВосстановление: **${ENERGY_REGEN_PER_HOUR}/час**\nСтоимость работы: **${energyCostForLevel(row.level)}**\n\n⭐ Опыт: **${row.xp}/${xpNeeded(row.level)}**\n🔨 Выполнено работ: **${row.work_count}**\n📦 Собрано ресурсов: **${row.resources_gathered||0}**\n🔥 Серия добычи: **${getAdventureStats(interaction.user.id,row.profession_key)?.streak||0}** · рекорд: **${getAdventureStats(interaction.user.id,row.profession_key)?.best_streak||0}**\n📜 Выполнено заказов: **${row.orders_completed||0}**\n💰 Заработано профессией: **${row.dust_earned||0} Dust**${spec?`\n\n🏅 Специализация: **${spec.icon} ${spec.name}**`:''}${milestone?`\n\n🔓 Следующая награда — **ур. ${milestone.level}**\n${milestone.text}`:''}`)],flags:MessageFlags.Ephemeral});
+      .setDescription(`${p.description}\n\n${energyBar(row.energy,row.energy_max)}\n⚡ Энергия: **${row.energy}/${row.energy_max}**\nВосстановление: **${ENERGY_REGEN_PER_HOUR}/час**\nСтоимость работы: **${energyCostForLevel(row.level)}**\n\n⭐ Опыт: **${row.xp}/${xpNeeded(row.level)}**\n🔨 Выполнено работ: **${row.work_count}**\n📦 Собрано ресурсов: **${row.resources_gathered||0}**\n📜 Выполнено заказов: **${row.orders_completed||0}**\n💰 Заработано профессией: **${row.dust_earned||0} Dust**${spec?`\n\n🏅 Специализация: **${spec.icon} ${spec.name}**`:''}${milestone?`\n\n🔓 Следующая награда — **ур. ${milestone.level}**\n${milestone.text}`:''}`)],flags:MessageFlags.Ephemeral});
   }
-  return interaction.reply({embeds:[adventureStartEmbed(row)],components:professionAdventureRows(interaction.user.id),flags:MessageFlags.Ephemeral});
- },
- async handleComponent(interaction){
-  if(!interaction.isButton())return false;
-  if(interaction.customId.startsWith('profmenu:')){
-    const ownerId=interaction.customId.split(':')[1];
-    if(interaction.user.id!==ownerId){await interaction.reply({content:'❌ Это меню принадлежит другому игроку.',flags:MessageFlags.Ephemeral});return true;}
-    const row=getProfession(ownerId);
-    if(!row){await interaction.update({content:'❌ Профессия не найдена.',embeds:[],components:[]});return true;}
-    await interaction.update({embeds:[adventureStartEmbed(row)],components:professionAdventureRows(ownerId)});
-    return true;
-  }
-  if(!interaction.customId.startsWith('profwork:'))return false;
-  const [,ownerId,approach]=interaction.customId.split(':');
-  if(interaction.user.id!==ownerId){
-    await interaction.reply({content:'❌ Эта добывающая вылазка принадлежит другому игроку.',flags:MessageFlags.Ephemeral});
-    return true;
-  }
-  const row=getProfession(ownerId);
-  if(!row){await interaction.update({content:'❌ Профессия не найдена.',embeds:[],components:[]});return true;}
-  const result=work(ownerId,approach);
-  if(!result.ok){
-    const text=result.reason==='energy'?`⚡ Недостаточно энергии: **${result.energy}/${result.maxEnergy}**. До следующей работы: **${duration(result.waitMs)}**.`:'❌ Не удалось выполнить добычу.';
-    await interaction.update({content:text,embeds:[],components:[]});return true;
-  }
-  const p=PROFESSIONS[row.profession_key];
-  const sceneText=result.scene?.[approach]||'Ты отправляешься за ресурсами.';
-  if(!result.success){
-    await interaction.update({embeds:[new EmbedBuilder().setColor(0xDC2626).setTitle(`${p.icon} Добыча не удалась`).setDescription(`${sceneText}
-
-💥 Попытка завершилась неудачей. Ресурсы не получены.
-🔥 Серия сброшена: **${result.previousStreak} → 0**
-⭐ Опыт профессии: **+${result.xpGain}**
-⚡ Осталось энергии: **${result.energy}/${result.maxEnergy}**`)],components:professionResultRows(ownerId, approach)});
-    return true;
-  }
-  const rewards=result.rewards.length?result.rewards.map(([k,q])=>`• **${materialName(k)}** ×${q}`).join('\n'):'• Дополнительных находок не было';
-  const bonus=result.streakBonus?.label?`\n${result.streakBonus.label}`:'';
-  await interaction.update({embeds:[new EmbedBuilder().setColor(0x22C55E).setTitle(`${p.icon} Успешная добыча`).setDescription(`${sceneText}\n\n**Получено:**\n${rewards}\n\n🔥 Серия: **${result.streak}** · рекорд: **${result.bestStreak}**${bonus}\n⭐ Опыт профессии: **+${result.xpGain}**\n⚡ Осталось энергии: **${result.energy}/${result.maxEnergy}**${result.leveled?`\n🎉 Получено уровней: **${result.gained}**. Новый уровень: **${result.level}`:''}`)],components:professionResultRows(ownerId, approach)});
-  return true;
+  const result=work(interaction.user.id);
+  if(!result.ok) return interaction.reply({content:result.reason==='energy'?`⚡ Недостаточно энергии: **${result.energy}/${result.maxEnergy}**. До следующей работы: **${duration(result.waitMs)}**.`:'❌ Не удалось выполнить работу.',flags:MessageFlags.Ephemeral});
+  const rewards=result.rewards.length?result.rewards.map(([k,q])=>`• ${ITEMS[k]?.name||k} ×${q}`).join('\n'):'• Редких находок не было';
+  return interaction.reply({embeds:[new EmbedBuilder().setColor(0x22C55E).setTitle(`${p.icon} Работа завершена`).setDescription(`${rewards}\n\n+35 XP профессии\n⚡ Осталось энергии: **${result.energy}/${result.maxEnergy}**${result.leveled?`\n🎉 Получено уровней: **${result.gained}**. Новый уровень: **${result.level}**`:''}`)],flags:MessageFlags.Ephemeral});
  }
 };

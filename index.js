@@ -234,11 +234,6 @@ client.on('interactionCreate', async interaction => {
                 }
             }
 
-            if (interaction.customId.startsWith('profwork:') || interaction.customId.startsWith('profmenu:')) {
-                const command = client.commands.get('profession');
-                if (command?.handleComponent) return await command.handleComponent(interaction);
-            }
-
             if (interaction.customId.startsWith('dng_')) {
                 const { handle } = require('./services/groupDungeonSystem');
                 return await handle(interaction);

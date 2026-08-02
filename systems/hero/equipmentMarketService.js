@@ -55,13 +55,23 @@ function sellToBlacksmith(userId,inventoryId){
  const tx=db.transaction(()=>{removeOne(userId,item);addCardDust(userId,earned);}); tx();
  return {ok:true,item,earned,balance:getCardDust(userId)};
 }
-function createListing(userId,inventoryId,price){
+function createListing(userId,inventoryId,price,quantity=1){
  price=Math.floor(Number(price)); if(price<1||price>10000000)return {ok:false,reason:'price'};
- const item=getInventoryItem(userId,inventoryId); if(!item||(!item.slot&&item.item_type!=='artifact'))return {ok:false,reason:'not_found'};
- if(sellableEquipmentCount(userId,item)<1)return {ok:false,reason:'missing'};
- let id; const tx=db.transaction(()=>{removeOne(userId,item);id=db.prepare(`INSERT INTO equipment_market_listings(seller_id,item_key,item_name,rarity,upgrade_level,quantity,price) VALUES(?,?,?,?,?,1,?)`).run(userId,item.item_key,item.name,item.rarity,Number(item.upgrade_level||0),price).lastInsertRowid;}); tx();
+ const item=getInventoryItem(userId,inventoryId); if(!item)return {ok:false,reason:'not_found'};
+ const isEquipment=!!item.slot||item.item_type==='artifact';
+ const isConsumable=item.item_type==='consumable'||item.type==='consumable';
+ if(!isEquipment&&!isConsumable)return {ok:false,reason:'not_found'};
+ quantity=isEquipment?1:Math.max(1,Math.min(Math.floor(Number(quantity)||1),Number(item.quantity)||0));
+ if(quantity<1)return {ok:false,reason:'missing'};
+ let id; const tx=db.transaction(()=>{
+  if(isEquipment) removeOne(userId,item);
+  else if(quantity>=Number(item.quantity)) db.prepare('DELETE FROM hero_inventory WHERE id=? AND user_id=?').run(item.id,userId);
+  else db.prepare('UPDATE hero_inventory SET quantity=quantity-? WHERE id=? AND user_id=? AND quantity>=?').run(quantity,item.id,userId,quantity);
+  id=db.prepare(`INSERT INTO equipment_market_listings(seller_id,item_key,item_name,rarity,upgrade_level,quantity,price) VALUES(?,?,?,?,?,?,?)`).run(userId,item.item_key,item.name,item.rarity,Number(item.upgrade_level||0),quantity,price).lastInsertRowid;
+ }); tx();
  return {ok:true,listing:getListing(id)};
 }
+function sellableConsumables(userId){return getInventory(userId,{type:'consumable',limit:200}).filter(x=>Number(x.quantity||0)>0);}
 const LISTING_SELECT=`SELECT l.*,i.item_type,i.slot,i.description,i.lore,i.bonuses_json
  FROM equipment_market_listings l LEFT JOIN hero_items i ON i.item_key=l.item_key`;
 function getListing(id){return db.prepare(`${LISTING_SELECT} WHERE l.id=?`).get(id)||null;}
@@ -86,7 +96,7 @@ function buyListing(userId,id){
    const payment=removeCardDust(userId,price,`Покупка на рынке: ${l.item_name}`);
    if(!payment?.ok)throw Object.assign(new Error('dust'),{code:'dust',balance:payment?.balance||0,price});
    addCardDust(String(l.seller_id),price,`Продажа на рынке: ${l.item_name}`);
-   const granted=grantItem(userId,l.item_key,1,'equipment_market_purchase');
+   const granted=grantItem(userId,l.item_key,Math.max(1,Number(l.quantity)||1),'equipment_market_purchase');
    if(!granted)throw Object.assign(new Error('grant'),{code:'grant'});
    if(Number(l.upgrade_level)>0){
     db.prepare('UPDATE hero_inventory SET upgrade_level=MAX(COALESCE(upgrade_level,0),?) WHERE user_id=? AND item_key=?')
@@ -108,7 +118,7 @@ function cancelListing(userId,id){
    if(!l)throw Object.assign(new Error('missing'),{code:'missing'});
    const claimed=db.prepare("UPDATE equipment_market_listings SET status='cancelled',closed_at=CURRENT_TIMESTAMP WHERE id=? AND seller_id=? AND status='open'").run(id,userId);
    if(claimed.changes!==1)throw Object.assign(new Error('missing'),{code:'missing'});
-   const granted=grantItem(userId,l.item_key,1,'equipment_market_cancel');
+   const granted=grantItem(userId,l.item_key,Math.max(1,Number(l.quantity)||1),'equipment_market_cancel');
    if(!granted)throw Object.assign(new Error('grant'),{code:'grant'});
    if(Number(l.upgrade_level)>0)db.prepare('UPDATE hero_inventory SET upgrade_level=MAX(COALESCE(upgrade_level,0),?) WHERE user_id=? AND item_key=?').run(Number(l.upgrade_level),userId,l.item_key);
    return l;
@@ -116,4 +126,4 @@ function cancelListing(userId,id){
   return {ok:true,listing:{...result,status:'cancelled'}};
  }catch(e){return {ok:false,reason:e?.code||e?.message||'transaction'};}
 }
-module.exports={duplicateEquipment,sellToBlacksmith,createListing,getListing,listOpen,listMine,buyListing,cancelListing};
+module.exports={duplicateEquipment,sellableConsumables,sellToBlacksmith,createListing,getListing,listOpen,listMine,buyListing,cancelListing};

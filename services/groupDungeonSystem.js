@@ -16,10 +16,11 @@ const DUNGEON_IMAGE_DIR=path.join(__dirname,'..','assets','dungeons');
 function dungeonHubImage(date=new Date()){const w=currentWindow(date);const key=w?.key||'closed';return {name:`dungeon-hub-${key}.jpg`,path:path.join(DUNGEON_IMAGE_DIR,`dungeon-hub-${key}.jpg`)};}
 
 const TZ = 'Europe/Moscow';
-const MIN_PLAYERS = 4;
-const MAX_PLAYERS = 5;
+const MIN_PLAYERS = 2;
+const PREFERRED_MIN_PLAYERS = 4;
+const MAX_PLAYERS = 6;
 const RAID_DURATION_MS = 50 * 60 * 1000;
-const WINDOWS = [{ startH: 11, startM: 0, lastH: 12, lastM: 9, closeH: 12, closeM: 9, key: 'day' }, { startH: 18, startM: 0, lastH: 19, lastM: 9, closeH: 19, closeM: 9, key: 'evening' }];
+const WINDOWS = [{ startH: 11, startM: 0, closeH: 11, closeM: 59, processH: 12, processM: 0, key: 'day' }, { startH: 18, startM: 0, closeH: 18, closeM: 59, processH: 19, processM: 0, key: 'evening' }];
 const TANKS = new Set(['warrior','paladin','guardian']);
 const HEALERS = new Set(['cleric','priest','druid','shaman']);
 const CONTROL = new Set(['mage','mind_lord','illusionist','chronomancer','bard','shaman']);
@@ -43,8 +44,8 @@ const DIFFICULTIES = [
 
 function nowMoscowParts(date=new Date()) { const f=new Intl.DateTimeFormat('en-GB',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}); return Object.fromEntries(f.formatToParts(date).filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)])); }
 function currentWindow(date=new Date()) { const p=nowMoscowParts(date); const mins=p.hour*60+p.minute; return WINDOWS.find(w=>mins>=w.startH*60+w.startM && mins<=w.closeH*60+w.closeM)||null; }
-function canStartNow(date=new Date()) { const p=nowMoscowParts(date); const mins=p.hour*60+p.minute; return WINDOWS.some(w=>mins>=w.startH*60+w.startM && mins<=w.lastH*60+w.lastM); }
-function windowLabel(w){return w?.key==='day'?'🌞 11:00–12:09 МСК':'🌙 18:00–19:09 МСК';}
+function canStartNow(){ return false; }
+function windowLabel(w){return w?.key==='day'?'🌞 запись 11:00–12:00 МСК':'🌙 запись 18:00–19:00 МСК';}
 function windowContext(date=new Date()){const w=currentWindow(date);if(!w)return null;const p=nowMoscowParts(date);const day=`${p.year}-${String(p.month).padStart(2,'0')}-${String(p.day).padStart(2,'0')}`;return {window:w,key:`${day}:${w.key}`,day};}
 function weightedPick(items){let r=Math.random()*items.reduce((s,x)=>s+x.weight,0);for(const x of items){r-=x.weight;if(r<=0)return x;}return items[0];}
 function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
@@ -62,6 +63,9 @@ CREATE TABLE IF NOT EXISTS dungeon_help_xp_claims(guild_id TEXT NOT NULL,window_
 CREATE INDEX IF NOT EXISTS idx_dungeon_help_xp_window_user ON dungeon_help_xp_claims(guild_id,window_key,user_id);
 CREATE INDEX IF NOT EXISTS idx_dungeon_groups_status ON dungeon_groups(guild_id,status);
 CREATE INDEX IF NOT EXISTS idx_dungeon_entries_group ON dungeon_window_entries(group_id);
+CREATE TABLE IF NOT EXISTS dungeon_queue_entries(guild_id TEXT NOT NULL,window_key TEXT NOT NULL,user_id TEXT NOT NULL,class_key TEXT NOT NULL,role_pref TEXT NOT NULL,power INTEGER NOT NULL DEFAULT 0,joined_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(guild_id,window_key,user_id));
+CREATE TABLE IF NOT EXISTS dungeon_window_processing(guild_id TEXT NOT NULL,window_key TEXT NOT NULL,processed_at TEXT DEFAULT CURRENT_TIMESTAMP,groups_created INTEGER NOT NULL DEFAULT 0,reserve_count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(guild_id,window_key));
+CREATE INDEX IF NOT EXISTS idx_dungeon_queue_window ON dungeon_queue_entries(guild_id,window_key,joined_at);
 `);
  const cols=db.prepare('PRAGMA table_info(dungeon_groups)').all().map(x=>x.name);
  if(!cols.includes('window_key'))db.exec('ALTER TABLE dungeon_groups ADD COLUMN window_key TEXT');
@@ -93,32 +97,34 @@ function analyze(groupId){ const g=getGroup(groupId); const ms=members(groupId);
  if(tanks>=2&&n>=8)add('Второй танк',3);
  if(heals>=2&&n>=7)add('Второй лекарь',4);
  if(controls>=1)add('Контроль',4);else add('Нет контроля',-4);
- if(n>4)add(`Полная группа (${n}/${MAX_PLAYERS})`,2);
+ if(n===2)add('Малый отряд (2 героя)',-22);
+ else if(n===3)add('Малый отряд (3 героя)',-12);
+ else if(n>4)add(`Полная группа (${n}/${MAX_PLAYERS})`,2);
  const chance=clamp(Math.round(diff.base+bonus),5,95); return {chance,base:diff.base,bonus,lines,tanks,heals,controls,avgPower:Math.round(avgPower),members:enriched,difficulty:diff}; }
 
+function queueEntry(guildId,userId,date=new Date()){const ctx=windowContext(date);if(!ctx)return null;return db.prepare('SELECT * FROM dungeon_queue_entries WHERE guild_id=? AND window_key=? AND user_id=?').get(guildId,ctx.key,userId)||null;}
+function queueCount(guildId,date=new Date()){const ctx=windowContext(date);if(!ctx)return 0;return Number(db.prepare('SELECT COUNT(*) AS c FROM dungeon_queue_entries WHERE guild_id=? AND window_key=?').get(guildId,ctx.key)?.c||0);}
+function roleForClass(key){key=normalizeClassKey(key);if(TANKS.has(key))return 'tank';if(HEALERS.has(key))return 'healer';if(CONTROL.has(key))return 'support';return 'dps';}
+const ROLE_LABELS={tank:'🛡️ Танк',healer:'💚 Лекарь',dps:'⚔️ Урон',support:'🌀 Поддержка'};
 function hubEmbed(guildId,imageUrl){
- const w=currentWindow();
- if(!imageUrl)imageUrl=`attachment://${dungeonHubImage().name}`;
- const forming=db.prepare("SELECT COUNT(*) c FROM dungeon_groups WHERE guild_id=? AND status='forming'").get(guildId).c;
- const active=db.prepare("SELECT COUNT(*) c FROM dungeon_groups WHERE guild_id=? AND status='active'").get(guildId).c;
- const inRaid=db.prepare("SELECT COUNT(*) c FROM dungeon_members m JOIN dungeon_groups g ON g.id=m.group_id WHERE g.guild_id=? AND g.status='active'").get(guildId).c;
- const state=w
-  ? `🟢 **Окно открыто:** ${windowLabel(w)}\n⏳ Новые рейды можно запускать до **${w.lastH}:${String(w.lastM).padStart(2,'0')} МСК**.\n🕯️ Продолжительность каждого похода — **50 минут**.`
-  : '🔒 **Окно сейчас закрыто**\n\n🌞 Дневное окно: **11:00–12:09 МСК** — запуск до **12:09**\n🌙 Вечернее окно: **18:00–19:09 МСК** — запуск до **19:09**';
- return new EmbedBuilder()
-  .setColor(w?0x7c3aed:0x312e81)
-  .setAuthor({name:'GAME SYNDICATE • DUNGEON HUB'})
-  .setTitle('🏰 ГРУППОВЫЕ ДАНЖИ')
-  .setDescription(`${state}\n\nСоберите отряд, выберите героев и изучите **актуальный шанс прохождения** до запуска. Состав, классы и экипировка пересчитываются автоматически.`)
-  .addFields(
-   {name:'⚔️ Состояние рейдов',value:`🟡 Собираются: **${forming}**\n🟢 Уже в данже: **${active}**\n👥 Героев в походах: **${inRaid}**`,inline:true},
-   {name:'🗝️ Условия входа',value:'Минимум: **4 героя**\nМаксимум: **5 героев**\nМожно участвовать несколько раз. Полная награда — 1 раз за окно; за первые 3 помощи — 25% XP класса.',inline:true},
-   {name:'📊 Перед стартом',value:'Откройте группу и нажмите **«Анализ состава»**, чтобы увидеть силу отряда, роли, бонусы и итоговый процент успеха.',inline:false}
-  )
-  .setImage(imageUrl)
-  .setFooter({text:'Создать группу • Найти группу • Активные рейды • История • Анализ • Награды'});
+ const w=currentWindow(),spawn=w?getWindowSpawn(guildId):null,count=queueCount(guildId);
+ const status=w?`🟢 **Запись открыта**\n${windowLabel(w)}\nДо распределения: **${w.key==='day'?'12:00':'19:00'} МСК**`:'🔒 **Запись закрыта**\nСледующее окно: 11:00–12:00 или 18:00–19:00 МСК';
+ return new EmbedBuilder().setColor(w?0x7c3aed:0x312e81).setTitle('🏰 Подземелья Game Syndicate').setDescription(`${status}\n\n${spawn?`${spawn.difficulty_icon} **${spawn.dungeon_name}**\nСложность: **${spawn.difficulty_name}**\n`:''}\n👥 В очереди: **${count}**\n\nИгроки записываются независимо. В конце окна бот прежде всего формирует отряды по **4–6 человек**, балансируя танков, лекарей, поддержку, урон и общую силу. Отряд из 2–3 героев создаётся только когда полноценную группу собрать невозможно. Выбирать спутников вручную нельзя.`).addFields(
+ {name:'⚙️ Как проходит запись',value:'Нажмите **«Записаться»**, затем выберите желаемую роль. Бот использует ваш текущий класс и проверяет, подходит ли он роли.',inline:false},
+ {name:'🧩 Распределение',value:'Приоритет — полноценные группы с танком и лекарем. Затем выравнивается сила. При неоднозначности состав перемешивается случайно.',inline:false},
+ {name:'⚠️ Малые отряды',value:'Приоритет всегда у групп 4–6. Если записалось только 2–3 игрока либо при распределении неизбежно остаётся тройка, бот всё равно запускает их, но с пониженным шансом прохождения.',inline:false}
+ ).setImage(imageUrl).setFooter({text:'Общая очередь • автоматические группы • без ручного выбора игроков'});
 }
-function hubRows(){return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dng_create').setLabel('Создать группу').setEmoji('⚔️').setStyle(ButtonStyle.Success),new ButtonBuilder().setCustomId('dng_find').setLabel('Найти группу').setEmoji('🔎').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('dng_active').setLabel('Активные рейды').setEmoji('🗺️').setStyle(ButtonStyle.Secondary)),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('dng_my').setLabel('Моя группа').setEmoji('👤').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('dng_history_open').setLabel('История').setEmoji('📜').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('dng_rules').setLabel('Вся информация').setEmoji('📖').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('dng_rewards').setLabel('Награды').setEmoji('🎁').setStyle(ButtonStyle.Secondary))];}
+function hubRows(){const open=Boolean(currentWindow());return [new ActionRowBuilder().addComponents(
+ new ButtonBuilder().setCustomId('dng_queue_join').setLabel('Записаться').setEmoji('✅').setStyle(ButtonStyle.Success).setDisabled(!open),
+ new ButtonBuilder().setCustomId('dng_queue_my').setLabel('Моя запись').setEmoji('👤').setStyle(ButtonStyle.Primary).setDisabled(!open),
+ new ButtonBuilder().setCustomId('dng_queue_leave').setLabel('Отменить запись').setEmoji('🚪').setStyle(ButtonStyle.Danger).setDisabled(!open),
+ new ButtonBuilder().setCustomId('dng_active').setLabel('Активные рейды').setEmoji('🗺️').setStyle(ButtonStyle.Secondary)
+),new ActionRowBuilder().addComponents(
+ new ButtonBuilder().setCustomId('dng_history_open').setLabel('История').setEmoji('📜').setStyle(ButtonStyle.Secondary),
+ new ButtonBuilder().setCustomId('dng_rules').setLabel('Правила').setEmoji('📖').setStyle(ButtonStyle.Secondary),
+ new ButtonBuilder().setCustomId('dng_rewards').setLabel('Награды').setEmoji('🎁').setStyle(ButtonStyle.Secondary)
+)];}
 
 async function ensureHub(client,guildId=null){
  const guilds=guildId?[client.guilds.cache.get(guildId)].filter(Boolean):[...client.guilds.cache.values()];
@@ -269,7 +275,7 @@ async function resolveGroup(client,g){
  await ensureHub(client,g.guild_id);
  await checkAchievementsForUsers(client, g.guild_id, ms.map(m => m.user_id));
 }
-async function tick(client){cleanupClosedFormingGroups();const due=db.prepare("SELECT * FROM dungeon_groups WHERE status='active' AND ends_at<=?").all(new Date().toISOString());for(const g of due)await resolveGroup(client,g).catch(e=>console.error('[Dungeon] resolve',g.id,e));await ensureHub(client).catch(()=>{});}
+async function tick(client){await processScheduledWindows(client);cleanupClosedFormingGroups();const due=db.prepare("SELECT * FROM dungeon_groups WHERE status='active' AND ends_at<=?").all(new Date().toISOString());for(const g of due)await resolveGroup(client,g).catch(e=>console.error('[Dungeon] resolve',g.id,e));await ensureHub(client).catch(()=>{});}
 function startScheduler(client){if(globalThis.__gsDungeonTimer)return;globalThis.__gsDungeonTimer=setInterval(()=>tick(client),60_000);setTimeout(()=>tick(client),10_000);console.log('🏰 Group Dungeon scheduler started');}
 
 
@@ -284,9 +290,39 @@ function dungeonHistoryEmbed(group,page,total){const {rewards}=getDungeonHistory
 function dungeonHistoryComponents(page,total){return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`dng_history_page:${Math.max(0,page-1)}`).setEmoji('⬅️').setLabel('Назад').setStyle(ButtonStyle.Secondary).setDisabled(page<=0),new ButtonBuilder().setCustomId(`dng_history_page:${Math.min(total-1,page+1)}`).setEmoji('➡️').setLabel('Далее').setStyle(ButtonStyle.Secondary).setDisabled(page>=total-1))];}
 async function dungeonHistory(interaction,page=0){const rows=resolvedDungeonRows(interaction.guildId);if(!rows.length)return ephemeral(interaction,{content:'📜 История завершённых подземелий пока пуста.'});const safePage=clamp(Number(page)||0,0,rows.length-1);const payload={embeds:[dungeonHistoryEmbed(rows[safePage],safePage,rows.length)],components:dungeonHistoryComponents(safePage,rows.length)};if((interaction.customId||'').startsWith('dng_history_page:'))return interaction.update(payload);return ephemeral(interaction,payload);}
 
-async function rules(interaction){return ephemeral(interaction,{embeds:[new EmbedBuilder().setColor(0x7c3aed).setTitle('📖 Как работают групповые данжи').setDescription('🌞 Окно: **11:00–12:09 МСК**, запуск до **12:09**.\n🌙 Окно: **18:00–19:09 МСК**, запуск до **19:09**.\n\nКаждый рейд длится **50 минут**. В каждом временном окне для всех появляется одно общее подземелье одной редкости, но проходить его могут несколько независимых групп. Каждый человек может участвовать несколько раз в одном окне. Полная награда выдаётся только за первое успешное прохождение; после этого можно помогать другим группам. За первые **3 повторных похода** в том же окне выдаётся **25% опыта выбранного класса**, без Dust и предметов. Минимум — **4 героя**, максимум — **5 героев**.\n\nШанс зависит от уровня героя и класса, экипировки, силы состава, наличия танка, лекаря и контроля. До старта процент пересчитывается автоматически. После старта он фиксируется.\n\nВсе получают награду. Редкую добычу получают лишь некоторые. После ценной награды личный шанс временно снижается, но никогда не становится нулевым.') ]});}
+async function rules(interaction){return ephemeral(interaction,{embeds:[new EmbedBuilder().setColor(0x7c3aed).setTitle('📖 Как работают групповые данжи').setDescription('🌞 Запись: **11:00–12:00 МСК**, распределение в **12:00**.\n🌙 Запись: **18:00–19:00 МСК**, распределение в **19:00**.\n\nКаждый рейд длится **50 минут**. В каждом временном окне для всех появляется одно общее подземелье одной редкости, но проходить его могут несколько независимых групп. Каждый человек может участвовать несколько раз в одном окне. Полная награда выдаётся только за первое успешное прохождение; после этого можно помогать другим группам. За первые **3 повторных похода** в том же окне выдаётся **25% опыта выбранного класса**, без Dust и предметов. Минимум — **4 героя**, максимум — **6 героев**. Составы формирует бот: ручного выбора спутников и лидеров больше нет.\n\nШанс зависит от уровня героя и класса, экипировки, силы состава, наличия танка, лекаря и контроля. До старта процент пересчитывается автоматически. После старта он фиксируется.\n\nВсе получают награду. Редкую добычу получают лишь некоторые. После ценной награды личный шанс временно снижается, но никогда не становится нулевым.') ]});}
 async function rewards(interaction){return ephemeral(interaction,{embeds:[new EmbedBuilder().setColor(0xf59e0b).setTitle('🎁 Награды данжей').setDescription('**Первое успешное прохождение за окно:**\n• GS Dust\n• полный опыт выбранного класса\n• шанс на найденную экипировку\n\n**Повторная помощь:**\n• 25% обычного опыта класса за первые 3 повторных похода\n• без Dust и предметов\n• начиная с 4-й помощи — без наград\n\nЧем выше сложность, тем больше обычная награда и шанс ценного предмета. При поражении до получения основной награды выдаются небольшие утешительные Dust и опыт, а право на полную награду сохраняется.') ]});}
 
-async function handle(interaction){const id=interaction.customId;if(id==='dng_history_open')return dungeonHistory(interaction,0);if(id.startsWith('dng_history_page:'))return dungeonHistory(interaction,Number(id.split(':')[1]||0));if(id==='dng_create')return createGroup(interaction);if(id==='dng_find')return listGroups(interaction,['forming']);if(id==='dng_active')return listGroups(interaction,['active']);if(id==='dng_my'){const g=userActiveGroup(interaction.guildId,interaction.user.id);return g?ephemeral(interaction,{embeds:[groupEmbed(g.id,g.status==='forming')],components:groupRows(g,interaction.user.id)}):ephemeral(interaction,{content:'Вы сейчас не состоите в группе.'});}if(id==='dng_rules')return rules(interaction);if(id==='dng_rewards')return rewards(interaction);if(id==='dng_open_group')return openGroup(interaction,Number(interaction.values[0]));const [action,raw]=id.split(':');const gid=Number(raw);if(action==='dng_join')return join(interaction,gid);if(action==='dng_class')return classMenu(interaction,gid);if(action==='dng_set_class')return setClass(interaction,gid,interaction.values[0]);if(action==='dng_analyze')return analyzeView(interaction,gid);if(action==='dng_leave')return leave(interaction,gid);if(action==='dng_disband')return disband(interaction,gid);if(action==='dng_start')return start(interaction,gid);if(action==='dng_refresh')return interaction.update({embeds:[groupEmbed(gid)],components:groupRows(getGroup(gid),interaction.user.id)});}
+
+function roleMenuPayload(){return {embeds:[new EmbedBuilder().setColor(0x7c3aed).setTitle('Выберите роль для распределения').setDescription('Выберите роль, которую способен выполнять ваш **текущий класс**. Несовместимую роль бот не примет.')],components:[new ActionRowBuilder().addComponents(
+ new ButtonBuilder().setCustomId('dng_queue_role:tank').setLabel('Танк').setEmoji('🛡️').setStyle(ButtonStyle.Primary),
+ new ButtonBuilder().setCustomId('dng_queue_role:healer').setLabel('Лекарь').setEmoji('💚').setStyle(ButtonStyle.Success),
+ new ButtonBuilder().setCustomId('dng_queue_role:dps').setLabel('Урон').setEmoji('⚔️').setStyle(ButtonStyle.Danger),
+ new ButtonBuilder().setCustomId('dng_queue_role:support').setLabel('Поддержка').setEmoji('🌀').setStyle(ButtonStyle.Secondary)
+)]};}
+async function queueJoin(interaction){const ctx=windowContext();if(!ctx)return ephemeral(interaction,{content:'Запись сейчас закрыта. Утреннее окно: 11:00–12:00, вечернее: 18:00–19:00 МСК.'});const hero=getHero(interaction.user.id);if(!hero)return ephemeral(interaction,{content:'Сначала создайте героя в Гильдии.'});if(hero.status!=='ready')return ephemeral(interaction,{content:`Герой сейчас занят: **${hero.status}**.`});const expedition=db.prepare("SELECT 1 FROM hero_expeditions WHERE user_id=? AND status='active' LIMIT 1").get(interaction.user.id);if(expedition)return ephemeral(interaction,{content:'Герой находится в экспедиции.'});return ephemeral(interaction,roleMenuPayload());}
+async function queueSetRole(interaction,role){const ctx=windowContext();if(!ctx)return ephemeral(interaction,{content:'Запись уже закрыта.'});const hero=getHero(interaction.user.id);if(!hero||hero.status!=='ready')return ephemeral(interaction,{content:'Герой недоступен для записи.'});const cls=normalizeClassKey(hero.class_key),actual=roleForClass(cls);if(role!==actual)return interaction.update({content:`Класс **${CLASS_LABELS[cls]||cls}** относится к роли **${ROLE_LABELS[actual]}**. Выберите её либо смените активный класс в профиле.`,embeds:[],components:[]});const power=classPower(interaction.user.id,cls);db.prepare(`INSERT INTO dungeon_queue_entries(guild_id,window_key,user_id,class_key,role_pref,power) VALUES(?,?,?,?,?,?) ON CONFLICT(guild_id,window_key,user_id) DO UPDATE SET class_key=excluded.class_key,role_pref=excluded.role_pref,power=excluded.power,joined_at=CURRENT_TIMESTAMP`).run(interaction.guildId,ctx.key,interaction.user.id,cls,role,power);await interaction.update({content:`✅ Вы записаны как **${ROLE_LABELS[role]}** — **${CLASS_LABELS[cls]||cls}**. В ${ctx.window.key==='day'?'12:00':'19:00'} МСК бот автоматически распределит участников.`,embeds:[],components:[]});return ensureHub(interaction.client,interaction.guildId);}
+async function queueMy(interaction){const row=queueEntry(interaction.guildId,interaction.user.id);if(!row)return ephemeral(interaction,{content:'Вы пока не записаны в текущее окно.'});return ephemeral(interaction,{content:`✅ Ваша запись активна.\nРоль: **${ROLE_LABELS[row.role_pref]}**\nКласс: **${CLASS_LABELS[row.class_key]||row.class_key}**\nСила при записи: **${row.power}**`});}
+async function queueLeave(interaction){const ctx=windowContext();if(!ctx)return ephemeral(interaction,{content:'Запись уже закрыта.'});const r=db.prepare('DELETE FROM dungeon_queue_entries WHERE guild_id=? AND window_key=? AND user_id=?').run(interaction.guildId,ctx.key,interaction.user.id);await ephemeral(interaction,{content:r.changes?'Запись отменена.':'У вас не было записи в это окно.'});return ensureHub(interaction.client,interaction.guildId);}
+function windowContextForProcessing(date=new Date()){const p=nowMoscowParts(date);const w=WINDOWS.find(x=>p.hour===x.processH&&p.minute>=x.processM&&p.minute<=x.processM+2);if(!w)return null;const day=`${p.year}-${String(p.month).padStart(2,'0')}-${String(p.day).padStart(2,'0')}`;return {window:w,key:`${day}:${w.key}`,day};}
+function balancedSizes(n){
+ if(n<2)return [];
+ if(n<=3)return [n];
+ // Единственное количество от 4 и выше, которое нельзя полностью разбить на группы 4–6 — семь.
+ // Поэтому создаём полноценную четвёрку и редкий резервный малый отряд из трёх.
+ if(n===7)return [4,3];
+ let groups=Math.floor(n/4);
+ while(groups>0&&n>groups*6)groups++;
+ while(groups>0&&n<groups*4)groups--;
+ if(groups<=0)return [];
+ const sizes=Array(groups).fill(Math.floor(n/groups));
+ let rem=n-sizes.reduce((a,b)=>a+b,0);
+ for(let i=0;rem>0;i=(i+1)%groups){if(sizes[i]<6){sizes[i]++;rem--;}}
+ return sizes;
+}
+function distributeQueue(rows,sizes){const groups=sizes.map(()=>[]);const roleOrder=['tank','healer','support','dps'];const buckets=Object.fromEntries(roleOrder.map(r=>[r,rows.filter(x=>x.role_pref===r).sort((a,b)=>b.power-a.power||String(a.joined_at).localeCompare(String(b.joined_at)))]));for(const role of roleOrder){let i=0;while(buckets[role].length){const candidates=groups.map((g,idx)=>({idx,size:g.length,power:g.reduce((s,x)=>s+Number(x.power||0),0),roleCount:g.filter(x=>x.role_pref===role).length})).filter(x=>x.size<sizes[x.idx]).sort((a,b)=>a.roleCount-b.roleCount||a.power-b.power||a.size-b.size);if(!candidates.length)break;groups[candidates[0].idx].push(buckets[role].shift());i++;}}return groups;}
+async function processDungeonWindow(client,guild,ctx){if(db.prepare('SELECT 1 FROM dungeon_window_processing WHERE guild_id=? AND window_key=?').get(guild.id,ctx.key))return;const rows=db.prepare('SELECT * FROM dungeon_queue_entries WHERE guild_id=? AND window_key=? ORDER BY joined_at').all(guild.id,ctx.key);const sizes=balancedSizes(rows.length);const selected=rows.slice(0,sizes.reduce((a,b)=>a+b,0));const reserve=rows.slice(selected.length);const groups=distributeQueue(selected,sizes);let spawn=db.prepare('SELECT * FROM dungeon_window_spawns WHERE guild_id=? AND window_key=?').get(guild.id,ctx.key);if(!spawn){const diff=weightedPick(DIFFICULTIES),dungeon=DUNGEONS[Math.floor(Math.random()*DUNGEONS.length)];db.prepare('INSERT OR IGNORE INTO dungeon_window_spawns(guild_id,window_key,dungeon_name,difficulty_key,difficulty_name,difficulty_icon,base_chance) VALUES(?,?,?,?,?,?,?)').run(guild.id,ctx.key,dungeon,diff.key,diff.name,diff.icon,diff.base);spawn=db.prepare('SELECT * FROM dungeon_window_spawns WHERE guild_id=? AND window_key=?').get(guild.id,ctx.key);}const now=Date.now(),end=now+RAID_DURATION_MS;const created=[];const tx=db.transaction(()=>{for(let i=0;i<groups.length;i++){const membersList=groups[i];if(membersList.length<MIN_PLAYERS)continue;const leader=membersList[0];const r=db.prepare(`INSERT INTO dungeon_groups(guild_id,leader_id,name,status,dungeon_name,difficulty_key,difficulty_name,difficulty_icon,base_chance,window_key) VALUES(?,?,?,'forming',?,?,?,?,?,?)`).run(guild.id,leader.user_id,`Автоотряд ${i+1}`,spawn.dungeon_name,spawn.difficulty_key,spawn.difficulty_name,spawn.difficulty_icon,spawn.base_chance,ctx.key);for(const m of membersList)db.prepare('INSERT INTO dungeon_members(group_id,user_id,class_key,hero_snapshot_json) VALUES(?,?,?,?)').run(r.lastInsertRowid,m.user_id,m.class_key,JSON.stringify(buildHeroSnapshot(m.user_id)||{}));const a=analyze(r.lastInsertRowid);db.prepare("UPDATE dungeon_groups SET status='active',success_chance=?,started_at=?,ends_at=? WHERE id=?").run(a.chance,new Date(now).toISOString(),new Date(end).toISOString(),r.lastInsertRowid);for(const m of membersList){db.prepare('INSERT OR REPLACE INTO dungeon_window_entries(guild_id,window_key,user_id,group_id,entered_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)').run(guild.id,ctx.key,m.user_id,r.lastInsertRowid);db.prepare("UPDATE heroes SET status='dungeon',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND status='ready'").run(m.user_id);}created.push({id:r.lastInsertRowid,members:membersList,chance:a.chance});}db.prepare('INSERT INTO dungeon_window_processing(guild_id,window_key,groups_created,reserve_count) VALUES(?,?,?,?)').run(guild.id,ctx.key,created.length,reserve.length);});tx();const cfg=getConfig(guild.id),ch=cfg?.channel_id?await guild.channels.fetch(cfg.channel_id).catch(()=>null):null;if(ch?.isTextBased()){const lines=created.map((g,i)=>`**Отряд ${i+1}** — шанс ${g.chance}%\n${g.members.map(m=>`${ROLE_LABELS[m.role_pref]} <@${m.user_id}>`).join('\n')}`).join('\n\n');await ch.send({embeds:[new EmbedBuilder().setColor(created.length?0x22c55e:0xf59e0b).setTitle(`🏰 Распределение завершено — ${spawn.dungeon_name}`).setDescription(created.length?`${spawn.difficulty_icon} **${spawn.difficulty_name}**\nПоходы завершатся примерно ${fmtTs(end)}.\n\n${lines}${reserve.length?`\n\n⚠️ **Резерв:** ${reserve.map(x=>`<@${x.user_id}>`).join(', ')} — не удалось включить в отряд даже из 2 героев.`:''}`:`Записалось **${rows.length}** игроков — для запуска требуется хотя бы 2 героя.`)]});}await ensureHub(client,guild.id);}
+async function processScheduledWindows(client){const ctx=windowContextForProcessing();if(!ctx)return;for(const guild of client.guilds.cache.values())await processDungeonWindow(client,guild,ctx).catch(e=>console.error('[Dungeon] auto distribution',guild.id,e));}
+async function handle(interaction){const id=interaction.customId;if(id==='dng_queue_join')return queueJoin(interaction);if(id==='dng_queue_my')return queueMy(interaction);if(id==='dng_queue_leave')return queueLeave(interaction);if(id.startsWith('dng_queue_role:'))return queueSetRole(interaction,id.split(':')[1]);if(id==='dng_history_open')return dungeonHistory(interaction,0);if(id.startsWith('dng_history_page:'))return dungeonHistory(interaction,Number(id.split(':')[1]||0));if(id==='dng_create')return createGroup(interaction);if(id==='dng_find')return listGroups(interaction,['forming']);if(id==='dng_active')return listGroups(interaction,['active']);if(id==='dng_my'){const g=userActiveGroup(interaction.guildId,interaction.user.id);return g?ephemeral(interaction,{embeds:[groupEmbed(g.id,g.status==='forming')],components:groupRows(g,interaction.user.id)}):ephemeral(interaction,{content:'Вы сейчас не состоите в группе.'});}if(id==='dng_rules')return rules(interaction);if(id==='dng_rewards')return rewards(interaction);if(id==='dng_open_group')return openGroup(interaction,Number(interaction.values[0]));const [action,raw]=id.split(':');const gid=Number(raw);if(action==='dng_join')return join(interaction,gid);if(action==='dng_class')return classMenu(interaction,gid);if(action==='dng_set_class')return setClass(interaction,gid,interaction.values[0]);if(action==='dng_analyze')return analyzeView(interaction,gid);if(action==='dng_leave')return leave(interaction,gid);if(action==='dng_disband')return disband(interaction,gid);if(action==='dng_start')return start(interaction,gid);if(action==='dng_refresh')return interaction.update({embeds:[groupEmbed(gid)],components:groupRows(getGroup(gid),interaction.user.id)});}
 
 module.exports={startScheduler,ensureHub,setupChannel,handle,hubEmbed,analyze};

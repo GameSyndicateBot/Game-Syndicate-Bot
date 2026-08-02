@@ -1262,7 +1262,13 @@ async function nextTurn(id, previousAlive = null) {
   const before = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
   const previous = before ? currentPlayer(before).p : null;
   if (previous) tickOwnerSummons(id, previous.user_id);
-  let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id), alive = battlePlayers(id).filter(x => x.status === 'alive'), ni = b.turn_index + 1;
+  let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+  const aliveBeforeAdvance = battlePlayers(id).filter(x => x.status === 'alive');
+  let alive = aliveBeforeAdvance;
+  // Переход строится по ID только что сходившего игрока, а не по старому индексу.
+  // Поэтому смерть/воскрешение или изменение списка участников не может «съесть» чужой ход.
+  const previousIndexNow = previous ? alive.findIndex(x => x.user_id === previous.user_id) : Number(b.turn_index || 0);
+  let ni = previousIndexNow >= 0 ? previousIndexNow + 1 : Math.min(Number(b.turn_index || 0), alive.length);
   if (ni >= alive.length) {
     let roundState = stateOf(b);
     roundState.playerActionsThisRound = 0;
@@ -1285,7 +1291,13 @@ async function nextTurn(id, previousAlive = null) {
     if (b.boss_hp <= 0) return finish(id, true);
 
     try {
+      const turnBeforeBoss = Number(b.turn_index || 0);
       await bossTurn(id);
+      const afterBoss = db.prepare('SELECT turn_index FROM world_boss_battles WHERE id=?').get(id);
+      if (afterBoss && Number(afterBoss.turn_index) !== turnBeforeBoss) {
+        console.error(`[WorldBoss] boss action changed player turn index ${turnBeforeBoss} -> ${afterBoss.turn_index}; restoring`);
+        db.prepare('UPDATE world_boss_battles SET turn_index=? WHERE id=?').run(turnBeforeBoss,id);
+      }
     } catch (error) {
       console.error(`[WorldBoss] bossTurn battle=${id} failed; round will continue:`, error);
       const failedBattle = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);

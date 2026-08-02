@@ -4,7 +4,7 @@ const { grantItem, getInventoryItem }=require('./itemService');
 const { COMPANIONS }=require('./companionData');
 const { grantCompanion }=require('./companionService');
 const SHOP_POOL=[
- ['healing_potion_small',90],['healing_potion_large',180],['forest_herbs',70],['iron_ore',85],['lockpick_set',130],['treasure_map',320],
+ ['healing_potion_small',140],['healing_potion_large',320],['healing_potion_supreme',750],['war_elixir',680],['stone_skin_elixir',680],['forest_herbs',70],['iron_ore',85],['lockpick_set',130],['treasure_map',320],
  ['iron_axe',430],['chainmail',480],['iron_helm',390],['duelist_gloves',360],['mountain_boots',370],['sun_amulet',520],['ring_strength',500],
  ['shadow_dagger',1100],['paladin_plate',1250],['seer_crown',1050],['ring_fortune',1200],['alchemist_bomb',650]
 ];
