@@ -1,6 +1,6 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.8.1",
+  "version": "19.8.2",
   "private": true,
   "description": "Game Syndicate V19.8.1: Community Code publication system",
   "main": "index.js",

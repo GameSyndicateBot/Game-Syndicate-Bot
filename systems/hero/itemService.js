@@ -12,10 +12,24 @@ const BOW_RE=/лук|арбалет|bow|crossbow/i;
 const SHIELD_RE=/щит|shield/i;
 const TWO_HANDED_RE=/двуруч|двухруч|великий меч|greatsword|greataxe|секира|алебард|копь[её]|пика|боевой молот|тяж[её]лый молот|императорский молот|коса|scythe|halberd|spear/i;
 const MARTIAL_RE=/меч|клинок|топор|секир|молот|булав|кинжал|рапир|копь|пика|коса|sword|blade|axe|hammer|mace|dagger|rapier|spear|scythe/i;
+
+// Персональное сюжетное исключение: владелец может использовать этот предмет любым классом.
+const UNIVERSAL_PERSONAL_EQUIPMENT = new Map([
+ ['830515570377097259', new Set(['звёздный топор забытой крепости'])],
+]);
+function normalizeEquipmentName(value){return String(value||'').trim().toLocaleLowerCase('ru-RU').replace(/ё/g,'е');}
+function isUniversalPersonalEquipment(item,userId){
+ const allowed=UNIVERSAL_PERSONAL_EQUIPMENT.get(String(userId));
+ if(!allowed)return false;
+ const name=normalizeEquipmentName(item?.name);
+ return [...allowed].some(x=>normalizeEquipmentName(x)===name);
+}
 function equipmentKind(item){const name=String(item?.name||'');if(SHIELD_RE.test(name))return 'shield';if(BOW_RE.test(name))return 'ranged';if(STAFF_RE.test(name))return 'staff';if(TWO_HANDED_RE.test(name))return 'two_handed';if(MARTIAL_RE.test(name))return 'martial';return String(item?.slot||'');}
 function validateEquipmentForClass(item,classKey,userId,{slot=null,classEquipment=false}={}){
  const key=normalizeClassKey(classKey||getHero(userId)?.class_key); if(!key||!isValidClass(key))return {ok:true};
  const kind=equipmentKind(item);
+ // Исключение применяется только к указанному владельцу и точному названию предмета.
+ if(isUniversalPersonalEquipment(item,userId))return {ok:true,classKey:key,kind,universalPersonal:true};
  if(CASTER_CLASSES.has(key) && ['martial','two_handed','ranged','shield'].includes(kind))return {ok:false,reason:'class_restricted',classKey:key};
  if(!CASTER_CLASSES.has(key) && kind==='staff')return {ok:false,reason:'class_restricted',classKey:key};
  if(kind==='shield' && !SHIELD_CLASSES.has(key))return {ok:false,reason:'class_restricted',classKey:key};
