@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "19.8.0",
+  "version": "19.8.1",
   "private": true,
-  "description": "Game Syndicate V19.8.0: World Boss rebalance, advanced MVP, Pyromancer burn and smarter boss AI",
+  "description": "Game Syndicate V19.8.1: Community Code publication system",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
