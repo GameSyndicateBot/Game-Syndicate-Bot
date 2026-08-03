@@ -58,6 +58,8 @@ for (const file of commandFiles) {
     client.commands.set(command.data.name, command);
 }
 
+const { autoPublishCommunityCode } = require('./services/autoPublishCommunityCode');
+
 client.once('clientReady', () => {
     console.log(`✅ Бот ${client.user.tag} запущен!`);
 
@@ -65,6 +67,10 @@ client.once('clientReady', () => {
     // Для обновления команд используй отдельную команду: npm run deploy:prod
     // Это защищает сервер от случайного удаления команд и дневного лимита Discord.
     console.log('ℹ️ Автоматическая регистрация slash-команд при запуске отключена.');
+
+    setTimeout(async () => {
+        try { await autoPublishCommunityCode(client); } catch (e) { console.error('❌ Кодекс:', e); }
+    }, 10000);
 
     // Восстанавливаем закрепляемую панель Гильдии после перезапуска.
     setTimeout(async () => {
