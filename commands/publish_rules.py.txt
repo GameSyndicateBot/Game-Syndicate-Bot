@@ -1,0 +1,101 @@
+import discord
+from discord.ext import commands
+import json
+import os
+
+
+RULES_CHANNEL_ID = 1493230619218542733
+
+RULES_FILE = "data/community_rules.json"
+BANNER_PATH = "assets/rules"
+
+
+class PublishRules(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+
+    @commands.command(name="publish_rules")
+    @commands.has_permissions(administrator=True)
+    async def publish_rules(self, ctx):
+
+        channel = self.bot.get_channel(RULES_CHANNEL_ID)
+
+        if not channel:
+            await ctx.send("❌ Канал правил не найден.")
+            return
+
+
+        if not os.path.exists(RULES_FILE):
+            await ctx.send("❌ Файл community_rules.json отсутствует.")
+            return
+
+
+        with open(RULES_FILE, "r", encoding="utf-8") as file:
+            rules = json.load(file)
+
+
+        await ctx.send(
+            f"📜 Начинаю публикацию правил в {channel.mention}"
+        )
+
+
+        for item in rules:
+
+            banner = item["banner"]
+            title = item.get("title", "Game Syndicate")
+            text = item.get("text", "")
+
+
+            embed = discord.Embed(
+                title=title,
+                description=text,
+                color=0x7B2CFF
+            )
+
+            embed.set_footer(
+                text="Game Syndicate Community Rules"
+            )
+
+
+            image_file = None
+
+            image_path = os.path.join(
+                BANNER_PATH,
+                banner
+            )
+
+
+            if os.path.exists(image_path):
+
+                image_file = discord.File(
+                    image_path,
+                    filename=banner
+                )
+
+                embed.set_image(
+                    url=f"attachment://{banner}"
+                )
+
+
+            if image_file:
+
+                await channel.send(
+                    file=image_file,
+                    embed=embed
+                )
+
+            else:
+
+                await channel.send(
+                    embed=embed
+                )
+
+
+        await ctx.send(
+            "✅ Правила успешно опубликованы."
+        )
+
+
+async def setup(bot):
+    await bot.add_cog(PublishRules(bot))
