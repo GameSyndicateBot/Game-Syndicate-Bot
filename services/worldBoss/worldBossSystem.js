@@ -10,7 +10,7 @@ const { db, getOrCreatePlayer, addCardDust } = require('../../database/db');
 const { addPack } = require('../../utils/packInventory');
 const { CLASSES, MINIONS, BOSSES } = require('./config');
 const { createWorldBossBattleCard, cardFile } = require('../../images/worldBoss/createWorldBossBattleCard');
-const { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, hpMultiplier, resistancePercent, heroSummary, selectedClassBonuses } = require('./heroIntegration');
+const { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, hpMultiplier, resistancePercent, healingMultiplier, heroSummary, selectedClassBonuses } = require('./heroIntegration');
 const { consumeContextBuffs, describeBuffKeys } = require('../../systems/hero/alchemyService');
 const { getInventory } = require('../../systems/hero/itemService');
 const { ITEMS } = require('../../systems/hero/itemData');
@@ -716,7 +716,7 @@ function hurtEnemy(b, state, amount, damageType = 'physical', sourceClass = null
   return {dealt,target:b.boss_name,minion:false};
 }
 function applyDamageBuff(p, base) { const e = effects(p); let d = base * damageMultiplier(p); if (p.class_key === 'berserker') { const missing = 1 - (p.hp / Math.max(1, p.max_hp)); d *= 1 + Math.min(0.5, missing * 0.6); } if (e.bloodRageTurns > 0) d *= 2; if (e.rageTurns > 0) d *= 1.4; if (e.damageBuffTurns > 0) d *= 1 + Number(e.damageBuff || 0); if (e.combatDamageTurns > 0) d *= 1 + Number(e.combatDamage || 0); if (e.guildFeastActive) d *= 1.10; if (e.groupDamageRounds > 0) d *= 1 + Number(e.groupDamage || 0); if (e.doubleNext) { d *= 2; e.doubleNext = false; updateEffects(p.battle_id, p.user_id, e); } return Math.round(d); }
-function healPlayer(id, healerId, target, amount) { const te = effects(target); const penalty = Number(te.healingPenaltyTurns || 0) > 0 ? clamp(Number(te.healingPenalty || 0.30), 0, 0.8) : 0; const adjusted = Math.max(0, Math.round(Number(amount || 0) * (1 - penalty))); const nh = Math.min(target.max_hp, target.hp + adjusted), actual = nh - target.hp; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(nh, id, target.user_id); if (actual > 0) db.prepare('UPDATE world_boss_players SET healing_done=healing_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(actual, actual, id, healerId); return actual; }
+function healPlayer(id, healerId, target, amount) { const te = effects(target); const penalty = Number(te.healingPenaltyTurns || 0) > 0 ? clamp(Number(te.healingPenalty || 0.30), 0, 0.8) : 0; const healer=db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id,healerId); const adjusted = Math.max(0, Math.round(Number(amount || 0) * healingMultiplier(healer||{}) * (1 - penalty))); const nh = Math.min(target.max_hp, target.hp + adjusted), actual = nh - target.hp; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(nh, id, target.user_id); if (actual > 0) db.prepare('UPDATE world_boss_players SET healing_done=healing_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(actual, actual, id, healerId); return actual; }
 function validTargets(id, kind) { const ps = battlePlayers(id); return kind === 'dead' ? ps.filter(x => x.status === 'dead') : ps.filter(x => x.status === 'alive'); }
 function actionTargets(id, player, action, kind) { let list = validTargets(id, kind); if (player.class_key === 'cleric' && action === 'skill') list = list.filter(x => x.user_id !== player.user_id); return list; }
 function targetKind(classKey, action) {

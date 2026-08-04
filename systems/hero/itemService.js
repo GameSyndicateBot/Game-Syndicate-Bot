@@ -44,7 +44,7 @@ function validateEquipmentForClass(item,classKey,userId,{slot=null,classEquipmen
  return {ok:true,classKey:key,kind};
 }
 
-const STAT_KEYS=['hp','strength','defense','dexterity','intelligence','luck','expedition_success','rare_find','world_boss_damage','world_boss_resistance','boss_flat_damage','injury_resistance','class_xp_bonus'];
+const STAT_KEYS=['hp','strength','defense','dexterity','intelligence','wisdom','vitality','luck','expedition_success','rare_find','world_boss_damage','world_boss_resistance','boss_flat_damage','injury_resistance','class_xp_bonus'];
 function parseBonuses(value){ try{return JSON.parse(value||'{}')||{};}catch(_){return {};} }
 function applyUpgradeToBonuses(bonuses,level=0){const n=Math.max(0,Math.min(10,Number(level)||0));if(!n)return {...bonuses};const out={};for(const [key,value] of Object.entries(bonuses||{})){const numeric=Number(value)||0;if(!numeric){out[key]=value;continue;}const percent=['expedition_success','rare_find','world_boss_damage','world_boss_resistance','injury_resistance','class_xp_bonus'].includes(key);out[key]=percent?numeric+Math.ceil(n*0.8):Math.max(numeric,Math.round(numeric*(1+n*0.15)));}return out;}
 function seedItems(){
@@ -117,8 +117,9 @@ function unequipItem(userId,slot){const r=db.prepare('DELETE FROM hero_equipment
 function sumEquipmentBonuses(items){const total=Object.fromEntries(STAT_KEYS.map(k=>[k,0]));for(const item of items){const b=applyUpgradeToBonuses(parseBonuses(item.bonuses_json),item.upgrade_level);for(const k of STAT_KEYS)total[k]+=Number(b[k]||0);}return total;}
 function getEquipmentOnlyBonuses(userId){return sumEquipmentBonuses(getEquipment(userId));}
 function getClassEquipmentOnlyBonuses(userId,classKey,{fallback=true}={}){return sumEquipmentBonuses(getClassEquipment(userId,classKey,{fallback}));}
-function getEquipmentBonuses(userId){
-  const total=getEquipmentOnlyBonuses(userId);
+function getEquipmentBonuses(userId,classKey=null){
+  const key=normalizeClassKey(classKey||getHero(userId)?.class_key);
+  const total=key&&isValidClass(key)?getClassEquipmentOnlyBonuses(userId,key,{fallback:true}):getEquipmentOnlyBonuses(userId);
   try{
     const rows=db.prepare(`SELECT i.bonuses_json
       FROM hero_artifact_equipment hae
@@ -138,8 +139,8 @@ function getEquipmentBonuses(userId){
   }catch(_){}
   return total;
 }
-function getEffectiveHero(hero){if(!hero)return null;const b=getEquipmentBonuses(hero.user_id);return {...hero,equipmentBonuses:b,max_hp:hero.max_hp+b.hp,hp:Math.min(hero.hp+b.hp,hero.max_hp+b.hp),strength:hero.strength+b.strength,defense:hero.defense+b.defense,dexterity:hero.dexterity+b.dexterity,intelligence:hero.intelligence+b.intelligence,luck:hero.luck+b.luck};}
+function getEffectiveHero(hero,options={}){if(!hero)return null;const classKey=options.classKey||hero.class_key;const b=getEquipmentBonuses(hero.user_id,classKey);const {totalStats,deriveStats}=require('./statSystem');const stats=totalStats(hero,b);const derived=deriveStats(stats,classKey);const maxHp=Number(hero.max_hp||0)+derived.bonusHp;return {...hero,equipmentBonuses:b,totalStats:stats,derivedStats:derived,max_hp:maxHp,hp:Math.min(Number(hero.hp||0)+derived.bonusHp,maxHp),strength:stats.strength,defense:stats.defense,dexterity:stats.dexterity,intelligence:stats.intelligence,wisdom:stats.wisdom,vitality:stats.vitality,luck:stats.luck};}
 function getCollection(userId){seedItems();const rows=db.prepare(`SELECT c.item_key,c.first_acquired_at,i.name,i.item_type,i.rarity FROM hero_item_collection c JOIN hero_items i ON i.item_key=c.item_key WHERE c.user_id=?`).all(userId);return {rows,found:rows.length,total:Object.keys(ITEMS).length};}
-function formatBonuses(value){const b=typeof value==='string'?parseBonuses(value):value||{};const labels={hp:'❤️ HP',strength:'⚔️ Сила',defense:'🛡️ Защита',dexterity:'🏃 Ловкость',intelligence:'🧠 Интеллект',luck:'🍀 Удача',expedition_success:'🗺️ Успех экспедиции',rare_find:'✨ Шанс редкой добычи',world_boss_damage:'🐉 Урон по боссу',world_boss_resistance:'🛡️ Защита от босса',boss_flat_damage:'💣 Урон бомбы',injury_resistance:'❤️ Защита от ранений',class_xp_bonus:'📚 Опыт класса',heal:'🧪 Лечение'};return Object.entries(b).filter(([,v])=>v).map(([k,v])=>`${labels[k]||k}: +${v}${['expedition_success','rare_find','world_boss_damage','world_boss_resistance','injury_resistance','class_xp_bonus'].includes(k)?'%':''}`);}
+function formatBonuses(value){const b=typeof value==='string'?parseBonuses(value):value||{};const labels={hp:'❤️ HP',strength:'⚔️ Сила',defense:'🛡️ Защита',dexterity:'🏃 Ловкость',intelligence:'🧠 Интеллект',wisdom:'✨ Мудрость',vitality:'🛡️ Выносливость',luck:'🍀 Удача',expedition_success:'🗺️ Успех экспедиции',rare_find:'✨ Шанс редкой добычи',world_boss_damage:'🐉 Урон по боссу',world_boss_resistance:'🛡️ Защита от босса',boss_flat_damage:'💣 Урон бомбы',injury_resistance:'❤️ Защита от ранений',class_xp_bonus:'📚 Опыт класса',heal:'🧪 Лечение'};return Object.entries(b).filter(([,v])=>v).map(([k,v])=>`${labels[k]||k}: +${v}${['expedition_success','rare_find','world_boss_damage','world_boss_resistance','injury_resistance','class_xp_bonus'].includes(k)?'%':''}`);}
 seedItems();
 module.exports={equipmentKind,validateEquipmentForClass,seedItems,grantItem,getInventory,getInventoryItem,getInventoryItemByKey,getEquipment,getClassEquipment,equipItem,equipItemForClass,unequipItem,unequipInventoryItem,unequipItemForClass,canonicalSlot,getEquipmentOnlyBonuses,getClassEquipmentOnlyBonuses,getEquipmentBonuses,getEffectiveHero,getCollection,formatBonuses,parseBonuses,applyUpgradeToBonuses};

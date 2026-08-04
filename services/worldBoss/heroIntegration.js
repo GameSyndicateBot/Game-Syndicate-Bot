@@ -1,8 +1,9 @@
 'use strict';
 
 const { getHero } = require('../../systems/hero/heroService');
-const { getEquipment, getEquipmentOnlyBonuses, getClassEquipment, getClassEquipmentOnlyBonuses } = require('../../systems/hero/itemService');
+const { getEquipment, getEquipmentOnlyBonuses, getClassEquipment, getClassEquipmentOnlyBonuses, getEffectiveHero } = require('../../systems/hero/itemService');
 const { getActiveCompanion, getActiveCompanions, getActiveMount, getCompanionBonuses } = require('../../systems/hero/companionService');
+const { deriveStats } = require('../../systems/hero/statSystem');
 const { serializeClassProgress, normalizeClassKey, classWorldBossBonuses } = require('../../systems/hero/classProgressService');
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, Number(n) || 0)); }
@@ -34,17 +35,15 @@ function equipmentBonusesForClass(snapshot, classKey) {
   const companionStats = snapshot?.companionBonuses || {};
   const stats = { ...classStats };
   for (const [stat, value] of Object.entries(companionStats)) stats[stat] = Number(stats[stat] || 0) + Number(value || 0);
-  const profile = CLASS_EQUIPMENT_PROFILES[key] || CLASS_EQUIPMENT_PROFILES.warrior;
-  const primaryScore = profile.primary.reduce((sum, stat) => sum + Number(stats[stat] || 0), 0);
-  const damagePercent = clamp(primaryScore / 1.45 + Number(stats.world_boss_damage || 0) * 1.75, 0, 35);
-  // Flat HP from equipment/pets/mounts is applied as an exact value later.
-  const hpPercent = clamp((Number(stats.defense || 0) / 3.2) * profile.hpWeight, 0, 18);
-  const resistancePercent = clamp((Number(stats.defense || 0) / 2.1 + Number(stats.world_boss_resistance || 0) * 1.6) * profile.resistanceWeight, 0, 22);
+  const derived = deriveStats(stats, key);
+  const damagePercent = clamp(Number(derived.primaryDamagePercent || 0) + Number(stats.world_boss_damage || 0), 0, 40);
+  const resistancePercent = clamp(Number(derived.resistancePercent || 0) + Number(stats.world_boss_resistance || 0), 0, 28);
   return {
     damagePercent: Math.round(damagePercent * 10) / 10,
-    hpPercent: Math.round(hpPercent * 10) / 10,
+    hpPercent: 0,
     resistancePercent: Math.round(resistancePercent * 10) / 10,
-    flatHp: Math.max(0, Math.round(Number(stats.hp || 0))),
+    healingPercent: Math.round(clamp(Number(derived.healingPercent || 0),0,35)*10)/10,
+    flatHp: Math.max(0, Math.round(Number(derived.bonusHp || 0))),
     expeditionSuccess: Number(stats.expedition_success || 0),
   };
 }
@@ -52,7 +51,8 @@ function equipmentBonusesForClass(snapshot, classKey) {
 function buildHeroSnapshot(userId) {
   const hero = getHero(userId);
   if (!hero) return null;
-  const equipmentBonuses = getEquipmentOnlyBonuses(userId) || {};
+  const effectiveHero = getEffectiveHero(hero,{classKey:hero.class_key});
+  const equipmentBonuses = effectiveHero?.equipmentBonuses || getEquipmentOnlyBonuses(userId) || {};
   const equipment = getEquipment(userId).map(item => ({
     slot: item.slot, itemKey: item.item_key, name: item.name, rarity: item.rarity,
     upgradeLevel: Number(item.upgrade_level || 0),
@@ -74,10 +74,10 @@ function buildHeroSnapshot(userId) {
   // Базовый герой даёт небольшой общий бонус. Экипировка считается отдельно
   // и адаптируется под выбранный в World Boss класс, чтобы не было двойного учёта.
   const levelDamage = 0; // отдельный уровень героя больше не влияет на World Boss
-  const statDamage = clamp((Number(hero.strength || 0) + Number(hero.intelligence || 0) + Number(hero.dexterity || 0)) / 24, 0, 8);
-  const damagePercent = clamp(levelDamage + statDamage, 0, 8);
-  const hpPercent = clamp(Number(hero.max_hp || 0) / 95, 0, 10);
-  const resistancePercent = clamp(Number(hero.defense || 0) / 12, 0, 8);
+  const baseDerived = deriveStats(hero,hero.class_key);
+  const damagePercent = clamp(levelDamage + Number(baseDerived.primaryDamagePercent||0), 0, 20);
+  const hpPercent = clamp(Number(baseDerived.bonusHp||0) / 12, 0, 18);
+  const resistancePercent = clamp(Number(baseDerived.resistancePercent||0), 0, 20);
 
   return {
     name: String(hero.name || 'Герой').slice(0, 24),
@@ -85,14 +85,16 @@ function buildHeroSnapshot(userId) {
     classKey: hero.class_key,
     originKey: hero.origin_key,
     stats: {
-      hp: Number(hero.max_hp || hero.hp || 0),
-      strength: Number(hero.strength || 0),
-      defense: Number(hero.defense || 0),
-      dexterity: Number(hero.dexterity || 0),
-      intelligence: Number(hero.intelligence || 0),
-      luck: Number(hero.luck || 0),
+      hp: Number(effectiveHero?.max_hp || hero.max_hp || hero.hp || 0),
+      strength: Number(effectiveHero?.strength || 0),
+      defense: Number(effectiveHero?.defense || 0),
+      dexterity: Number(effectiveHero?.dexterity || 0),
+      intelligence: Number(effectiveHero?.intelligence || 0),
+      wisdom: Number(effectiveHero?.wisdom || 0),
+      vitality: Number(effectiveHero?.vitality || 0),
+      luck: Number(effectiveHero?.luck || 0),
     },
-    combat: { damagePercent, hpPercent, resistancePercent },
+    combat: { damagePercent, hpPercent, resistancePercent, healingPercent:Number(baseDerived.healingPercent||0), critChance:Number(baseDerived.critChance||0), dodgeChance:Number(baseDerived.dodgeChance||0) },
     equipmentBonuses,
     companionBonuses,
     classEquipmentBonuses,
@@ -122,17 +124,7 @@ function selectedClassBonuses(player) {
   const equipment = equipmentBonusesForClass(s, key);
   return { level, ...mastery, mastery, equipment };
 }
-function equipmentDexterityDamagePercent(player) {
-  const snapshot = parseSnapshot(player);
-  const classKey = normalizeClassKey(player?.class_key);
-  if (!DPS_CLASS_KEYS.has(classKey)) return 0;
-
-  // Только Ловкость надетой экипировки активного класса. Базовые характеристики
-  // героя, питомцы, маунты и временные эффекты сюда намеренно не входят.
-  const equipped = snapshot?.classEquipmentBonuses?.[classKey] || snapshot?.equipmentBonuses || {};
-  const dexterity = Math.max(0, Number(equipped.dexterity || 0));
-  return Math.round(clamp(dexterity, 0, 40) * 10) / 10;
-}
+function equipmentDexterityDamagePercent(player) { return 0; }
 function damageMultiplier(player) {
   const s = parseSnapshot(player), cb = selectedClassBonuses(player);
   const dexterityDamage = equipmentDexterityDamagePercent(player);
@@ -154,6 +146,7 @@ function resistancePercent(player) {
   const s = parseSnapshot(player), cb = selectedClassBonuses(player);
   return clamp(Number(s?.combat?.resistancePercent || 0) + cb.mastery.resistancePercent + cb.equipment.resistancePercent + Number(s?.alchemy?.world_boss_resistance || 0), 0, 32);
 }
+function healingMultiplier(player){ const s=parseSnapshot(player),cb=selectedClassBonuses(player); return 1+clamp(Number(s?.combat?.healingPercent||0)+Number(cb?.equipment?.healingPercent||0),0,45)/100; }
 function heroSummary(player) {
   const s = parseSnapshot(player);
   const parts = [`**${heroName(player)}**`, `ур. ${Number(player?.hero_level || s.level || 1)}`];
@@ -161,4 +154,4 @@ function heroSummary(player) {
   return parts.join(' • ');
 }
 
-module.exports = { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, equipmentDexterityDamagePercent, hpMultiplier, resistancePercent, heroSummary, selectedClassBonuses, equipmentBonusesForClass };
+module.exports = { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, equipmentDexterityDamagePercent, hpMultiplier, resistancePercent, healingMultiplier, heroSummary, selectedClassBonuses, equipmentBonusesForClass };

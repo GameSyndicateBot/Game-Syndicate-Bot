@@ -4,6 +4,7 @@ const { getHero, getLatestExpeditionClassKey, createHero, getHistory, deleteHero
 const { getInventory, getEquipment, getClassEquipment, getEffectiveHero, getInventoryItem, equipItem, equipItemForClass, unequipItem, unequipItemForClass, getCollection, formatBonuses, parseBonuses, applyUpgradeToBonuses } = require('../systems/hero/itemService');
 const { SLOT_LABELS, TYPE_LABELS, RARITY_LABELS } = require('../systems/hero/itemData');
 const { createHeroCard } = require('../images/hero/createHeroCard');
+const { formatDerived } = require('../systems/hero/statSystem');
 const { getAllClassProgress, classXpForNextLevel, classWorldBossBonuses, getMasteryRank, classProgressPercent } = require('../systems/hero/classProgressService');
 
 const classChoices = Object.entries(HERO_CLASSES).map(([value,c])=>({name:`${c.icon} ${c.name}`,value}));
@@ -44,7 +45,7 @@ module.exports={
   if(sub==='classes'){
    const hero=getHero(interaction.user.id);
    if(!hero){
-    const text=Object.values(HERO_CLASSES).map(c=>`${c.icon} **${c.name}** — ${c.role}\n❤️ ${c.hp} · ⚔️ ${c.strength} · 🛡️ ${c.defense} · 🏃 ${c.dexterity} · 🧠 ${c.intelligence} · 🍀 ${c.luck}`).join('\n\n');
+    const text=Object.values(HERO_CLASSES).map(c=>`${c.icon} **${c.name}** — ${c.role}\n❤️ ${c.hp} · ⚔️ ${c.strength} · 🌀 ${c.dexterity} · 🧠 ${c.intelligence} · ✨ ${c.wisdom} · 🛡️ ${c.vitality} · 🍀 ${c.luck}`).join('\n\n');
     return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle('⚔️ 12 классов героев').setDescription(text)],flags:MessageFlags.Ephemeral});
    }
    const rows=getAllClassProgress(interaction.user.id);
@@ -99,8 +100,10 @@ module.exports={
   if(sub==='view'){await interaction.deferReply();const buffer=await createHeroCard(hero,target);return interaction.editReply({files:[new AttachmentBuilder(buffer,{name:`hero-${target.id}.png`})]});}
   if(sub==='stats'){
    const req=xpForNextLevel(hero.level);const b=hero.equipmentBonuses||{};
-   const lines=Object.entries(STAT_LABELS).map(([k,l])=>`**${l}:** ${k==='hp'?`${hero.hp}/${hero.max_hp}`:hero[k]}${b[k]?` *(+${b[k]} экипировка)*`:''}`).join('\n');
-   return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${cls.icon} ${hero.name} — характеристики`).setDescription(lines).addFields({name:'Класс',value:`${cls.name} • ${cls.role}`,inline:true},{name:'Происхождение',value:`${org.icon} ${org.name}`,inline:true},{name:'Уровень',value:`${hero.level} • ${hero.xp}/${req} XP`,inline:true},{name:'Экспедиции',value:`+${b.expedition_success||0}% успех · +${b.rare_find||0}% редкая добыча`,inline:false},{name:'World Boss',value:`+${b.world_boss_damage||0}% урон · +${b.world_boss_resistance||0}% защита`,inline:false})]});
+   const keys=['strength','dexterity','intelligence','wisdom','vitality','luck'];
+   const lines=keys.map(k=>`**${STAT_LABELS[k]}:** ${hero[k]}${Number(b[k]||0)?` *(+${b[k]} от надетого)*`:''}`).join('\n');
+   const derived=formatDerived(hero.derivedStats||{}).join('\n');
+   return interaction.reply({embeds:[new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${cls.icon} ${hero.name} — актуальные характеристики`).setDescription(`❤️ **HP:** ${hero.hp}/${hero.max_hp}\n${lines}`).addFields({name:'Производные эффекты',value:derived.slice(0,1024),inline:false},{name:'Класс',value:`${cls.name} • ${cls.role}`,inline:true},{name:'Происхождение',value:`${org.icon} ${org.name}`,inline:true},{name:'Уровень',value:`${hero.level} • ${hero.xp}/${req} XP`,inline:true},{name:'Отдельные бонусы экипировки',value:`🗺️ +${b.expedition_success||0}% успех • ✨ +${b.rare_find||0}% редкая добыча\n🐉 +${b.world_boss_damage||0}% урон • 🛡️ +${b.world_boss_resistance||0}% защита`,inline:false}).setFooter({text:'Итог = базовая характеристика + надетая экипировка + артефакты + активные питомцы/маунт'})]});
   }
   if(sub==='equipment'){
    const classKey=interaction.options.getString('class');

@@ -33,11 +33,12 @@ function createHero({ userId, name, gender, classKey, originKey }) {
   const stats = {
     hp: heroClass.hp + (bonus.hp || 0), strength: heroClass.strength + (bonus.strength || 0),
     defense: heroClass.defense + (bonus.defense || 0), dexterity: heroClass.dexterity + (bonus.dexterity || 0),
-    intelligence: heroClass.intelligence + (bonus.intelligence || 0), luck: heroClass.luck + (bonus.luck || 0),
+    intelligence: heroClass.intelligence + (bonus.intelligence || 0), wisdom: heroClass.wisdom + (bonus.wisdom || 0),
+    vitality: heroClass.vitality + (bonus.vitality || 0), luck: heroClass.luck + (bonus.luck || 0),
   };
   const insert = db.prepare(`INSERT INTO heroes
-    (user_id, name, gender, class_key, origin_key, hp, max_hp, strength, defense, dexterity, intelligence, luck)
-    VALUES (@userId,@name,@gender,@classKey,@originKey,@hp,@hp,@strength,@defense,@dexterity,@intelligence,@luck)`);
+    (user_id, name, gender, class_key, origin_key, hp, max_hp, strength, defense, dexterity, intelligence, wisdom, vitality, luck)
+    VALUES (@userId,@name,@gender,@classKey,@originKey,@hp,@hp,@strength,@defense,@dexterity,@intelligence,@wisdom,@vitality,@luck)`);
   const result = insert.run({ userId, name: cleanName, gender, classKey, originKey, ...stats });
   const hero = getHero(userId);
   ensureClassProgress(userId, classKey);

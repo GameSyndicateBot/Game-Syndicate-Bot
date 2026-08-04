@@ -1395,6 +1395,25 @@ try {
 
 
 
+
+// V20.0.0 — единые видимые характеристики героя.
+(function ensureCoreHeroStats(){
+  try {
+    const columns = new Set(db.prepare('PRAGMA table_info(heroes)').all().map(row => row.name));
+    if (!columns.has('wisdom')) db.exec('ALTER TABLE heroes ADD COLUMN wisdom INTEGER NOT NULL DEFAULT 0');
+    if (!columns.has('vitality')) db.exec('ALTER TABLE heroes ADD COLUMN vitality INTEGER NOT NULL DEFAULT 0');
+    const defaults = {
+      warrior:[6,14], paladin:[10,14], guardian:[6,17], cleric:[16,9], priest:[18,8], bard:[15,9],
+      berserker:[4,12], assassin:[6,8], archer:[7,9], mage:[12,7], pyromancer:[10,8], duelist:[6,10],
+      reaper:[6,9], mindlord:[12,7], engineer:[9,10], necromancer:[11,9], druid:[15,11], shaman:[15,10],
+      chronomancer:[12,9], illusionist:[11,8]
+    };
+    const update=db.prepare('UPDATE heroes SET wisdom=CASE WHEN wisdom=0 THEN ? ELSE wisdom END, vitality=CASE WHEN vitality=0 THEN ? ELSE vitality END WHERE class_key=?');
+    const tx=db.transaction(()=>{ for(const [key,[wis,vit]] of Object.entries(defaults)) update.run(wis,vit,key); });
+    tx();
+  } catch (error) { console.error('[V20 Stats] migration failed:', error.message); }
+})();
+
 // V18.3.10: персональные one-time unstuck-миграции удалены.
 // Восстановление выполняется только по проверяемому состоянию через services/rpgStateRecovery.js.
 

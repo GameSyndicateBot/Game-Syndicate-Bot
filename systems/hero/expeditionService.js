@@ -317,7 +317,8 @@ function computeSuccessChance(hero, location, extraBonuses = {}, tacticKey = 'ba
   const difficulty = Math.max(1, Math.min(6, Number(location.difficulty || 1)));
   const baseChance = baseByDifficulty[difficulty];
 
-  const relevant = Number(hero[location.stat] || 0);
+  const relevantKey=location.stat==='defense'?'vitality':location.stat;
+  const relevant = Number(hero[relevantKey] || hero[location.stat] || 0);
   const levelBonus = Math.min(8, Math.max(0, (Number(hero.level || 1) - 1) * 0.8));
   const statBonus = Math.min(8, Math.max(0, (relevant - 7) * 0.8));
   const luckBonus = Math.min(4, Math.max(0, Number(hero.luck || 0) * 0.35));
