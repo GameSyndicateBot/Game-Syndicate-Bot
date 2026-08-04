@@ -1265,6 +1265,14 @@ async function nextTurn(id, previousAlive = null) {
   let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
   const aliveBeforeAdvance = battlePlayers(id).filter(x => x.status === 'alive');
   let alive = aliveBeforeAdvance;
+
+  // Босс отвечает после каждых четырёх полностью завершённых ходов игроков.
+  // Счётчик не зависит от длины группы и не занимает место в очереди игроков.
+  let cadenceState = stateOf(b);
+  cadenceState.playerTurnsSinceBossAttack = Number(cadenceState.playerTurnsSinceBossAttack || 0) + 1;
+  const bossAttackDue = cadenceState.playerTurnsSinceBossAttack >= 4;
+  if (bossAttackDue) cadenceState.playerTurnsSinceBossAttack = 0;
+  saveState(b, cadenceState);
   // Переход строится по ID только что сходившего игрока, а не по старому индексу.
   // Поэтому смерть/воскрешение или изменение списка участников не может «съесть» чужой ход.
   const previousIndexNow = previous ? alive.findIndex(x => x.user_id === previous.user_id) : Number(b.turn_index || 0);
@@ -1290,7 +1298,21 @@ async function nextTurn(id, previousAlive = null) {
     b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
     if (b.boss_hp <= 0) return finish(id, true);
 
+    b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+    alive = battlePlayers(id).filter(x => x.status === 'alive');
+    if (!alive.length) return finish(id, false);
+    ni = 0;
+    db.prepare('UPDATE world_boss_battles SET round_no=round_no+1 WHERE id=?').run(id);
+  }
+
+  // Ответная атака выполняется между ходами игроков. Она не изменяет turn_index.
+  if (bossAttackDue) {
+    // Запоминаем реальную очередь до удара босса: если он убьёт кого-то перед
+    // следующим игроком, очередь пересоберётся по user_id и никого не пропустит.
+    const orderBeforeBoss = alive.map(x => x.user_id);
+    const searchStart = Math.min(ni, Math.max(0, orderBeforeBoss.length - 1));
     try {
+      b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
       const turnBeforeBoss = Number(b.turn_index || 0);
       await bossTurn(id);
       const afterBoss = db.prepare('SELECT turn_index FROM world_boss_battles WHERE id=?').get(id);
@@ -1299,17 +1321,25 @@ async function nextTurn(id, previousAlive = null) {
         db.prepare('UPDATE world_boss_battles SET turn_index=? WHERE id=?').run(turnBeforeBoss,id);
       }
     } catch (error) {
-      console.error(`[WorldBoss] bossTurn battle=${id} failed; round will continue:`, error);
+      console.error(`[WorldBoss] bossTurn battle=${id} failed; player queue will continue:`, error);
       const failedBattle = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
-      if (failedBattle) addLog(failedBattle, '⚠️ Ход босса завершился технической ошибкой. Следующий раунд запущен автоматически.');
+      if (failedBattle) addLog(failedBattle, '⚠️ Ответная атака босса завершилась технической ошибкой. Очередь игроков автоматически продолжена.');
     }
 
     b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
     alive = battlePlayers(id).filter(x => x.status === 'alive');
     if (!alive.length) return finish(id, false);
-    ni = 0;
-    db.prepare('UPDATE world_boss_battles SET round_no=round_no+1 WHERE id=?').run(id);
+
+    const aliveIds = new Set(alive.map(x => x.user_id));
+    let intendedNextId = null;
+    for (let offset = 0; offset < orderBeforeBoss.length; offset++) {
+      const candidateId = orderBeforeBoss[(searchStart + offset) % orderBeforeBoss.length];
+      if (aliveIds.has(candidateId)) { intendedNextId = candidateId; break; }
+    }
+    ni = intendedNextId ? alive.findIndex(x => x.user_id === intendedNextId) : 0;
+    if (ni < 0) ni = 0;
   }
+
   db.prepare('UPDATE world_boss_battles SET turn_index=?,turn_deadline=? WHERE id=?').run(ni, Date.now() + TURN_MS, id); await refresh(id); armTurn(id);
 }
 function damagePlayerSummons(state, ratio = 0.55) {
@@ -1358,14 +1388,18 @@ async function bossTurn(id) {
   const state = stateOf(b);
   state.minions = state.minions || [];
   state.bossActionStats = state.bossActionStats || {};
+  state.bossTurnNo = Number(state.bossTurnNo || 0) + 1;
+  const bossActionNo = state.bossTurnNo;
+  const empoweredBossAttack = bossActionNo % 4 === 0;
+  const scheduledSpecial = bossActionNo % 3 === 0; // каждые 12 ходов игроков
   state.rage = clamp(Number(state.rage || 0) + Number(boss.rageGain || 10), 0, 100);
 
   if (boss.mechanic === 'overheat' && state.skipNextBossTurn) { state.skipNextBossTurn=false; state.log.push('🔥 Железный Колосс перегрет и **пропускает ход**.'); if(Number(state.overheatVulnerableRounds||0)>0)state.overheatVulnerableRounds--; saveState(b,state); return; }
-  if (boss.mechanic === 'void_absorption' && Number(b.round_no)%4===0) { const victim=pick(players),meta=resourceMeta(victim.class_key),key=meta.key,current=Number(victim[key]||0),drained=Math.min(40,current); db.prepare(`UPDATE world_boss_players SET ${key}=MAX(0,${key}-?) WHERE battle_id=? AND user_id=?`).run(drained,id,victim.user_id); state.log.push(`🕳️ **Поглощение Пустоты:** <@${victim.user_id}> теряет **${drained} ${meta.label.toLowerCase()}**.`); }
-  if (boss.mechanic === 'chaos_rift') { const rift=state.minions.find(m=>m.isChaosRift); if(rift){rift.riftAge=Number(rift.riftAge||0)+1;if(rift.riftAge>=2){const eliteId=pick([2049,2050]),ec=MINIONS[eliteId];state.minions=state.minions.filter(m=>m!==rift);state.minions.push({cardId:eliteId,instanceId:`elite-${Date.now()}`,provoking:Boolean(ec.provoking),ownerBossCardId:boss.cardId,name:ec.name,hp:ec.maxHp,maxHp:ec.maxHp,damage:ec.damage,miss:ec.miss,damageType:ec.damageType||'magic'});state.log.push(`🌀 Разлом не уничтожен — выходит элитный **${ec.name}**!`);}} if(Number(b.round_no)%3===0&&!state.minions.some(m=>m.isChaosRift)){state.minions.push({cardId:9039,instanceId:`rift-${Date.now()}`,name:'Разлом Хаоса',hp:Math.round(180*bossMinionHpMultiplier(players.length)),maxHp:Math.round(180*bossMinionHpMultiplier(players.length)),damage:[0,0],miss:100,damageType:'magic',isChaosRift:true,riftAge:0,provoking:false});state.log.push('🌀 Архонт открывает **Разлом Хаоса**. Уничтожьте его за 2 раунда!');} }
-  if (boss.mechanic === 'decay_curse' && Number(b.round_no)%2===0) { const victim=pick(players),e=effects(victim);e.decayCurseStacks=Math.min(3,Number(e.decayCurseStacks||0)+1);e.healingPenaltyTurns=Math.max(Number(e.healingPenaltyTurns||0),3);e.healingPenalty=0.50;updateEffects(id,victim.user_id,e);state.log.push(`☠️ <@${victim.user_id}> получает **Проклятие Разложения** (${e.decayCurseStacks}/3).`); }
-  if (boss.mechanic === 'ice_shackles' && Number(b.round_no)%3===0) { const victim=pick(players),e=effects(victim);e.skillSilencedTurns=Math.max(Number(e.skillSilencedTurns||0),1);e.ultSilencedTurns=Math.max(Number(e.ultSilencedTurns||0),1);updateEffects(id,victim.user_id,e);state.log.push(`❄️ **Ледяные оковы:** на следующем ходу <@${victim.user_id}> доступна только обычная атака.`); }
-  if (boss.mechanic === 'chain_mastery' && (Number(b.round_no) === 1 || Number(b.round_no) % 2 === 0)) {
+  if (boss.mechanic === 'void_absorption' && bossActionNo%4===0) { const victim=pick(players),meta=resourceMeta(victim.class_key),key=meta.key,current=Number(victim[key]||0),drained=Math.min(40,current); db.prepare(`UPDATE world_boss_players SET ${key}=MAX(0,${key}-?) WHERE battle_id=? AND user_id=?`).run(drained,id,victim.user_id); state.log.push(`🕳️ **Поглощение Пустоты:** <@${victim.user_id}> теряет **${drained} ${meta.label.toLowerCase()}**.`); }
+  if (boss.mechanic === 'chaos_rift') { const rift=state.minions.find(m=>m.isChaosRift); if(rift){rift.riftAge=Number(rift.riftAge||0)+1;if(rift.riftAge>=2){const eliteId=pick([2049,2050]),ec=MINIONS[eliteId];state.minions=state.minions.filter(m=>m!==rift);state.minions.push({cardId:eliteId,instanceId:`elite-${Date.now()}`,provoking:Boolean(ec.provoking),ownerBossCardId:boss.cardId,name:ec.name,hp:ec.maxHp,maxHp:ec.maxHp,damage:ec.damage,miss:ec.miss,damageType:ec.damageType||'magic'});state.log.push(`🌀 Разлом не уничтожен — выходит элитный **${ec.name}**!`);}} if(bossActionNo%3===0&&!state.minions.some(m=>m.isChaosRift)){state.minions.push({cardId:9039,instanceId:`rift-${Date.now()}`,name:'Разлом Хаоса',hp:Math.round(180*bossMinionHpMultiplier(players.length)),maxHp:Math.round(180*bossMinionHpMultiplier(players.length)),damage:[0,0],miss:100,damageType:'magic',isChaosRift:true,riftAge:0,provoking:false});state.log.push('🌀 Архонт открывает **Разлом Хаоса**. Уничтожьте его за 2 раунда!');} }
+  if (boss.mechanic === 'decay_curse' && bossActionNo%2===0) { const victim=pick(players),e=effects(victim);e.decayCurseStacks=Math.min(3,Number(e.decayCurseStacks||0)+1);e.healingPenaltyTurns=Math.max(Number(e.healingPenaltyTurns||0),3);e.healingPenalty=0.50;updateEffects(id,victim.user_id,e);state.log.push(`☠️ <@${victim.user_id}> получает **Проклятие Разложения** (${e.decayCurseStacks}/3).`); }
+  if (boss.mechanic === 'ice_shackles' && bossActionNo%3===0) { const victim=pick(players),e=effects(victim);e.skillSilencedTurns=Math.max(Number(e.skillSilencedTurns||0),1);e.ultSilencedTurns=Math.max(Number(e.ultSilencedTurns||0),1);updateEffects(id,victim.user_id,e);state.log.push(`❄️ **Ледяные оковы:** на следующем ходу <@${victim.user_id}> доступна только обычная атака.`); }
+  if (boss.mechanic === 'chain_mastery' && (bossActionNo === 1 || bossActionNo % 2 === 0)) {
     const alreadyChained = players.filter(p => Number(effects(p).chainBound || 0) > 0);
     const pool = players.filter(p => !alreadyChained.some(x => x.user_id === p.user_id));
     const victim = pick(pool.length ? pool : players);
@@ -1381,7 +1415,7 @@ async function bossTurn(id) {
       }
       const e = effects(victim);
       e.chainBound = 1;
-      e.chainSourceRound = Number(b.round_no || 0);
+      e.chainSourceRound = bossActionNo;
       updateEffects(id, victim.user_id, e);
       state.log.push(`⛓️ **Клеймо Цепей:** <@${victim.user_id}> скован. При следующем полученном HP-уроне цепь перепрыгнет на другого игрока и передаст ему 35% урона.`);
     }
@@ -1407,12 +1441,12 @@ async function bossTurn(id) {
   const target = chooseSingleTarget();
   const attackDamageType = pickDamageType(boss.attackTypes, 'physical');
   const phaseDamageMultiplier = phase === 3 ? 1.15 : phase === 2 ? 1.08 : 1;
-  const bossDamageMultiplier = (Number(state.bossWeakenRounds || 0) > 0 ? 1 - Number(state.bossWeaken || 0) : 1) * phaseDamageMultiplier;
+  const bossDamageMultiplier = (Number(state.bossWeakenRounds || 0) > 0 ? 1 - Number(state.bossWeaken || 0) : 1) * phaseDamageMultiplier * (empoweredBossAttack ? 1.30 : 1);
   const effectiveBossMiss = Math.max(0, Number(boss.miss || 0) - (phase === 3 ? 5 : 0));
 
   const recordAction = action => {
     state.bossActionStats[action] = Number(state.bossActionStats[action] || 0) + 1;
-    console.log(`[WorldBoss AI] battle=${id} round=${b.round_no} phase=${phase} action=${action} minions=${state.minions.length} rage=${state.rage}`);
+    console.log(`[WorldBoss AI] battle=${id} bossTurn=${bossActionNo} phase=${phase} action=${action} empowered=${empoweredBossAttack} minions=${state.minions.length} rage=${state.rage}`);
   };
 
   const summon = () => {
@@ -1456,14 +1490,14 @@ async function bossTurn(id) {
       summoned.push(`**${cfg.name}** — ❤️ ${scaledMinionHp}`);
     }
 
-    state.lastSummonRound = b.round_no;
+    state.lastSummonRound = bossActionNo;
     return `👾 **${boss.name}** призывает ${summonCount} ${summonCount === 1 ? 'миньона' : 'миньонов'}: ${summoned.join(', ')}.`;
   };
 
   let action = '';
   let text = '';
 
-  if (state.rage >= 100 && Number(b.round_no || 0) - Number(state.lastRageUltRound || -99) >= 4) {
+  if (!scheduledSpecial && state.rage >= 100 && bossActionNo - Number(state.lastRageUltRound || -99) >= 4) {
     action = 'RAGE_ULT';
     let total = 0;
     const rageType = pickDamageType(boss.attackTypes, attackDamageType);
@@ -1475,7 +1509,7 @@ async function bossTurn(id) {
       const r = damageTarget(id, p, Math.round(perTargetBase * bossDamageMultiplier), rageType);
       total += r.hpDamage;
     }
-    state.lastRageUltRound = Number(b.round_no || 0);
+    state.lastRageUltRound = bossActionNo;
     const summonDamage = damagePlayerSummons(state, 1);
     for (const p of battlePlayers(id).filter(x => x.status === 'alive')) { const pe = effects(p); pe.healingPenaltyTurns = Math.max(Number(pe.healingPenaltyTurns || 0), 2); pe.healingPenalty = 0.30; updateEffects(id, p.user_id, pe); }
     state.rage = 0;
@@ -1485,15 +1519,16 @@ async function bossTurn(id) {
     const neverSummoned = Number(state.bossActionStats.SUMMON || 0) === 0;
     const neverCursed = Number(state.bossActionStats.SKILL_CURSE || 0) + Number(state.bossActionStats.ULT_CURSE || 0) + Number(state.bossActionStats.GROUP_CURSE || 0) === 0;
     const canSummon = state.minions.length < 3 && (boss.minions || []).length > 0;
-    const canGroupCurse = b.round_no - Number(state.lastGroupCurseRound || -99) >= 5;
+    const canGroupCurse = bossActionNo - Number(state.lastGroupCurseRound || -99) >= 5;
     const forcedAoeCadence = phase === 3 ? 3 : 4;
-    const forceAoe = b.round_no - Number(state.lastForcedAoeRound || -99) >= forcedAoeCadence;
+    const forceAoe = bossActionNo - Number(state.lastForcedAoeRound || -99) >= forcedAoeCadence;
 
-    if (forceAoe) { action = 'AOE'; state.lastForcedAoeRound = b.round_no; }
-    else if (canSummon && b.round_no - Number(state.lastSummonRound || -99) >= 3) action = 'SUMMON';
-    else if (b.round_no - Number(state.lastCurseRound || -99) >= 3) action = 'SKILL_CURSE';
-    else if (neverSummoned && canSummon && b.round_no >= 2) action = 'SUMMON';
-    else if (neverCursed && b.round_no >= 3) action = 'SKILL_CURSE';
+    if (scheduledSpecial) action = 'SPECIAL';
+    else if (forceAoe) { action = 'AOE'; state.lastForcedAoeRound = bossActionNo; }
+    else if (canSummon && bossActionNo - Number(state.lastSummonRound || -99) >= 3) action = 'SUMMON';
+    else if (bossActionNo - Number(state.lastCurseRound || -99) >= 3) action = 'SKILL_CURSE';
+    else if (neverSummoned && canSummon && bossActionNo >= 2) action = 'SUMMON';
+    else if (neverCursed && bossActionNo >= 3) action = 'SKILL_CURSE';
     else {
       // Фаза 1: больше призывов. Фаза 2/3: больше АоЕ и проклятий.
       const weights = phase === 1
@@ -1507,7 +1542,7 @@ async function bossTurn(id) {
 
     // Если выбранное действие сейчас недоступно, используем осмысленную замену.
     if (action === 'SUMMON' && !canSummon) action = 'AOE';
-    if (action === 'DESTROY_SUMMON' && (!(state.summons || []).length || b.round_no - Number(state.lastDestroyRound || -99) < 2)) action = 'SPECIAL';
+    if (action === 'DESTROY_SUMMON' && (!(state.summons || []).length || bossActionNo - Number(state.lastDestroyRound || -99) < 2)) action = 'SPECIAL';
     if (action === 'GROUP_CURSE' && !canGroupCurse) action = 'SKILL_CURSE';
 
     if (action === 'ATTACK') {
@@ -1542,30 +1577,30 @@ async function bossTurn(id) {
       text = `⚡ ${boss.name} применяет особую атаку против <@${target.user_id}>: **${r.hpDamage} HP** (${damageTypeLabel(specialType)})${crit ? ' • 💥 КРИТ!' : ''}.`;
     } else if (action === 'SKILL_CURSE') {
       text = applyBossCurse(id, state, players, 'skill', 2) || `👹 ${boss.name} готовит новую атаку.`;
-      state.lastCurseRound = b.round_no;
+      state.lastCurseRound = bossActionNo;
     } else if (action === 'ULT_CURSE') {
       const candidates = players.filter(p => ultResourceValue(p) >= 70);
       text = applyBossCurse(id, state, candidates.length ? candidates : players, 'ult', 2) || `👹 ${boss.name} готовит новую атаку.`;
-      state.lastCurseRound = b.round_no;
+      state.lastCurseRound = bossActionNo;
     } else if (action === 'GROUP_CURSE') {
       for (const p of players) {
         const e = effects(p);
         e.skillSilencedTurns = Math.max(Number(e.skillSilencedTurns || 0), 1);
         updateEffects(id, p.user_id, e);
       }
-      state.lastGroupCurseRound = b.round_no;
-      state.lastCurseRound = b.round_no;
+      state.lastGroupCurseRound = bossActionNo;
+      state.lastCurseRound = bossActionNo;
       text = `🌑 **Великое молчание!** Вся группа лишена способностей на 1 ход.`;
     } else if (action === 'DESTROY_SUMMON') {
       text = destroyRandomSummon(state) || `👹 ${boss.name} не смог разрушить призыв.`;
-      state.lastDestroyRound = b.round_no;
+      state.lastDestroyRound = bossActionNo;
     } else if (action === 'SUMMON') {
       const summonText = summon() || `👹 ${boss.name} не смог призвать миньона.`;
       const handTarget = chooseSingleTarget();
       let handText = '';
       if (handTarget && Math.random() * 100 >= effectiveBossMiss) {
         const handType = pickDamageType(boss.attackTypes, attackDamageType);
-        const r = damageTarget(id, handTarget, rand(Math.round(boss.damage[0] * 0.55), Math.round(boss.damage[1] * 0.70)), handType);
+        const r = damageTarget(id, handTarget, Math.round(rand(Math.round(boss.damage[0] * 0.55), Math.round(boss.damage[1] * 0.70)) * bossDamageMultiplier), handType);
         handText = ` Затем босс бьёт <@${handTarget.user_id}> с руки на **${r.hpDamage} HP** (${damageTypeLabel(handType)}).`;
       } else handText = ' Затем босс атакует с руки, но промахивается.';
       text = summonText + handText;
@@ -1573,6 +1608,8 @@ async function bossTurn(id) {
   }
 
   recordAction(action || 'UNKNOWN');
+  if (empoweredBossAttack) text = `🔴 **УСИЛЕННАЯ 4-Я АТАКА БОССА (+30% урона)!**\n${text}`;
+  if (scheduledSpecial && action === 'SPECIAL') text = `⚠️ **12 ходов игроков — особая способность босса!**\n${text}`;
   state.log.push(text);
 
   for (const m of state.minions) {
