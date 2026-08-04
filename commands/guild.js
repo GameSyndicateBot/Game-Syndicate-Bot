@@ -742,7 +742,7 @@ function cookRows(recipes) {
           const state = cookState(r);
           const missing = missingCookSummary(r);
           return {
-            label: r.item.name,
+            label: r.name || r.item.name,
             value: r.key,
             emoji: state.icon,
             description: `${state.label}${missing.length ? ` · нужно: ${missing.join(', ')}` : ''}`.slice(0, 100),
@@ -760,7 +760,7 @@ async function showCook(interaction, notice = '') {
   const lines = recipes.map(r => {
     const state = cookState(r);
     const missing = missingCookSummary(r);
-    return `${state.icon} **${r.item.name}** — ${state.label}
+    return `${state.icon} **${r.name || r.item.name}** — ${state.label}
 ${r.item.description}
 ${missing.length ? `Нужно: ${missing.join(', ')}` : 'Все условия выполнены.'}`;
   });
@@ -794,7 +794,7 @@ async function showCookRecipe(interaction, recipeKey, notice = '') {
     : recipe.heroLevel < recipe.level
       ? `🔒 Блюдо автоматически откроется на **${recipe.level} уровне**. Сейчас уровень **${recipe.heroLevel}**.`
       : `🟡 Уровень открыт. Осталось собрать: **${missing.join(', ')}**.`;
-  const embed = new EmbedBuilder().setColor(recipe.canCook ? 0x22C55E : 0xF59E0B).setTitle(`🍲 ${recipe.item.name}`)
+  const embed = new EmbedBuilder().setColor(recipe.canCook ? 0x22C55E : 0xF59E0B).setTitle(`🍲 ${recipe.name || recipe.item.name}`)
     .setDescription([
       notice,
       recipe.item.description,
