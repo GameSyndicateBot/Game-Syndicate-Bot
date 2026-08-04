@@ -382,14 +382,15 @@ async function handleComponent(interaction) {
     const locationKey=parts[2], classKey=normalizeClassKey(parts[3]), durationHours=Number(interaction.values?.[0]||4);
     const location=offeredLocation(interaction.guildId, locationKey);
     const chances=Object.values(EXPEDITION_TACTICS).map(t=>{
-      const exact=getExpeditionStartPreview(interaction.user.id, locationKey, interaction.guildId || 'global', t.key, durationHours);
-      return {t,chance:Number(exact.chance||0),preview:rewardPreview(location,t.key,durationHours)};
+      const exact=getExpeditionStartPreview(interaction.user.id, locationKey, interaction.guildId || 'global', t.key, durationHours, classKey);
+      return {t,chance:Number(exact.chance||0),preview:rewardPreview(location,t.key,durationHours),exact};
     });
     const tacticMenu=new StringSelectMenuBuilder().setCustomId(`expedition:tactic:${locationKey}:${classKey}:${durationHours}`).setPlaceholder('Выбери тактику героя').addOptions(chances.map(({t,chance,preview})=>({label:`${t.name} — ${chance}%`,value:t.key,emoji:t.icon,description:`XP ${preview.heroXp[0]}–${preview.heroXp[1]} · класс ${preview.classXp[0]}–${preview.classXp[1]} · Dust ${preview.dust[0]}–${preview.dust[1]}`.slice(0,100)})));
-    const preview=chances.map(({t,chance,preview:p})=>`${t.icon} **${t.name}: ${chance}%**
-✨ Герой: **${p.heroXp[0]}–${p.heroXp[1]} XP** · 📚 Класс: **${p.classXp[0]}–${p.classXp[1]} XP** · 💠 **${p.dust[0]}–${p.dust[1]} Dust**`).join('\n\n');
+    const gearBonus=Math.max(0,Math.round(Number(chances[0]?.exact?.breakdown?.equipmentBonus || 0)));
+    const preview=chances.map(({t,chance,preview:p})=>`${t.icon} **${t.name}: ${chance}%**\n✨ Герой: **${p.heroXp[0]}–${p.heroXp[1]} XP** · 📚 Класс: **${p.classXp[0]}–${p.classXp[1]} XP** · 💠 **${p.dust[0]}–${p.dust[1]} Dust**`).join('\n\n');
     return interaction.update({embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(`🎯 ${location?.name} · ${durationHours} ч.`).setDescription(`Класс: **${HERO_CLASSES[classKey]?.icon||''} ${HERO_CLASSES[classKey]?.name||classKey}**
 Опасность: ${stars(location?.difficulty||1)}
+🛡️ Бонус надетой экипировки: **+${gearBonus}%**
 
 ${preview}
 
