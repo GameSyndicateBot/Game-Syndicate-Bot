@@ -35,11 +35,11 @@ const DUNGEONS = [
 'Пустынный некрополь','Подземный порт','Сердце Вулкана','Ледяной разлом','Собор Падших','Тоннели Чумы','Арена Древних','Крепость Воронов','Зал Последней Клятвы','Тронный зал Бездны'
 ];
 const DIFFICULTIES = [
-  {key:'normal',name:'Обычная',icon:'🟢',weight:40,base:74,reward:1},
-  {key:'dangerous',name:'Опасная',icon:'🔵',weight:30,base:62,reward:1.25},
-  {key:'heroic',name:'Героическая',icon:'🟣',weight:18,base:50,reward:1.6},
-  {key:'epic',name:'Эпическая',icon:'🟠',weight:9,base:38,reward:2.1},
-  {key:'legendary',name:'Легендарная',icon:'🔴',weight:3,base:25,reward:3}
+  {key:'normal',name:'Обычная',icon:'🟢',weight:40,base:55,reward:1},
+  {key:'dangerous',name:'Опасная',icon:'🔵',weight:30,base:45,reward:1.25},
+  {key:'heroic',name:'Героическая',icon:'🟣',weight:18,base:35,reward:1.6},
+  {key:'epic',name:'Эпическая',icon:'🟠',weight:9,base:25,reward:2.1},
+  {key:'legendary',name:'Легендарная',icon:'🔴',weight:3,base:15,reward:3}
 ];
 
 function nowMoscowParts(date=new Date()) { const f=new Intl.DateTimeFormat('en-GB',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}); return Object.fromEntries(f.formatToParts(date).filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)])); }
@@ -91,16 +91,19 @@ function usedWindow(guildId,userId,windowKey){return Boolean(db.prepare('SELECT 
 
 function classPower(userId,classKey){ const hero=getHero(userId); const p=getClassProgress(userId,classKey)||{level:1}; const snap=buildHeroSnapshot(userId); const stats=snap?.stats||{}; const eq=snap?.classEquipmentBonuses?.[normalizeClassKey(classKey)]||snap?.equipmentBonuses||{}; const raw=40+Number(hero?.level||1)*5+Number(p.level||1)*9+(Number(stats.strength||0)+Number(stats.defense||0)+Number(stats.dexterity||0)+Number(stats.intelligence||0)+Number(stats.luck||0))*0.7+Object.values(eq).reduce((s,v)=>s+(Number(v)||0),0)*2; return Math.round(raw); }
 function analyze(groupId){ const g=getGroup(groupId); const ms=members(groupId); const diff=DIFFICULTIES.find(d=>d.key===g?.difficulty_key)||DIFFICULTIES[0]; const enriched=ms.map(m=>({...m,class_key:normalizeClassKey(m.class_key),power:classPower(m.user_id,m.class_key),level:Number(getClassProgress(m.user_id,m.class_key)?.level||1)})); const n=enriched.length; const tanks=enriched.filter(x=>TANKS.has(x.class_key)).length, heals=enriched.filter(x=>HEALERS.has(x.class_key)).length, controls=enriched.filter(x=>CONTROL.has(x.class_key)).length; const avgPower=n?enriched.reduce((s,x)=>s+x.power,0)/n:0; let bonus=0; const lines=[]; const add=(label,v)=>{bonus+=v;lines.push(`${v>=0?'✅':'❌'} ${label}: ${v>=0?'+':''}${v}%`)};
- add(`Герои и экипировка (${Math.round(avgPower)} силы)`,clamp(Math.round((avgPower-100)/22),-8,24));
- if(tanks>=1)add('Есть танк',8);else add('Нет танка',-12);
- if(heals>=1)add('Есть лекарь',8);else add('Нет лекаря',-12);
- if(tanks>=2&&n>=8)add('Второй танк',3);
- if(heals>=2&&n>=7)add('Второй лекарь',4);
- if(controls>=1)add('Контроль',4);else add('Нет контроля',-4);
- if(n===2)add('Малый отряд (2 героя)',-22);
- else if(n===3)add('Малый отряд (3 героя)',-12);
- else if(n>4)add(`Полная группа (${n}/${MAX_PLAYERS})`,2);
- const chance=clamp(Math.round(diff.base+bonus),5,95); return {chance,base:diff.base,bonus,lines,tanks,heals,controls,avgPower:Math.round(avgPower),members:enriched,difficulty:diff}; }
+ // Характеристики помогают, но больше не разгоняют шанс почти до гарантии.
+ add(`Герои и экипировка (${Math.round(avgPower)} силы)`,clamp(Math.round((avgPower-120)/35),-5,5));
+ if(tanks>=1)add('Есть танк',5);else add('Нет танка',-8);
+ if(heals>=1)add('Есть лекарь',5);else add('Нет лекаря',-8);
+ if(controls>=1)add('Есть контроль / поддержка',2);
+ if(n===2)add('Малый отряд (2 героя)',-20);
+ else if(n===3)add('Малый отряд (3 героя)',-10);
+ else if(n===5)add(`Собранный отряд (${n}/${MAX_PLAYERS})`,2);
+ else if(n>=6)add(`Полная группа (${n}/${MAX_PLAYERS})`,3);
+ // Максимальный положительный бонус — 20%: даже идеальная группа сохраняет риск.
+ const positiveCap=20;
+ if(bonus>positiveCap)bonus=positiveCap;
+ const chance=clamp(Math.round(diff.base+bonus),5,diff.base+positiveCap); return {chance,base:diff.base,bonus,lines,tanks,heals,controls,avgPower:Math.round(avgPower),members:enriched,difficulty:diff}; }
 
 function queueEntry(guildId,userId,date=new Date()){const ctx=windowContext(date);if(!ctx)return null;return db.prepare('SELECT * FROM dungeon_queue_entries WHERE guild_id=? AND window_key=? AND user_id=?').get(guildId,ctx.key,userId)||null;}
 function queueCount(guildId,date=new Date()){const ctx=windowContext(date);if(!ctx)return 0;return Number(db.prepare('SELECT COUNT(*) AS c FROM dungeon_queue_entries WHERE guild_id=? AND window_key=?').get(guildId,ctx.key)?.c||0);}

@@ -382,7 +382,7 @@ async function handleComponent(interaction) {
     const locationKey=parts[2], classKey=normalizeClassKey(parts[3]), durationHours=Number(interaction.values?.[0]||4);
     const location=offeredLocation(interaction.guildId, locationKey);
     const chances=Object.values(EXPEDITION_TACTICS).map(t=>{
-      const exact=getExpeditionStartPreview(interaction.user.id, locationKey, interaction.guildId || 'global', t.key);
+      const exact=getExpeditionStartPreview(interaction.user.id, locationKey, interaction.guildId || 'global', t.key, durationHours);
       return {t,chance:Number(exact.chance||0),preview:rewardPreview(location,t.key,durationHours)};
     });
     const tacticMenu=new StringSelectMenuBuilder().setCustomId(`expedition:tactic:${locationKey}:${classKey}:${durationHours}`).setPlaceholder('Выбери тактику героя').addOptions(chances.map(({t,chance,preview})=>({label:`${t.name} — ${chance}%`,value:t.key,emoji:t.icon,description:`XP ${preview.heroXp[0]}–${preview.heroXp[1]} · класс ${preview.classXp[0]}–${preview.classXp[1]} · Dust ${preview.dust[0]}–${preview.dust[1]}`.slice(0,100)})));
@@ -506,7 +506,7 @@ module.exports = {
       const active = getActiveExpedition(interaction.user.id);
       const window = expeditionWindow();
       const text = offered.map(l => {
-        const chance = computeSuccessChance(hero, l);
+        const chance = computeSuccessChance(hero, l, {}, 'balanced', 4);
         return `${l.icon} **${l.name}** · ${stars(l.difficulty)}\n${l.description}\n🎯 Твой шанс успеха: **${Math.round(chance)}%** · ⏳ **4 ч.** · ${l.dailyTheme.icon} **${l.dailyTheme.name}**\n${l.dailyTheme.description}\nКлюч: \`${l.key}\``;
       }).join('\n\n');
       const lockText = window.fits
@@ -527,7 +527,7 @@ ${lockText}`).setFooter({ text: active ? 'Твой герой уже наход�
       let expeditionBuffs = {}; try { expeditionBuffs = JSON.parse(result.expedition.buffs_json || '{}') || {}; } catch {}
       const tactic = getExpeditionTactic(result.expedition.tactic_key);
       const activeEffects = expeditionBuffs.effects?.length ? `\n\n🧪 Активировано: ${expeditionBuffs.effects.map(e => `**${e.icon} ${e.name}**`).join(', ')}` : '';
-      return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`).setDescription(`**${hero.name}** отправился в локацию **${result.location.name}** как **${HERO_CLASSES[result.expedition.class_key]?.icon || ''} ${HERO_CLASSES[result.expedition.class_key]?.name || result.expedition.class_key}**.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**\n\nВернётся ${ts(result.expedition.returns_at)} (${ts(result.expedition.returns_at, 'f')}).\nПосле этого используй \`/expedition return\`.${activeEffects}`).addFields({ name:'Опасность', value:stars(result.location.difficulty), inline:true }, { name:'Ожидаемый шанс', value:`${Number(result.chance || Math.round(computeSuccessChance(getEffectiveHero(hero), result.location, expeditionBuffs.bonuses || {}, tactic.key)))}%`, inline:true }, { name:'Погода', value:`${result.location.weather?.icon || '🌤️'} ${result.location.weather?.name || 'Без изменений'}`, inline:true })] });
+      return interaction.reply({ embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`).setDescription(`**${hero.name}** отправился в локацию **${result.location.name}** как **${HERO_CLASSES[result.expedition.class_key]?.icon || ''} ${HERO_CLASSES[result.expedition.class_key]?.name || result.expedition.class_key}**.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**\n\nВернётся ${ts(result.expedition.returns_at)} (${ts(result.expedition.returns_at, 'f')}).\nПосле этого используй \`/expedition return\`.${activeEffects}`).addFields({ name:'Опасность', value:stars(result.location.difficulty), inline:true }, { name:'Ожидаемый шанс', value:`${Number(result.chance || Math.round(computeSuccessChance(getEffectiveHero(hero), result.location, expeditionBuffs.bonuses || {}, tactic.key, result.expedition.duration_hours || 4)))}%`, inline:true }, { name:'Погода', value:`${result.location.weather?.icon || '🌤️'} ${result.location.weather?.name || 'Без изменений'}`, inline:true })] });
     }
 
     if (sub === 'status') {

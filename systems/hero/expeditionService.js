@@ -208,7 +208,7 @@ function hasActiveDungeon(userId) {
 }
 
 
-function getExpeditionStartPreview(userId, locationKey, guildId = 'global', tacticKey = 'balanced') {
+function getExpeditionStartPreview(userId, locationKey, guildId = 'global', tacticKey = 'balanced', durationHours = 4) {
   const hero = getHero(userId);
   if (!hero) return { ok:false, reason:'no_hero' };
   const location = getDailyLocations(guildId).find(l => l.key === locationKey);
@@ -220,7 +220,7 @@ function getExpeditionStartPreview(userId, locationKey, guildId = 'global', tact
     ...alchemyBonuses,
     expedition_success: (Number(alchemyBonuses.expedition_success) || 0) + Number(worldEffects.success || 0),
   };
-  const chance = Math.round(computeSuccessChance(effectiveHero, location, bonuses, tacticKey));
+  const chance = Math.round(computeSuccessChance(effectiveHero, location, bonuses, tacticKey, durationHours));
   return { ok:true, hero:effectiveHero, location, bonuses, worldEffects, chance };
 }
 
@@ -248,7 +248,7 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
   const returnsAt = new Date(Date.now() + durationMs).toISOString();
   // Calculate the exact chance from the same daily-location snapshot and the same active bonuses
   // that were shown in the confirmation menu. Only after that do we consume the buffs.
-  const preview = getExpeditionStartPreview(userId, locationKey, guildId, tacticKey);
+  const preview = getExpeditionStartPreview(userId, locationKey, guildId, tacticKey, durationHours);
   if (!preview.ok) return preview;
   const alchemy = consumeContextBuffs(userId, 'expedition');
   const treasureMap = consumeTreasureMapState(userId);
@@ -310,18 +310,33 @@ function rewardPreview(location, tacticKey='balanced', durationHours=4) {
   const dustMax=Math.max(dustMin,Math.round(location.dust[1]*1.45*Number(tactic.dust||1)*dm.reward));
   return { durationHours:dm.hours, heroXp:[xpMin,xpMax], classXp:[Math.max(10,Math.round(xpMin*0.75)),Math.max(10,Math.round(xpMax*0.75))], dust:[dustMin,dustMax], rareBonus:dm.rare+Number(tactic.rare||0), materialMultiplier:Math.round(Number(tactic.materials||1)*dm.materials*100)/100 };
 }
-function computeSuccessChance(hero, location, extraBonuses = {}, tacticKey = 'balanced') {
+function computeSuccessChance(hero, location, extraBonuses = {}, tacticKey = 'balanced', durationHours = 4) {
+  // Базовый риск зависит прежде всего от опасности локации. Развитие героя
+  // помогает, но больше не разгоняет экспедиции до почти гарантированных 90–96%.
+  const baseByDifficulty = { 1:50, 2:45, 3:40, 4:30, 5:20, 6:10 };
+  const difficulty = Math.max(1, Math.min(6, Number(location.difficulty || 1)));
+  const baseChance = baseByDifficulty[difficulty];
+
   const relevant = Number(hero[location.stat] || 0);
-  const levelPower = (hero.level - 1) * 2.2;
-  const classPower = Math.max(0, relevant - 7) * 1.15;
-  const luckPower = hero.luck * 0.55;
-  const origin = originBonus(hero.origin_key, location);
-  const difficultyPenalty = location.difficulty * 11;
+  const levelBonus = Math.min(8, Math.max(0, (Number(hero.level || 1) - 1) * 0.8));
+  const statBonus = Math.min(8, Math.max(0, (relevant - 7) * 0.8));
+  const luckBonus = Math.min(4, Math.max(0, Number(hero.luck || 0) * 0.35));
+  const origin = Math.max(-4, Math.min(4, Number(originBonus(hero.origin_key, location) || 0)));
+
   const equipment = getEquipmentBonuses(hero.user_id);
-  const dailyThemeBonus = Number(location.dailyTheme?.success || 0);
-  const weatherBonus = Number(location.weather?.success || 0);
+  const itemAndBuffBonus = Math.max(-8, Math.min(8,
+    Number(equipment.expedition_success || 0) + Number(extraBonuses.expedition_success || 0)
+  ));
+  const environmentBonus = Math.max(-8, Math.min(8,
+    Number(location.dailyTheme?.success || 0) + Number(location.weather?.success || 0)
+  ));
   const tacticBonus = Number(getExpeditionTactic(tacticKey).success || 0);
-  return Math.max(24, Math.min(96, 72 + dailyThemeBonus + weatherBonus + tacticBonus + levelPower + classPower + luckPower + origin + (equipment.expedition_success || 0) + (Number(extraBonuses.expedition_success) || 0) - difficultyPenalty));
+  const hours = Number(durationHours || 4);
+  const durationBonus = hours === 2 ? 6 : hours === 8 ? -8 : 0;
+
+  const raw = baseChance + levelBonus + statBonus + luckBonus + origin
+    + itemAndBuffBonus + environmentBonus + tacticBonus + durationBonus;
+  return Math.max(10, Math.min(75, raw));
 }
 function ensurePlayer(userId) {
   db.prepare(`INSERT OR IGNORE INTO players (user_id, username) VALUES (?, ?)`).run(userId, `Hero ${String(userId).slice(-4)}`);
@@ -373,7 +388,7 @@ function resolveExpedition(userId, { force = false } = {}) {
   const tactic = getExpeditionTactic(expedition.tactic_key);
   const duration = durationModifiers(expedition.duration_hours || 4);
   const worldEffects = getRegionEffects(expedition.guild_id || 'global', location.region);
-  const chance = Number(expeditionBuffs.successChance || 0) || computeSuccessChance(hero, location, { ...alchemyBonuses, expedition_success:(Number(alchemyBonuses.expedition_success)||0)+Number(worldEffects.success||0) }, tactic.key);
+  const chance = Number(expeditionBuffs.successChance || 0) || computeSuccessChance(hero, location, { ...alchemyBonuses, expedition_success:(Number(alchemyBonuses.expedition_success)||0)+Number(worldEffects.success||0) }, tactic.key, expedition.duration_hours || 4);
   const roll = rng() * 100;
   let outcome = 'fail';
   if (roll <= chance * 0.25) outcome = 'great';
