@@ -11,6 +11,7 @@ const { addPack } = require('../../utils/packInventory');
 const { CLASSES, MINIONS, BOSSES } = require('./config');
 const { createWorldBossBattleCard, cardFile } = require('../../images/worldBoss/createWorldBossBattleCard');
 const { buildHeroSnapshot, parseSnapshot, heroName, damageMultiplier, hpMultiplier, resistancePercent, healingMultiplier, heroSummary, selectedClassBonuses } = require('./heroIntegration');
+const { rollInitiative, initiativeMinRoll } = require('../../systems/hero/statSystem');
 const { consumeContextBuffs, describeBuffKeys } = require('../../systems/hero/alchemyService');
 const { getInventory } = require('../../systems/hero/itemService');
 const { ITEMS } = require('../../systems/hero/itemData');
@@ -431,6 +432,8 @@ async function beginBattle(id) {
   setTimer(id, () => autoFinishClassRoll(id).catch(console.error), ROLL_MS);
 }
 function allHave(map, players) { return players.every(p => Object.prototype.hasOwnProperty.call(map || {}, p.user_id)); }
+function playerDexterity(player){ return Number(parseSnapshot(player)?.stats?.dexterity||0); }
+function initiativeRollFor(player){ return rollInitiative(playerDexterity(player)); }
 
 async function autoFinishClassRoll(id) {
   const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='class_roll'").get(id);
@@ -452,8 +455,9 @@ async function autoFinishInitiative(id) {
   state.initiativeRolls ||= {};
   const missing = battlePlayers(id).filter(p => state.initiativeRolls[p.user_id] == null);
   for (const p of missing) {
-    state.initiativeRolls[p.user_id] = rand(1, 20);
-    state.log.push(`⏱️ Автобросок инициативы: <@${p.user_id}> — **${state.initiativeRolls[p.user_id]}**.`);
+    const min=initiativeMinRoll(playerDexterity(p));
+    state.initiativeRolls[p.user_id] = initiativeRollFor(p);
+    state.log.push(`⏱️ Автобросок инициативы: <@${p.user_id}> — **${state.initiativeRolls[p.user_id]}** (диапазон ${min}–20).`);
   }
   saveState(b, state);
   await refresh(id);
@@ -1900,7 +1904,7 @@ async function handle(interaction) {
   }
   if (interaction.isStringSelectMenu() && interaction.customId === `wb_classpick_${id}`) { const token = interaction.values[0]; const classKey = token.includes(':') ? token.slice(token.indexOf(':') + 1) : token; const r = await assignChosenClass(id, uid, token); if (!r.ok) return interaction.reply({ content: r.reason === 'role_required' ? '⚠️ Сейчас ты обязан выбрать недостающую роль: танка или хилера.' : 'Этот класс уже недоступен или сейчас не твоя очередь.', flags: MessageFlags.Ephemeral }); const chosen = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id, uid); const bonus = selectedClassBonuses(chosen); return interaction.reply({ content: `✅ Выбран класс **${CLASSES[classKey]?.name || classKey}** — Lv.${bonus.level}.\n📚 ${bonus.mastery.title}: ⚔️ +${bonus.mastery.damagePercent}% • ❤️ +${bonus.mastery.hpPercent}% • 🛡️ +${bonus.mastery.resistancePercent}%\n🎒 Экипировка: ⚔️ +${bonus.equipment.damagePercent}% • ❤️ +${bonus.equipment.hpPercent}% • 🛡️ +${bonus.equipment.resistancePercent}%`, flags: MessageFlags.Ephemeral }); }
   if (interaction.customId === `wb_initroll_${id}`) {
-    if (b.status !== 'initiative_roll') return interaction.reply({ content: 'Сейчас не этап инициативы.', flags: MessageFlags.Ephemeral }); const s = stateOf(b); if (s.initiativeRolls?.[uid] != null) return interaction.reply({ content: `Ты уже выбросил **${s.initiativeRolls[uid]}**.`, flags: MessageFlags.Ephemeral }); let roll = rand(1,20); s.initiativeRolls[uid] = roll; s.log.push(`⚔️ **${heroName(p)}** · <@${uid}> выбрасывает инициативу **${roll}**.`); saveState(b,s); await interaction.reply({ content:`🎲 Инициатива: **${roll}**`, flags:MessageFlags.Ephemeral }); await refresh(id); if(allHave(s.initiativeRolls,battlePlayers(id))) await startCombat(id); return true;
+    if (b.status !== 'initiative_roll') return interaction.reply({ content: 'Сейчас не этап инициативы.', flags: MessageFlags.Ephemeral }); const s = stateOf(b); if (s.initiativeRolls?.[uid] != null) return interaction.reply({ content: `Ты уже выбросил **${s.initiativeRolls[uid]}**.`, flags: MessageFlags.Ephemeral }); const min=initiativeMinRoll(playerDexterity(p)); let roll = initiativeRollFor(p); s.initiativeRolls[uid] = roll; s.log.push(`⚔️ **${heroName(p)}** · <@${uid}> выбрасывает инициативу **${roll}** (диапазон ${min}–20).`); saveState(b,s); await interaction.reply({ content:`🎲 Инициатива: **${roll}** · твой диапазон **${min}–20**`, flags:MessageFlags.Ephemeral }); await refresh(id); if(allHave(s.initiativeRolls,battlePlayers(id))) await startCombat(id); return true;
   }
   if (interaction.customId === `wb_status_${id}`) {
     const c = CLASSES[p.class_key], e = effects(p), file = cardFile(c.cardId, 'class');

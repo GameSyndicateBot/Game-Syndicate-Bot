@@ -29,6 +29,7 @@ const { sourceFor, missingRecipeSummary, missingCookSummary, recipeState, cookSt
 const caravan = require('../services/caravanService');
 const guildMerchant = require('../services/guildMerchantService');
 const { TOOL_TIERS, toolInfo, craftTool, dismantle, giftMaterial, giftItem, equipArtifact, unequipArtifact } = require('../systems/hero/playerCorrectionService');
+const { deriveStats, initiativeMinRoll } = require('../systems/hero/statSystem');
 
 const GUILD_CHANNEL_ID = '1530165282512044032';
 const EXPEDITION_CHANNEL_ID = '1529566430301782017';
@@ -175,6 +176,7 @@ async function showProfile(interaction, notice = '') {
       .addOptions(progress.slice(0,25).map(r => ({ label:`${HERO_CLASSES[r.class_key].name} • Lv.${r.level}`.slice(0,100), value:r.class_key, emoji:HERO_CLASSES[r.class_key].icon, default:r.class_key===base.class_key })))
   ));
   components.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('guild:profile:stats').setLabel('Характеристики').setEmoji('📊').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId('guild:profile:rename').setLabel('Изменить имя • 200 Dust').setEmoji('✏️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('guild:home').setLabel('В Гильдию').setEmoji('↩️').setStyle(ButtonStyle.Secondary),
   ));
@@ -185,6 +187,73 @@ async function showProfile(interaction, notice = '') {
     flags: MessageFlags.Ephemeral,
   };
   return interaction.replied || interaction.deferred ? interaction.editReply(payload) : interaction.reply(payload);
+}
+
+
+function statBreakdownLine(label,base,gear,total){
+  return `**${label}: ${total}**  · база ${base} + экипировка ${gear}`;
+}
+
+async function showHeroStats(interaction,showGuide=false){
+  const base=getHero(interaction.user.id);
+  if(!base) return interaction.reply({content:'❌ Сначала создай героя.',flags:MessageFlags.Ephemeral});
+  const hero=getEffectiveHero(base),b=hero.equipmentBonuses||{},t=hero.totalStats||hero,d=hero.derivedStats||deriveStats(t,base.class_key);
+  const back=new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(showGuide?'guild:profile:stats':'guild:profile:stats:guide').setLabel(showGuide?'Мои характеристики':'Сколько даёт 1 пункт').setEmoji(showGuide?'📊':'📖').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('guild:profile').setLabel('Назад в профиль').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
+  );
+  if(showGuide){
+    const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle('📖 Сколько даёт 1 пункт характеристики').setDescription([
+      '**⚔️ Сила**',
+      'Каждый +1: **+1 физического урона**, **+0.5% физического урона**, **+0.5% агрессии танка**.',
+      'Предел процентного бонуса: 50%. Полезна физическим бойцам и танкам.',
+      '',
+      '**🌀 Ловкость**',
+      'Каждый +1: **+0.5% критического шанса**, **+0.3% уклонения**.',
+      'Каждые 10 Ловкости повышают минимум броска инициативы: 0–9 → 1–20; 10–19 → 2–20; 20–29 → 3–20; 30–39 → 4–20; 40–49 → 5–20; 50+ → 6–20.',
+      '',
+      '**🧠 Интеллект**',
+      'Каждый +1: **+1 магического урона**, **+1% силы заклинаний**, **+2 максимальной маны**.',
+      'Предел силы заклинаний: 60%.',
+      '',
+      '**✨ Мудрость**',
+      'Каждый +1: **+1% лечения**, **+1% силы поддержки**, **+1 восстановления ресурса за ход**.',
+      'Предел лечения и поддержки: 60%.',
+      '',
+      '**🛡️ Выносливость**',
+      'Каждый +1: **+10 максимального HP**, **+0.5% физической защиты**, **+0.5% магической защиты**.',
+      'Предел каждой защиты: 50%.',
+      '',
+      '**🍀 Удача**',
+      'Каждый +1: **+0.5% шанса редкой добычи**, **+0.2% критического шанса**, **+1% PvE-наград**.',
+      'Пределы: редкая добыча 40%, крит от общей формулы 35%, PvE-награды 50%.',
+      '',
+      'Все значения на надетых предметах, артефактах, активных питомцах и маунте входят в итоговые характеристики.'
+    ].join('\n'));
+    return interaction.update({embeds:[embed],files:[],components:[back]});
+  }
+  const embed=new EmbedBuilder().setColor(0x8B5CF6).setTitle(`📊 Характеристики — ${hero.name}`).setDescription([
+    statBreakdownLine('⚔️ Сила',Number(base.strength||0),Number(b.strength||0),Number(t.strength||0)),
+    `└ +${d.flatPhysicalDamage} физ. урона · +${d.physicalDamagePercent}% физ. урона · +${d.aggroPercent}% агрессии`,
+    '',
+    statBreakdownLine('🌀 Ловкость',Number(base.dexterity||0),Number(b.dexterity||0),Number(t.dexterity||0)),
+    `└ +${d.critChance}% крит · +${d.dodgeChance}% уклонение · инициатива 🎲 ${d.initiativeMin}–20`,
+    '',
+    statBreakdownLine('🧠 Интеллект',Number(base.intelligence||0),Number(b.intelligence||0),Number(t.intelligence||0)),
+    `└ +${d.flatMagicDamage} маг. урона · +${d.spellPowerPercent}% сила заклинаний · +${d.maxManaBonus} маны`,
+    '',
+    statBreakdownLine('✨ Мудрость',Number(base.wisdom||0),Number(b.wisdom||0),Number(t.wisdom||0)),
+    `└ +${d.healingPercent}% лечение · +${d.supportPercent}% поддержка · +${d.resourceRegen} ресурса/ход`,
+    '',
+    statBreakdownLine('🛡️ Выносливость',Number(base.vitality||0),Number(b.vitality||0),Number(t.vitality||0)),
+    `└ +${d.bonusHp} HP · +${d.physicalDefensePercent}% физ. защита · +${d.magicDefensePercent}% маг. защита`,
+    '',
+    statBreakdownLine('🍀 Удача',Number(base.luck||0),Number(b.luck||0),Number(t.luck||0)),
+    `└ +${d.rareFindPercent}% редкая добыча · входит в крит (+0.2%/пункт) · +${d.rewardPercent}% PvE-награды`,
+    '',
+    `Активный класс: **${HERO_CLASSES[base.class_key]?.name||base.class_key}**. Бонус экипировки считается для его комплекта.`
+  ].join('\n'));
+  return interaction.update({embeds:[embed],files:[],components:[back]});
 }
 
 function raritySphere(rarity) {
@@ -1408,6 +1477,8 @@ async function handleComponent(interaction) {
 Выбери нужного мастера Гильдии.${caravanNotice}`, components:npcRows(), flags:MessageFlags.Ephemeral });
   }
   if (action === 'economylog') { const command=interaction.client.commands.get('economylog'); return command?.execute ? command.execute(interaction) : interaction.reply({content:'❌ Журнал временно недоступен.',flags:MessageFlags.Ephemeral}); }
+  if (action === 'profile' && parts[2] === 'stats' && parts[3] === 'guide') return showHeroStats(interaction,true);
+  if (action === 'profile' && parts[2] === 'stats') return showHeroStats(interaction,false);
   if (action === 'profile' && parts[2] === 'displayclass') {
     const classKey=interaction.values?.[0];
     if(!HERO_CLASSES[classKey]) return showProfile(interaction,'❌ Класс не найден.');
