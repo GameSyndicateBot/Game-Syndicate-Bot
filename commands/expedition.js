@@ -386,13 +386,27 @@ async function handleComponent(interaction) {
       return {t,chance:Number(exact.chance||0),preview:rewardPreview(location,t.key,durationHours),exact};
     });
     const tacticMenu=new StringSelectMenuBuilder().setCustomId(`expedition:tactic:${locationKey}:${classKey}:${durationHours}`).setPlaceholder('Выбери тактику героя').addOptions(chances.map(({t,chance,preview})=>({label:`${t.name} — ${chance}%`,value:t.key,emoji:t.icon,description:`XP ${preview.heroXp[0]}–${preview.heroXp[1]} · класс ${preview.classXp[0]}–${preview.classXp[1]} · Dust ${preview.dust[0]}–${preview.dust[1]}`.slice(0,100)})));
-    const gearBonus=Math.max(0,Math.round(Number(chances[0]?.exact?.breakdown?.equipmentBonus || 0)));
+    const sample=chances[0]?.exact?.expeditionStats||{};
+    const sources=sample.loadoutSnapshot||{};
+    const score=x=>Math.round(Object.values(x||{}).reduce((sum,value)=>sum+(Number(value)||0),0));
+    const sourceText=[
+      `⚔️ Экипировка: **${score(sources.equipment)} ед. бонусов**`,
+      `🔷 Артефакты: **${score(sources.artifacts)} ед. бонусов**`,
+      `🐾 Питомцы: **${score(sources.pets)} ед. бонусов**`,
+      `🐎 Маунт: **${score(sources.mount)} ед. бонусов**`,
+      `✨ Редкая добыча: **${Number(sample.rareLootBonus||0)>=0?'+':''}${Number(sample.rareLootBonus||0)}%**`,
+      `🎁 Награды: **+${Number(sample.rewardPercent||0)}%**`,
+      `❤️ Защита от ранений: **+${Number(sample.injuryResistance||0)}%**`,
+    ].join('\n');
     const preview=chances.map(({t,chance,preview:p})=>`${t.icon} **${t.name}: ${chance}%**\n✨ Герой: **${p.heroXp[0]}–${p.heroXp[1]} XP** · 📚 Класс: **${p.classXp[0]}–${p.classXp[1]} XP** · 💠 **${p.dust[0]}–${p.dust[1]} Dust**`).join('\n\n');
     return interaction.update({embeds:[new EmbedBuilder().setColor(0x7C3AED).setTitle(`🎯 ${location?.name} · ${durationHours} ч.`).setDescription(`Класс: **${HERO_CLASSES[classKey]?.icon||''} ${HERO_CLASSES[classKey]?.name||classKey}**
 Опасность: ${stars(location?.difficulty||1)}
-🛡️ Бонус надетой экипировки: **+${gearBonus}%**
+
+${sourceText}
 
 ${preview}
+
+🔒 Итоговый шанс успеха ограничен **80%**. Учитываются только надетые предметы, два активных артефакта, активные питомцы и надетый маунт.
 
 Материалы, предметы, сундуки и мини-боссы зависят от исхода, сложности и выбранной тактики.`)],components:[new ActionRowBuilder().addComponents(tacticMenu),new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`expedition:classback:${locationKey}`).setLabel('Назад к классам').setEmoji('⬅️').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('expedition:locations').setLabel('К локациям').setEmoji('🗺️').setStyle(ButtonStyle.Secondary))]});
   }
@@ -423,7 +437,11 @@ ${preview}
     return interaction.reply({
       embeds: [new EmbedBuilder().setColor(0x8B5CF6).setTitle(`${result.location.icon} Экспедиция началась`)
         .setDescription(`**${hero.name}** отправился в **${result.location.name}** как **${HERO_CLASSES[result.expedition.class_key]?.icon || ''} ${HERO_CLASSES[result.expedition.class_key]?.name || result.expedition.class_key}**.\n🎯 Тактика: **${tactic.icon} ${tactic.name}**\n\nДлительность: **${Number(result.expedition.duration_hours||4)} ч.**\nВозвращение ${ts(result.expedition.returns_at)}. После этого нажми **«Забрать результат»**.`)
-        .addFields({ name: 'Опасность', value: stars(result.location.difficulty), inline: true }, { name: 'Шанс успеха', value: `${Number(result.chance)}%`, inline: true })],
+        .addFields(
+          { name: 'Опасность', value: stars(result.location.difficulty), inline: true },
+          { name: 'Шанс успеха', value: `${Number(result.chance)}% / 80%`, inline: true },
+          { name: 'Комплект зафиксирован', value: 'Вещи, артефакты, питомцы и маунт сохранены на момент отправки.', inline: false },
+        )],
       flags: MessageFlags.Ephemeral,
     });
   }

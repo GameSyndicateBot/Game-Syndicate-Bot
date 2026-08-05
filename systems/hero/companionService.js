@@ -234,6 +234,40 @@ function takeCompanionForTransfer(userId,id){
 }
 function giveTransferredCompanion(userId,data){return grantCustomCompanion(String(userId),data.key,data,'market_transfer');}
 
+
+function getCompanionBreakdown(userId) {
+  const pets = [];
+  const mountRow = getActiveMount(userId);
+  const petTotal = {};
+  const mountTotal = {};
+
+  for (const row of getActiveCompanions(userId)) {
+    const baseBonuses = bonusesForRow(row);
+    const bonuses = applyCompanionUpgradeBonuses(userId, row, baseBonuses);
+    pets.push({ ...row, kind:'pet', baseBonuses:{...baseBonuses}, bonuses:{...bonuses} });
+    for (const [key, value] of Object.entries(bonuses)) {
+      petTotal[key] = (Number(petTotal[key]) || 0) + (Number(value) || 0);
+    }
+  }
+
+  let mount = null;
+  if (mountRow) {
+    const baseBonuses = bonusesForRow(mountRow);
+    const bonuses = applyCompanionUpgradeBonuses(userId, mountRow, baseBonuses);
+    mount = { ...mountRow, kind:'mount', baseBonuses:{...baseBonuses}, bonuses:{...bonuses} };
+    for (const [key, value] of Object.entries(bonuses)) {
+      mountTotal[key] = (Number(mountTotal[key]) || 0) + (Number(value) || 0);
+    }
+  }
+
+  const total = {};
+  for (const source of [petTotal, mountTotal]) {
+    for (const [key, value] of Object.entries(source)) {
+      total[key] = (Number(total[key]) || 0) + (Number(value) || 0);
+    }
+  }
+  return { pets, mount, petTotal, mountTotal, total };
+}
 function getCompanionBonuses(userId) {
   const rows = [...getActiveCompanions(userId)];
   const mount = getActiveMount(userId);
@@ -260,6 +294,7 @@ module.exports = {
   getActiveCompanions,
   getActiveMount,
   getCompanionBonuses,
+  getCompanionBreakdown,
   sellableCompanions,
   takeCompanionForTransfer,
   giveTransferredCompanion,

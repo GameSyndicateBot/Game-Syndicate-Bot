@@ -150,26 +150,59 @@ function getLoadoutBreakdown(userId,classKey=null){
   const key=normalizeClassKey(classKey||getHero(userId)?.class_key);
   const equipmentItems=key&&isValidClass(key)?getClassEquipment(userId,key,{fallback:true}):getEquipment(userId);
   const equipment=sumEquipmentBonuses(equipmentItems);
+  const equipmentDetails=equipmentItems.map(row=>({
+    ...row,
+    baseBonuses:parseBonuses(row.bonuses_json),
+    bonuses:applyUpgradeToBonuses(parseBonuses(row.bonuses_json),row.upgrade_level),
+  }));
+
   const artifacts=Object.fromEntries(STAT_KEYS.map(k=>[k,0]));
   let artifactItems=[];
   try{
-    artifactItems=db.prepare(`SELECT hae.inventory_id,hi.item_key,COALESCE(hi.upgrade_level,0) upgrade_level,i.name,i.rarity,i.bonuses_json
-      FROM hero_artifact_equipment hae JOIN hero_inventory hi ON hi.id=hae.inventory_id JOIN hero_items i ON i.item_key=hi.item_key WHERE hae.user_id=?`).all(String(userId));
-    for(const row of artifactItems){const b=applyUpgradeToBonuses(parseBonuses(row.bonuses_json),row.upgrade_level);for(const k of STAT_KEYS)artifacts[k]+=Number(b[k]||0);}
+    artifactItems=db.prepare(`SELECT hae.slot_no,hae.inventory_id,hi.item_key,COALESCE(hi.upgrade_level,0) upgrade_level,i.name,i.rarity,i.bonuses_json
+      FROM hero_artifact_equipment hae JOIN hero_inventory hi ON hi.id=hae.inventory_id JOIN hero_items i ON i.item_key=hi.item_key WHERE hae.user_id=? ORDER BY hae.slot_no`).all(String(userId));
+    artifactItems=artifactItems.map(row=>{
+      const baseBonuses=parseBonuses(row.bonuses_json);
+      const bonuses=applyUpgradeToBonuses(baseBonuses,row.upgrade_level);
+      for(const k of STAT_KEYS)artifacts[k]+=Number(bonuses[k]||0);
+      return {...row,baseBonuses,bonuses};
+    });
   }catch(_){}
-  const companions=Object.fromEntries(STAT_KEYS.map(k=>[k,0]));
+
+  const pets=Object.fromEntries(STAT_KEYS.map(k=>[k,0]));
+  const mount=Object.fromEntries(STAT_KEYS.map(k=>[k,0]));
   let activePets=[],activeMount=null;
   try{
     const cs=require('./companionService');
-    const cb=cs.getCompanionBonuses(userId)||{};
-    for(const k of STAT_KEYS)companions[k]+=Number(cb[k]||0);
-    activePets=cs.getActiveCompanions(userId)||[];
-    activeMount=cs.getActiveMount(userId)||null;
+    const cb=cs.getCompanionBreakdown?cs.getCompanionBreakdown(userId):null;
+    if(cb){
+      for(const k of STAT_KEYS){
+        pets[k]+=Number(cb.petTotal?.[k]||0);
+        mount[k]+=Number(cb.mountTotal?.[k]||0);
+      }
+      activePets=cb.pets||[];
+      activeMount=cb.mount||null;
+    }else{
+      const legacy=cs.getCompanionBonuses(userId)||{};
+      for(const k of STAT_KEYS)pets[k]+=Number(legacy[k]||0);
+      activePets=cs.getActiveCompanions(userId)||[];
+      activeMount=cs.getActiveMount(userId)||null;
+    }
   }catch(_){}
+
+  const companions={};
   const total={};
-  for(const k of STAT_KEYS) total[k]=Number(equipment[k]||0)+Number(artifacts[k]||0)+Number(companions[k]||0);
-  return {classKey:key,equipment,artifacts,companions,total,equipmentItems,artifactItems,activePets,activeMount};
+  for(const k of STAT_KEYS){
+    companions[k]=Number(pets[k]||0)+Number(mount[k]||0);
+    total[k]=Number(equipment[k]||0)+Number(artifacts[k]||0)+companions[k];
+  }
+  return {
+    classKey:key,
+    equipment,artifacts,pets,mount,companions,total,
+    equipmentItems:equipmentDetails,artifactItems,activePets,activeMount,
+  };
 }
+
 function repairSameNameRarityDuplicates(){
   try{
     db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
