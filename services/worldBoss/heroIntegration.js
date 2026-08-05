@@ -1,7 +1,7 @@
 'use strict';
 
 const { getHero } = require('../../systems/hero/heroService');
-const { getEquipment, getEquipmentOnlyBonuses, getClassEquipment, getClassEquipmentOnlyBonuses, getEffectiveHero } = require('../../systems/hero/itemService');
+const { getEquipment, getEquipmentOnlyBonuses, getClassEquipment, getClassEquipmentOnlyBonuses, getEquipmentBonuses, getEffectiveHero } = require('../../systems/hero/itemService');
 const { getActiveCompanion, getActiveCompanions, getActiveMount, getCompanionBonuses } = require('../../systems/hero/companionService');
 const { deriveStats } = require('../../systems/hero/statSystem');
 const { serializeClassProgress, normalizeClassKey, classWorldBossBonuses } = require('../../systems/hero/classProgressService');

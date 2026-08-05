@@ -58,18 +58,22 @@ function iso(ms){return new Date(ms).toISOString();}
 function parseMs(v){return v?new Date(v).getTime():0;}
 
 function bonusFor(type,rarity,seed){
-  const rng=seeded(seed); const n=RARITY[rarity].mult;
-  const stat=(base)=>Math.max(1,Math.round(base*n));
-  if(type==='weapon') return { strength:stat(randint(2,4,rng)), world_boss_damage:rarity==='common'?0:stat(1) };
-  if(type==='armor') return { hp:stat(randint(8,14,rng)), defense:stat(randint(2,4,rng)) };
-  if(type==='helmet') return { defense:stat(2), intelligence:stat(1) };
-  if(type==='gloves') return { strength:stat(2), dexterity:stat(2) };
-  if(type==='boots') return { dexterity:stat(2), expedition_success:stat(1) };
-  if(type==='ring') return { luck:stat(2), rare_find:stat(1) };
-  if(type==='amulet') return { hp:stat(5), intelligence:stat(2) };
-  if(type==='backpack') return { expedition_success:stat(2), rare_find:stat(1) };
-  if(type==='mount') return { expedition_success:stat(2), rare_find:stat(1) };
-  return { luck:stat(2), world_boss_resistance:stat(1) };
+  const rng=seeded(seed);
+  const tier={common:1,rare:2,epic:3,legendary:4,mythic:5,exclusive:6}[rarity]||1;
+  // Диапазоны разведены по редкости: предмет более высокой редкости
+  // не может получить те же основные значения, что и более слабый вариант.
+  const roll=(ranges)=>{const [min,max]=ranges[tier-1]||ranges[0];return randint(min,max,rng);};
+  const pct=(values)=>Number(values[tier-1]??values[0]??0);
+  if(type==='weapon') return { strength:roll([[2,4],[5,7],[8,11],[12,16],[17,22],[23,30]]), world_boss_damage:pct([0,1,2,3,5,7]) };
+  if(type==='armor') return { hp:roll([[8,14],[16,24],[27,38],[42,58],[62,82],[88,115]]), defense:roll([[2,4],[5,7],[8,11],[12,16],[17,22],[23,30]]) };
+  if(type==='helmet') return { defense:roll([[2,3],[4,6],[7,9],[10,13],[14,18],[19,24]]), intelligence:roll([[1,1],[2,3],[4,5],[6,8],[9,12],[13,17]]) };
+  if(type==='gloves') return { strength:roll([[1,2],[3,4],[5,7],[8,11],[12,16],[17,22]]), dexterity:roll([[1,2],[3,4],[5,7],[8,11],[12,16],[17,22]]) };
+  if(type==='boots') return { dexterity:roll([[2,3],[4,6],[7,9],[10,13],[14,18],[19,24]]), expedition_success:pct([0,1,2,3,5,7]) };
+  if(type==='ring') return { luck:roll([[1,2],[3,4],[5,7],[8,11],[12,16],[17,22]]), rare_find:pct([0,1,2,3,5,7]) };
+  if(type==='amulet') return { hp:roll([[5,8],[10,15],[18,25],[28,40],[44,60],[66,88]]), intelligence:roll([[1,2],[3,4],[5,7],[8,11],[12,16],[17,22]]) };
+  if(type==='backpack') return { expedition_success:pct([1,2,3,5,7,10]), rare_find:pct([0,1,2,3,5,7]) };
+  if(type==='mount') return { expedition_success:pct([1,2,3,5,7,10]), rare_find:pct([0,1,2,3,5,7]) };
+  return { luck:roll([[1,2],[3,4],[5,7],[8,11],[12,16],[17,22]]), world_boss_resistance:pct([0,1,2,3,5,7]) };
 }
 
 function buildCatalog(){
@@ -100,6 +104,24 @@ function ensureTables(){
   `);
 }
 ensureTables();
+
+function repairCaravanRarityStats(){
+  db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
+  const migrationKey='v20.1.0-caravan-rarity-stats';
+  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)) return;
+  const rows=db.prepare(`SELECT item_key,item_type,rarity FROM hero_items WHERE item_key LIKE 'caravan_%' AND rarity IN ('common','rare','epic','legendary','mythic','exclusive')`).all();
+  const update=db.prepare('UPDATE hero_items SET bonuses_json=? WHERE item_key=?');
+  db.transaction(()=>{
+    for(const row of rows){
+      const type=String(row.item_type||'artifact');
+      const bonuses=bonusFor(type,row.rarity,`rarity-repair:${row.item_key}:${row.rarity}`);
+      update.run(JSON.stringify(bonuses),row.item_key);
+    }
+    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+  })();
+  console.log(`[Caravan] Пересчитаны характеристики предметов по редкости: ${rows.length}.`);
+}
+repairCaravanRarityStats();
 
 function repairCaravanMountCompanions(){
   const { grantCustomCompanion, registerCompanionDefinition }=require('../systems/hero/companionService');

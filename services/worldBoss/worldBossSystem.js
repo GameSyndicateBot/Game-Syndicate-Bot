@@ -552,6 +552,16 @@ function pickDamageType(profile, fallback = 'physical') {
 function damageTarget(id, target, amount, damageType = 'physical', options = {}) {
   const e = effects(target); let d = Math.max(0, Math.round(amount * playerResistanceMultiplier(target, damageType))); const mitigatedBase=d;
   if (e.guardianUltRounds > 0) d = Math.round(d * 0.6); else if (e.guardRounds > 0) d = Math.round(d * 0.5); if (e.combatResistanceTurns > 0) d = Math.round(d * (1 - Number(e.combatResistance || 0))); if (e.guildFeastActive) d = Math.round(d * 0.90); if (e.rageTurns > 0 || e.bloodRageTurns > 0) d = Math.round(d * 1.25); if (e.partyGuardRounds > 0) d = Math.round(d * Number(e.partyGuardMultiplier || 0.8));
+  // Усиленная ответная атака не должна удалять героя с полного здоровья одним ударом.
+  // Ограничение применяется только к прямому урону босса; обычные атаки, цепи и добивание могут убить.
+  try {
+    const battle = db.prepare('SELECT state_json FROM world_boss_battles WHERE id=?').get(id);
+    const st = battle ? safeJson(battle.state_json,{}) : {};
+    if (st.currentBossAttackEmpowered && !options.skipEmpoweredCap) {
+      const cap = Math.max(1, Math.floor(Number(target.max_hp || target.hp || 1) * 0.65));
+      d = Math.min(d, cap);
+    }
+  } catch (_) {}
   let shield = Number(e.shield || 0), absorbed = 0; const hadShield = shield > 0;
   if (shield) { absorbed = Math.min(shield, d); shield -= absorbed; d -= absorbed; e.shield = shield; const sources=e.shieldSources&&typeof e.shieldSources==='object'?e.shieldSources:{}; let remain=absorbed; for(const owner of Object.keys(sources)){if(remain<=0)break;const used=Math.min(Number(sources[owner]||0),remain);sources[owner]=Math.max(0,Number(sources[owner]||0)-used);remain-=used;if(used>0){addBattleStat(id,owner,'shield_given',used);addBattleStat(id,owner,'support_points',Math.round(used*0.9));}if(sources[owner]<=0)delete sources[owner];} e.shieldSources=sources; if(shield<=0){delete e.shieldOwner;delete e.shieldSources;} updateEffects(id, target.user_id, e); }
   const prevented=Math.max(0,mitigatedBase-d); if(prevented>0)addBattleStat(id,target.user_id,'damage_prevented',prevented);
@@ -1445,8 +1455,11 @@ async function bossTurn(id) {
   const target = chooseSingleTarget();
   const attackDamageType = pickDamageType(boss.attackTypes, 'physical');
   const phaseDamageMultiplier = phase === 3 ? 1.15 : phase === 2 ? 1.08 : 1;
-  const bossDamageMultiplier = (Number(state.bossWeakenRounds || 0) > 0 ? 1 - Number(state.bossWeaken || 0) : 1) * phaseDamageMultiplier * (empoweredBossAttack ? 1.30 : 1);
+  const bossDamageMultiplier = (Number(state.bossWeakenRounds || 0) > 0 ? 1 - Number(state.bossWeaken || 0) : 1) * phaseDamageMultiplier * (empoweredBossAttack ? 1.15 : 1);
   const effectiveBossMiss = Math.max(0, Number(boss.miss || 0) - (phase === 3 ? 5 : 0));
+
+  state.currentBossAttackEmpowered = Boolean(empoweredBossAttack);
+  saveState(b, state);
 
   const recordAction = action => {
     state.bossActionStats[action] = Number(state.bossActionStats[action] || 0) + 1;
@@ -1612,7 +1625,9 @@ async function bossTurn(id) {
   }
 
   recordAction(action || 'UNKNOWN');
-  if (empoweredBossAttack) text = `🔴 **УСИЛЕННАЯ 4-Я АТАКА БОССА (+30% урона)!**\n${text}`;
+  state.currentBossAttackEmpowered = false;
+  saveState(db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id), state);
+  if (empoweredBossAttack) text = `🔴 **УСИЛЕННАЯ 4-Я АТАКА БОССА (+15% урона)!**\n${text}`;
   if (scheduledSpecial && action === 'SPECIAL') text = `⚠️ **12 ходов игроков — особая способность босса!**\n${text}`;
   state.log.push(text);
 
