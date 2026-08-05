@@ -752,6 +752,188 @@
     "image": "assets/cards/holographic/036_holographic.png"
   },
   {
+    "id": 91,
+    "code": "091",
+    "name": "Mecuwa",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Сильная, мягкая и честная. Ценит уют, вкусную еду, долгие разговоры и красивые детали.",
+    "image": "assets/cards/base/091_mecuwa_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/091_mecuwa_common.jpg",
+      "rare": "assets/cards/base/091_mecuwa_rare.jpg",
+      "epic": "assets/cards/base/091_mecuwa_epic.jpg",
+      "legendary": "assets/cards/base/091_mecuwa_legendary.jpg",
+      "mythic": "assets/cards/base/091_mecuwa_mythic.jpg"
+    }
+  },
+  {
+    "id": 92,
+    "code": "092",
+    "name": "Nelochka",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Добрая и уютная, но не даст себя обмануть. Поддерживает друзей и собирает команду вокруг себя.",
+    "image": "assets/cards/base/092_nelochka_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/092_nelochka_common.jpg",
+      "rare": "assets/cards/base/092_nelochka_rare.jpg",
+      "epic": "assets/cards/base/092_nelochka_epic.jpg",
+      "legendary": "assets/cards/base/092_nelochka_legendary.jpg",
+      "mythic": "assets/cards/base/092_nelochka_mythic.jpg"
+    }
+  },
+  {
+    "id": 93,
+    "code": "093",
+    "name": "Рулетик",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Доброжелательная и вайбовая. Поддерживает настроение команды и рисует гномов на заказ.",
+    "image": "assets/cards/base/093_ruletik_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/093_ruletik_common.jpg",
+      "rare": "assets/cards/base/093_ruletik_rare.jpg",
+      "epic": "assets/cards/base/093_ruletik_epic.jpg",
+      "legendary": "assets/cards/base/093_ruletik_legendary.jpg",
+      "mythic": "assets/cards/base/093_ruletik_mythic.jpg"
+    }
+  },
+  {
+    "id": 94,
+    "code": "094",
+    "name": "Kuroshima",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Надёжный человек, который всегда рядом, когда нужна поддержка, и держит команду вместе.",
+    "image": "assets/cards/base/094_kuroshima_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/094_kuroshima_common.jpg",
+      "rare": "assets/cards/base/094_kuroshima_rare.jpg",
+      "epic": "assets/cards/base/094_kuroshima_epic.jpg",
+      "legendary": "assets/cards/base/094_kuroshima_legendary.jpg",
+      "mythic": "assets/cards/base/094_kuroshima_mythic.jpg"
+    }
+  },
+  {
+    "id": 95,
+    "code": "095",
+    "name": "Флорочка",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Спокойная и стойкая. Умеет адаптироваться к любой ситуации и сохранять рассудок.",
+    "image": "assets/cards/base/095_florochka_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/095_florochka_common.jpg",
+      "rare": "assets/cards/base/095_florochka_rare.jpg",
+      "epic": "assets/cards/base/095_florochka_epic.jpg",
+      "legendary": "assets/cards/base/095_florochka_legendary.jpg",
+      "mythic": "assets/cards/base/095_florochka_mythic.jpg"
+    }
+  },
+  {
+    "id": 96,
+    "code": "096",
+    "name": "Pordon",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Лютый задрот Quick Events: знает механики, повторяет попытки и играет до победы.",
+    "image": "assets/cards/base/096_pordon_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/096_pordon_common.jpg",
+      "rare": "assets/cards/base/096_pordon_rare.jpg",
+      "epic": "assets/cards/base/096_pordon_epic.jpg",
+      "legendary": "assets/cards/base/096_pordon_legendary.jpg",
+      "mythic": "assets/cards/base/096_pordon_mythic.jpg"
+    }
+  },
+  {
+    "id": 97,
+    "code": "097",
+    "name": "Топчик",
+    "type": "member",
+    "role": "Мафиози",
+    "series": "BASE2026",
+    "base_rarity": "epic",
+    "description": "Спокоен, уверен и держит слово. Идёт своим путём, ценит верность и проверяет каждого.",
+    "image": "assets/cards/base/097_topchik_common.jpg",
+    "collection": "base",
+    "drop_rarities": [
+      "common",
+      "rare",
+      "epic",
+      "legendary",
+      "mythic"
+    ],
+    "images": {
+      "common": "assets/cards/base/097_topchik_common.jpg",
+      "rare": "assets/cards/base/097_topchik_rare.jpg",
+      "epic": "assets/cards/base/097_topchik_epic.jpg",
+      "legendary": "assets/cards/base/097_topchik_legendary.jpg",
+      "mythic": "assets/cards/base/097_topchik_mythic.jpg"
+    }
+  },
+  {
     "id": 1001,
     "code": "T-001",
     "name": "Твой выбор. Твоя награда.",

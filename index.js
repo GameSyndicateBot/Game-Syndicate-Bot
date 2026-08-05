@@ -147,6 +147,17 @@ client.once('clientReady', () => {
         console.error('[V19.6.2 Extra Recovery] Ошибка:', error);
     }
 
+    // V20.3.0 — добавление базовых карточек №091–097 и безопасная
+    // одноразовая выдача всех 35 вариантов владельцу полной коллекции.
+    // Выполняется до аудита карточных достижений, чтобы ранее собранные
+    // Common/Rare/Epic/Legendary/Mythic коллекции не стали неполными.
+    try {
+        const { applyBaseCards9197Grant } = require('./services/baseCards9197Grant');
+        applyBaseCards9197Grant();
+    } catch (error) {
+        console.error('[Base Cards 091-097 Grant] Ошибка:', error);
+    }
+
     // Repeat the safe check every minute. This covers expeditions that finish
     // while the bot is already running and survives missed UI refreshes.
     setInterval(() => {
