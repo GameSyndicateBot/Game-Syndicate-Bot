@@ -1643,8 +1643,8 @@ async function bossTurn(id) {
   }
 }
 
-function mvpPack() { const r = Math.random() * 100; if (r < 40) return 'base'; if (r < 60) return 'premium'; if (r < 75) return 'elite'; return 'boss'; }
-function specialistPack() { const r = Math.random() * 100; if (r < 70) return 'base'; if (r < 90) return 'premium'; if (r < 98) return 'elite'; return 'boss'; }
+function mvpPack(rareFind=0) { const r = Math.max(0,Math.random()*100-Math.min(15,Number(rareFind||0)*0.30)); if (r < 40) return 'base'; if (r < 60) return 'premium'; if (r < 75) return 'elite'; return 'boss'; }
+function specialistPack(rareFind=0) { const r = Math.max(0,Math.random()*100-Math.min(15,Number(rareFind||0)*0.30)); if (r < 70) return 'base'; if (r < 90) return 'premium'; if (r < 98) return 'elite'; return 'boss'; }
 async function finish(id, win) {
   clearTimer(id); let b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); if (!b || !['active','registration','class_roll','class_select','initiative_roll'].includes(b.status)) return;
   const ps = battlePlayers(id); db.prepare('UPDATE world_boss_battles SET status=?,ended_at=?,turn_deadline=NULL WHERE id=?').run(win ? 'won' : 'lost', Date.now(), id);
@@ -1658,7 +1658,9 @@ async function finish(id, win) {
 
     const distributeDust = db.transaction(() => {
       ps.forEach((p, i) => {
-        const reward = each + (i < remainder ? 1 : 0);
+        const baseReward = each + (i < remainder ? 1 : 0);
+        const loadoutBonus = selectedClassBonuses(p)?.equipment || {};
+        const reward = Math.round(baseReward * (1 + Math.min(15,Math.max(0,Number(loadoutBonus.rewardPercent||0))) / 100));
 
         // У части участников могла отсутствовать строка в players.
         // Обычный UPDATE тогда менял 0 строк, и Dust фактически не начислялся.
@@ -1701,7 +1703,7 @@ async function finish(id, win) {
     const extraStats=battleExtraStats(id);
     const enriched=ps.map(p=>{const x=extraStats[p.user_id]||{};const tankScore=Math.round(Number(p.damage_taken||0)*0.30+Number(x.damage_prevented||0)+Number(x.aggro_hits||0)*25);const supportScore=Math.round(Number(x.support_points||0)+Number(x.rage_reduced||0)*5+Number(x.summon_healing||0)*1.1);const mvpScore=Math.round(Number(p.damage_done||0)+Number(p.healing_done||0)*1.2+tankScore+supportScore);return {...p,...x,tankScore,supportScore,mvpScore};});
     const ranked=[...enriched].sort((a,b)=>b.mvpScore-a.mvpScore);
-    const mvp = ranked[0], pack = mvpPack();
+    const mvp = ranked[0], pack = mvpPack(selectedClassBonuses(mvp)?.equipment?.rareFindPercent || 0);
     addPack(mvp.user_id, pack, 1);
 
     const damageTop = [...enriched].sort((a,b) => b.damage_done - a.damage_done);
@@ -1713,7 +1715,7 @@ async function finish(id, win) {
 
     const awardCategory = (type, player, value) => {
       if (!player || Number(value || 0) <= 0) return;
-      const rewardPack = specialistPack();
+      const rewardPack = specialistPack(selectedClassBonuses(player)?.equipment?.rareFindPercent || 0);
       addPack(player.user_id, rewardPack, 1);
       categoryAwards.push({ type, user_id: player.user_id, value: Number(value || 0), pack: rewardPack });
     };

@@ -31,10 +31,10 @@ const CLASS_EQUIPMENT_PROFILES = Object.freeze({
 
 function equipmentBonusesForClass(snapshot, classKey) {
   const key = normalizeClassKey(classKey);
+  // classEquipmentBonuses уже содержит весь активный комплект выбранного класса:
+  // оружие/броню, артефакты, активных питомцев и маунта.
   const classStats = snapshot?.classEquipmentBonuses?.[key] || snapshot?.equipmentBonuses || {};
-  const companionStats = snapshot?.companionBonuses || {};
   const stats = { ...classStats };
-  for (const [stat, value] of Object.entries(companionStats)) stats[stat] = Number(stats[stat] || 0) + Number(value || 0);
   const derived = deriveStats(stats, key);
   const damagePercent = clamp(Number(derived.primaryDamagePercent || 0) + Number(stats.world_boss_damage || 0), 0, 40);
   const resistancePercent = clamp(Number(derived.resistancePercent || 0) + Number(stats.world_boss_resistance || 0), 0, 28);
@@ -45,6 +45,8 @@ function equipmentBonusesForClass(snapshot, classKey) {
     healingPercent: Math.round(clamp(Number(derived.healingPercent || 0),0,35)*10)/10,
     flatHp: Math.max(0, Math.round(Number(derived.bonusHp || 0))),
     expeditionSuccess: Number(stats.expedition_success || 0),
+    rareFindPercent: Math.round(clamp(Number(derived.rareFindPercent || 0),0,40)*10)/10,
+    rewardPercent: Math.round(clamp(Number(derived.rewardPercent || 0),0,50)*10)/10,
   };
 }
 
@@ -60,7 +62,7 @@ function buildHeroSnapshot(userId) {
   const classEquipmentBonuses = {};
   const classEquipment = {};
   for (const classKey of Object.keys(serializeClassProgress(userId))) {
-    classEquipmentBonuses[classKey] = getClassEquipmentOnlyBonuses(userId, classKey, { fallback: true }) || {};
+    classEquipmentBonuses[classKey] = getEquipmentBonuses(userId, classKey) || {};
     classEquipment[classKey] = getClassEquipment(userId, classKey, { fallback: true }).map(item => ({
       slot: item.slot, itemKey: item.item_key, name: item.name, rarity: item.rarity,
       upgradeLevel: Number(item.upgrade_level || 0),

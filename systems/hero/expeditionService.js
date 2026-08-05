@@ -272,7 +272,9 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
     name: effectiveHero.name, level: effectiveHero.level, hp: effectiveHero.hp, max_hp: effectiveHero.max_hp,
     class_key: hero.class_key, origin_key: hero.origin_key,
     strength: effectiveHero.strength, defense: effectiveHero.defense, dexterity: effectiveHero.dexterity,
-    intelligence: effectiveHero.intelligence, luck: effectiveHero.luck,
+    intelligence: effectiveHero.intelligence, wisdom: effectiveHero.wisdom, vitality: effectiveHero.vitality, luck: effectiveHero.luck,
+    equipmentBonuses: effectiveHero.equipmentBonuses || {},
+    derivedStats: effectiveHero.derivedStats || {},
   };
   const info = db.prepare(`INSERT INTO hero_expeditions
     (user_id,location_key,status,returns_at,buffs_json,guild_id,location_snapshot_json,hero_snapshot_json,hp_before,class_key,tactic_key,duration_hours)
@@ -413,8 +415,12 @@ function resolveExpedition(userId, { force = false } = {}) {
   if (!expedition) return { ok: false, reason: 'none' };
   if (!force && Date.now() < new Date(expedition.returns_at).getTime()) return { ok: false, reason: 'not_ready', expedition };
   const baseHero = getHero(userId);
-  const hero = getEffectiveHero(baseHero);
-  const equipmentBonuses = getEquipmentBonuses(userId);
+  const expeditionClassKey = normalizeClassKey(expedition.class_key || baseHero.class_key);
+  // Фиксируем именно активный комплект класса, выбранного для этой экспедиции.
+  // В него входят оружие, броня, артефакты, активные питомцы и маунт.
+  const hero = getEffectiveHero(baseHero, { classKey: expeditionClassKey });
+  const equipmentBonuses = getEquipmentBonuses(userId, expeditionClassKey);
+  const loadoutDerived = hero.derivedStats || {};
   let expeditionBuffs = {};
   try { expeditionBuffs = JSON.parse(expedition.buffs_json || '{}') || {}; } catch { expeditionBuffs = {}; }
   const alchemyBonuses = expeditionBuffs.bonuses || {};
@@ -435,7 +441,9 @@ function resolveExpedition(userId, { force = false } = {}) {
   let dust = 0, xp = 0, reputation = 0, item = null, companion = null, injuryHours = 0, dustLost = 0;
   const theme = location.dailyTheme || {};
   const weather = location.weather || {};
-  const dustMultiplier = Number(theme.dust || 1) * Number(weather.dust || 1) * Number(worldEffects.dust || 1);
+  const equipmentRewardMultiplier = 1 + Math.min(20, Math.max(0, Number(loadoutDerived.rewardPercent || 0))) / 100;
+  const equipmentRareFind = Math.min(40, Math.max(0, Number(loadoutDerived.rareFindPercent || 0)));
+  const dustMultiplier = Number(theme.dust || 1) * Number(weather.dust || 1) * Number(worldEffects.dust || 1) * equipmentRewardMultiplier;
   const themeRare = Number(theme.rare || 0) + Number(weather.rare || 0) + Number(tactic.rare || 0) + Number(worldEffects.rare || 0);
   const xpMultiplier = Number(tactic.xp || 1) * Number(worldEffects.xp || 1) * duration.xp * (1 + (Number(alchemyBonuses.class_xp_bonus) || 0) / 100);
   const tacticDustMultiplier = Number(tactic.dust || 1) * duration.reward;
@@ -446,7 +454,7 @@ function resolveExpedition(userId, { force = false } = {}) {
     item = grantItem(userId, pick(rng, itemPool), 1, `expedition:${expedition.id}`);
   } else if (outcome === 'success') {
     dust = Math.round(randomInt(rng, ...location.dust) * dustMultiplier * tacticDustMultiplier); xp = Math.round(randomInt(rng, ...location.baseXp) * xpMultiplier); reputation = 10;
-    const findChance = Math.min(0.94, 0.34 + ((equipmentBonuses.rare_find || 0) + (Number(alchemyBonuses.rare_find) || 0) + themeRare) / 100);
+    const findChance = Math.min(0.94, 0.34 + (equipmentRareFind + (Number(alchemyBonuses.rare_find) || 0) + themeRare) / 100);
     if (rng() < findChance) {
       const tier = Math.max(1, Math.min(4, location.difficulty + (rng() < 0.12 ? 1 : -1)));
       item = grantItem(userId, pick(rng, EXPEDITION_LOOT[tier]), 1, `expedition:${expedition.id}`);
@@ -462,7 +470,6 @@ function resolveExpedition(userId, { force = false } = {}) {
     const removal = removeCardDust(userId, wantedLoss);
     if (removal.ok) dustLost = wantedLoss;
   }
-  const expeditionClassKey = normalizeClassKey(expedition.class_key || baseHero.class_key);
   const miniboss = rollMinibossEncounter({
     guildId: expedition.guild_id || 'global', userId, expeditionId: expedition.id,
     location, hero, classKey: expeditionClassKey, tactic, worldEffects,

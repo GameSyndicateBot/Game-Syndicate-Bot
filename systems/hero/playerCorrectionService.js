@@ -76,7 +76,39 @@ function toolInfo(userId,profession){
 function craftTool(userId){ensure();const prof=db.prepare('SELECT * FROM hero_professions WHERE user_id=?').get(String(userId));if(!prof)return {ok:false,reason:'profession'};const current=getTool(userId);const nextTier=(current&&current.profession_key===prof.profession_key?Number(current.tier):0)+1;const def=TOOL_TIERS.find(x=>x.tier===nextTier);if(!def)return {ok:false,reason:'max'};if(Number(prof.level)<def.level)return {ok:false,reason:'level',required:def.level};const result=consumeResources(userId,def.cost);if(!result.ok)return {ok:false,reason:'materials',missing:result.missing};db.prepare(`INSERT INTO hero_profession_tools(user_id,profession_key,tier) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET profession_key=excluded.profession_key,tier=excluded.tier,updated_at=CURRENT_TIMESTAMP`).run(String(userId),prof.profession_key,nextTier);return {ok:true,tool:toolInfo(userId,prof.profession_key),cost:def.cost};}
 function dismantle(userId,inventoryId){ensure();const item=db.prepare(`SELECT hi.*,i.name,i.rarity,i.slot,i.item_type FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key WHERE hi.user_id=? AND hi.id=?`).get(String(userId),Number(inventoryId));if(!item||!item.slot)return {ok:false,reason:'item'};let equipped=false;try{equipped=!!db.prepare(`SELECT 1 FROM hero_equipment WHERE user_id=? AND inventory_id=? UNION SELECT 1 FROM hero_class_equipment WHERE user_id=? AND inventory_id=? UNION SELECT 1 FROM hero_artifact_equipment WHERE user_id=? AND inventory_id=? LIMIT 1`).get(String(userId),item.id,String(userId),item.id,String(userId),item.id);}catch(_){equipped=!!db.prepare('SELECT 1 FROM hero_equipment WHERE user_id=? AND inventory_id=? UNION SELECT 1 FROM hero_class_equipment WHERE user_id=? AND inventory_id=? LIMIT 1').get(String(userId),item.id,String(userId),item.id);}if(equipped&&Number(item.quantity)<=1)return {ok:false,reason:'equipped'};const name=String(item.name||'').toLowerCase();let key=/сапог|перчат|кож|ботин/.test(name)?'leather':/лук|арбалет/.test(name)?'board':/кольц|амулет|ожерел|обруч/.test(name)?'gemstone':/посох|жезл|книга|гримуар/.test(name)?'crystal':'iron_ingot';const base={common:3,rare:5,epic:8,legendary:12,mythic:18,exclusive:25}[item.rarity]||3;const qty=base+Math.max(0,Number(item.upgrade_level||0))*2;db.transaction(()=>{if(Number(item.quantity)>1)db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=? AND user_id=?').run(item.id,String(userId));else db.prepare('DELETE FROM hero_inventory WHERE id=? AND user_id=?').run(item.id,String(userId));grantResource(userId,key,qty,'equipment_dismantle');})();return {ok:true,item,key,qty,name:resourceMeta(key).name};}
 function giftMaterial(from,to,key,qty){key=normalizeResourceKey(key);qty=Math.max(1,Math.floor(Number(qty)||0));const r=consumeResources(from,{[key]:qty});if(!r.ok)return {ok:false,reason:'materials'};grantResource(to,key,qty,'gift');db.prepare('INSERT INTO item_gift_log(from_user_id,to_user_id,asset_type,asset_key,quantity) VALUES(?,?,?,?,?)').run(String(from),String(to),'material',key,qty);return {ok:true,key,qty,name:resourceMeta(key).name};}
-function giftItem(from,to,inventoryId,qty=1){const row=db.prepare(`SELECT hi.*,i.name,i.slot,i.item_type FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key WHERE hi.user_id=? AND hi.id=?`).get(String(from),Number(inventoryId));if(!row)return {ok:false,reason:'item'};qty=Math.max(1,Math.min(Number(qty)||1,Number(row.quantity)||1));db.transaction(()=>{if(qty>=row.quantity){db.prepare('DELETE FROM hero_equipment WHERE user_id=? AND inventory_id=?').run(String(from),row.id);db.prepare('DELETE FROM hero_class_equipment WHERE user_id=? AND inventory_id=?').run(String(from),row.id);db.prepare('DELETE FROM hero_artifact_equipment WHERE user_id=? AND inventory_id=?').run(String(from),row.id);db.prepare('DELETE FROM hero_inventory WHERE id=?').run(row.id);}else db.prepare('UPDATE hero_inventory SET quantity=quantity-? WHERE id=?').run(qty,row.id);grantItem(to,row.item_key,qty,'gift');if(Number(row.upgrade_level||0)>0)db.prepare('UPDATE hero_inventory SET upgrade_level=MAX(COALESCE(upgrade_level,0),?) WHERE user_id=? AND item_key=?').run(Number(row.upgrade_level),String(to),row.item_key);db.prepare('INSERT INTO item_gift_log(from_user_id,to_user_id,asset_type,asset_key,quantity) VALUES(?,?,?,?,?)').run(String(from),String(to),row.item_type==='artifact'?'artifact':'item',row.item_key,qty);})();return {ok:true,row,qty};}
+function giftItem(from,to,inventoryId,qty=1){
+ const fromId=String(from),toId=String(to),id=Number(inventoryId);
+ if(fromId===toId)return {ok:false,reason:'self'};
+ try{
+  return db.transaction(()=>{
+   const row=db.prepare(`SELECT hi.*,i.name,i.slot,i.item_type FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key WHERE hi.user_id=? AND hi.id=?`).get(fromId,id);
+   if(!row)throw Object.assign(new Error('item'),{code:'item'});
+   const available=Math.max(0,Number(row.quantity)||0);
+   const amount=Math.floor(Number(qty)||0);
+   if(amount<1||amount>available)throw Object.assign(new Error('quantity'),{code:'quantity',available});
+
+   if(amount===available){
+    db.prepare('DELETE FROM hero_equipment WHERE user_id=? AND inventory_id=?').run(fromId,row.id);
+    db.prepare('DELETE FROM hero_class_equipment WHERE user_id=? AND inventory_id=?').run(fromId,row.id);
+    db.prepare('DELETE FROM hero_artifact_equipment WHERE user_id=? AND inventory_id=?').run(fromId,row.id);
+    const removed=db.prepare('DELETE FROM hero_inventory WHERE id=? AND user_id=? AND quantity=?').run(row.id,fromId,available);
+    if(removed.changes!==1)throw Object.assign(new Error('concurrent'),{code:'concurrent'});
+   }else{
+    const changed=db.prepare('UPDATE hero_inventory SET quantity=quantity-? WHERE id=? AND user_id=? AND quantity>=?').run(amount,row.id,fromId,amount);
+    if(changed.changes!==1)throw Object.assign(new Error('concurrent'),{code:'concurrent'});
+   }
+
+   const before=Number(db.prepare('SELECT quantity FROM hero_inventory WHERE user_id=? AND item_key=?').get(toId,row.item_key)?.quantity||0);
+   const granted=grantItem(toId,row.item_key,amount,'gift');
+   if(!granted)throw Object.assign(new Error('grant'),{code:'grant'});
+   const after=Number(db.prepare('SELECT quantity FROM hero_inventory WHERE user_id=? AND item_key=?').get(toId,row.item_key)?.quantity||0);
+   if(after-before!==amount)throw Object.assign(new Error('verify'),{code:'verify'});
+   if(Number(row.upgrade_level||0)>0)db.prepare('UPDATE hero_inventory SET upgrade_level=MAX(COALESCE(upgrade_level,0),?) WHERE user_id=? AND item_key=?').run(Number(row.upgrade_level),toId,row.item_key);
+   db.prepare('INSERT INTO item_gift_log(from_user_id,to_user_id,asset_type,asset_key,quantity) VALUES(?,?,?,?,?)').run(fromId,toId,row.item_type==='artifact'?'artifact':'item',row.item_key,amount);
+   return {ok:true,row,qty:amount,remaining:available-amount};
+  })();
+ }catch(e){return {ok:false,reason:e?.code||e?.message||'transaction',available:e?.available};}
+}
 function equipArtifact(userId,inventoryId,slot=1){ensure();const row=db.prepare(`SELECT hi.id,i.name,i.item_type FROM hero_inventory hi JOIN hero_items i ON i.item_key=hi.item_key WHERE hi.user_id=? AND hi.id=?`).get(String(userId),Number(inventoryId));if(!row||row.item_type!=='artifact')return {ok:false,reason:'item'};slot=Math.max(1,Math.min(2,Number(slot)||1));db.prepare(`INSERT INTO hero_artifact_equipment(user_id,slot_no,inventory_id) VALUES(?,?,?) ON CONFLICT(user_id,slot_no) DO UPDATE SET inventory_id=excluded.inventory_id,equipped_at=CURRENT_TIMESTAMP`).run(String(userId),slot,row.id);return {ok:true,row,slot};}
 function unequipArtifact(userId,slot){ensure();return {ok:db.prepare('DELETE FROM hero_artifact_equipment WHERE user_id=? AND slot_no=?').run(String(userId),Number(slot)).changes>0};}
 ensure();applyTargetedCorrections();

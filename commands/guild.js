@@ -1353,7 +1353,12 @@ async function handleComponent(interaction) {
   if (action === 'gift' && parts[2] === 'asset') {
     const draft=giftDrafts.get(interaction.user.id); if(!draft) return giftHome(interaction,'❌ Меню подарка устарело.');
     draft.type=parts[3]; draft.asset=interaction.values?.[0]; giftDrafts.set(interaction.user.id,draft);
-    if(['material','item'].includes(draft.type)) return interaction.showModal(marketModal('guild:gift:qty','Количество подарка',[{id:'quantity',label:'Количество',placeholder:'Например: 1'}]));
+    if(['material','item'].includes(draft.type)){
+      let maxQty=1;
+      if(draft.type==='item')maxQty=Number(getInventoryItem(interaction.user.id,Number(draft.asset))?.quantity||1);
+      else maxQty=Number(listResources(interaction.user.id).find(x=>x.key===draft.asset)?.quantity||1);
+      return interaction.showModal(marketModal('guild:gift:qty','Количество подарка',[{id:'quantity',label:`Количество (доступно: ${maxQty})`,placeholder:'Например: 1'}]));
+    }
     const removed=takeCompanionForTransfer(interaction.user.id,Number(draft.asset));
     if(!removed) return giftAssetList(interaction,'companion','❌ Спутник уже недоступен.');
     if(!giveTransferredCompanion(draft.targetId,removed)){giveTransferredCompanion(interaction.user.id,removed);return giftAssetList(interaction,'companion','❌ Не удалось передать спутника.');}
@@ -1782,7 +1787,7 @@ async function handleModal(interaction) {
     let result;
     if(draft.type==='material') result=giftMaterial(interaction.user.id,draft.targetId,draft.asset,qty);
     else result=giftItem(interaction.user.id,draft.targetId,Number(draft.asset),qty);
-    if(!result?.ok)return interaction.reply({content:'❌ Не удалось передать подарок. Проверь количество и убедись, что предмет не экипирован.',flags:MessageFlags.Ephemeral});
+    if(!result?.ok)return interaction.reply({content:result?.reason==='quantity'?`❌ Неверное количество. Доступно: **${result.available||0}**.`:'❌ Не удалось передать подарок. Операция отменена целиком — предметы не должны пропасть.',flags:MessageFlags.Ephemeral});
     giftDrafts.delete(interaction.user.id);
     const name=result.name||result.row?.name||draft.asset;
     return interaction.reply({content:`✅ Подарок передан <@${draft.targetId}>: **${name} ×${result.qty||qty}**.`,flags:MessageFlags.Ephemeral});
