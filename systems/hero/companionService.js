@@ -179,6 +179,42 @@ function bonusesForRow(active) {
   return bonuses;
 }
 
+const PERCENT_COMPANION_BONUSES = new Set([
+  'expedition_success','rare_find','world_boss_damage','world_boss_resistance',
+  'injury_resistance','class_xp_bonus'
+]);
+
+function applyCompanionUpgradeBonuses(userId, row, baseBonuses) {
+  let upgradeLevel = 0;
+  try {
+    // Маунты из каравана и часть питомцев зеркалируются в инвентаре.
+    // Их улучшение усиливает активный бонус так же, как улучшение предмета.
+    const inventory = db.prepare(`
+      SELECT COALESCE(upgrade_level,0) AS upgrade_level
+      FROM hero_inventory
+      WHERE user_id=? AND item_key=?
+      ORDER BY upgrade_level DESC,id ASC
+      LIMIT 1
+    `).get(String(userId), row.companion_key);
+    upgradeLevel = Math.max(0, Math.min(10, Number(inventory?.upgrade_level) || 0));
+  } catch (_) {}
+
+  if (!upgradeLevel) return { ...baseBonuses };
+
+  const out = {};
+  for (const [key, value] of Object.entries(baseBonuses || {})) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      out[key] = value;
+      continue;
+    }
+    out[key] = PERCENT_COMPANION_BONUSES.has(key)
+      ? numeric + Math.ceil(upgradeLevel * 0.8)
+      : Math.max(numeric, Math.round(numeric * (1 + upgradeLevel * 0.15)));
+  }
+  return out;
+}
+
 
 function companionTransferData(row){
   const def=COMPANIONS[row.companion_key]||{};
@@ -204,7 +240,10 @@ function getCompanionBonuses(userId) {
   if (mount) rows.push(mount);
   const total = {};
   for (const row of rows) {
-    for (const [key,value] of Object.entries(bonusesForRow(row))) total[key]=(Number(total[key])||0)+(Number(value)||0);
+    const bonuses = applyCompanionUpgradeBonuses(userId, row, bonusesForRow(row));
+    for (const [key,value] of Object.entries(bonuses)) {
+      total[key]=(Number(total[key])||0)+(Number(value)||0);
+    }
   }
   return total;
 }

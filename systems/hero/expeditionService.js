@@ -339,13 +339,26 @@ function computeSuccessChanceBreakdown(hero, location, extraBonuses = {}, tactic
   const luckBonus = Math.min(4, Math.max(0, baseLuck * 0.35));
   const origin = Math.max(-4, Math.min(4, Number(originBonus(hero.origin_key, location) || 0)));
 
-  // Каждая полезная характеристика на надетых предметах даёт реальный вклад.
-  // Максимум +10%, чтобы экипировка была важной, но не возвращала шансы к 90–96%.
-  const equipmentStatBonus = Math.min(7, Math.max(0,
-    equipmentRelevant * 0.55 + equipmentLuck * 0.25 + equipmentDefense * 0.12
+  // В экспедиции участвует весь активный комплект: классовая и общая экипировка,
+  // два артефакта, активные питомцы, маунт и уровни улучшения.
+  // Главная характеристика локации влияет сильнее, но остальные надетые вещи
+  // тоже дают небольшой вклад, поэтому оружие/шлем/кольца больше не «пропадают».
+  const coreKeys = ['strength','dexterity','intelligence','wisdom','vitality'];
+  const otherCoreTotal = coreKeys
+    .filter(key => key !== relevantKey)
+    .reduce((sum,key) => sum + Math.max(0, Number(equipment[key] || 0)), 0);
+  const equipmentHp = Math.max(0, Number(equipment.hp || 0));
+  const equipmentAllStatsBonus = Math.min(5, Math.max(0,
+    otherCoreTotal * 0.08 + equipmentHp * 0.006
   ));
-  const equipmentDirectBonus = Math.min(5, Math.max(0, Number(equipment.expedition_success || 0)));
-  const equipmentBonus = Math.min(15, equipmentStatBonus + equipmentDirectBonus);
+  const equipmentStatBonus = Math.min(10, Math.max(0,
+    equipmentRelevant * 0.50
+    + equipmentLuck * 0.22
+    + equipmentDefense * 0.10
+    + equipmentAllStatsBonus
+  ));
+  const equipmentDirectBonus = Math.min(8, Math.max(0, Number(equipment.expedition_success || 0)));
+  const equipmentBonus = Math.min(18, equipmentStatBonus + equipmentDirectBonus);
 
   const buffBonus = Math.max(-8, Math.min(8, Number(extraBonuses.expedition_success || 0)));
   const environmentBonus = Math.max(-8, Math.min(8,
@@ -357,7 +370,7 @@ function computeSuccessChanceBreakdown(hero, location, extraBonuses = {}, tactic
 
   const raw = baseChance + levelBonus + statBonus + luckBonus + origin
     + equipmentBonus + buffBonus + environmentBonus + tacticBonus + durationBonus;
-  const chance = Math.max(10, Math.min(75, raw));
+  const chance = Math.max(10, Math.min(90, raw));
   return {
     chance,
     baseChance,
@@ -367,6 +380,7 @@ function computeSuccessChanceBreakdown(hero, location, extraBonuses = {}, tactic
     originBonus: origin,
     equipmentBonus,
     equipmentStatBonus,
+    equipmentAllStatsBonus,
     equipmentDirectBonus,
     buffBonus,
     environmentBonus,
