@@ -147,6 +147,15 @@ client.once('clientReady', () => {
         console.error('[V19.6.2 Extra Recovery] Ошибка:', error);
     }
 
+    // V19.8.4 — новые карточки участников №081–087 и безопасная
+    // одноразовая выдача полного набора владельцу коллекции.
+    try {
+        const { applyCards081087Grant } = require('./services/cards081087Grant');
+        applyCards081087Grant();
+    } catch (error) {
+        console.error('[Cards 081-087] Ошибка добавления каталога/выдачи:', error);
+    }
+
     // Repeat the safe check every minute. This covers expeditions that finish
     // while the bot is already running and survives missed UI refreshes.
     setInterval(() => {
