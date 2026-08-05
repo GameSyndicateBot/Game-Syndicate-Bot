@@ -9,7 +9,7 @@ const { db, addCardDust } = require('../database/db');
 const { getHero } = require('../systems/hero/heroService');
 const { getClassProgress, grantClassXp, normalizeClassKey } = require('../systems/hero/classProgressService');
 const { buildHeroSnapshot } = require('./worldBoss/heroIntegration');
-const { getEffectiveHero, getEquipmentBonuses } = require('../systems/hero/itemService');
+const { getEffectiveHero, getEquipmentBonuses, getLoadoutBreakdown } = require('../systems/hero/itemService');
 const path = require('path');
 const { checkAchievementsForUsers } = require('../utils/checkAchievementsForUser');
 
@@ -93,16 +93,18 @@ function usedWindow(guildId,userId,windowKey){return Boolean(db.prepare('SELECT 
 function dungeonLoadout(userId,classKey){
  const hero=getHero(userId),key=normalizeClassKey(classKey||hero?.class_key);
  const effective=getEffectiveHero(hero,{classKey:key});
- const equipment=getEquipmentBonuses(userId,key)||{};
+ const loadout=getLoadoutBreakdown(userId,key);
+ const equipment=loadout.total||getEquipmentBonuses(userId,key)||{};
  const derived=effective?.derivedStats||{};
- const equipmentScore=Number(equipment.strength||0)+Number(equipment.defense||0)+Number(equipment.dexterity||0)+Number(equipment.intelligence||0)+Number(equipment.wisdom||0)+Number(equipment.vitality||0)+Number(equipment.luck||0);
- return {hero,effective,equipment,derived,equipmentScore};
+ const core=['strength','defense','dexterity','intelligence','wisdom','vitality','luck'];
+ const equipmentScore=core.reduce((sum,k)=>sum+Number(equipment[k]||0),0)+Number(equipment.expedition_success||0)*2+Number(equipment.rare_find||0);
+ return {hero,effective,equipment,derived,equipmentScore,loadout};
 }
 function classPower(userId,classKey){ const p=getClassProgress(userId,classKey)||{level:1}; const l=dungeonLoadout(userId,classKey); const stats=l.effective||l.hero||{}; const raw=40+Number(l.hero?.level||1)*5+Number(p.level||1)*9+(Number(stats.strength||0)+Number(stats.defense||0)+Number(stats.dexterity||0)+Number(stats.intelligence||0)+Number(stats.wisdom||0)+Number(stats.vitality||0)+Number(stats.luck||0))*0.55+Math.min(12,Number(l.equipment.expedition_success||0)*0.7); return Math.round(raw); }
 function analyze(groupId){ const g=getGroup(groupId); const ms=members(groupId); const diff=DIFFICULTIES.find(d=>d.key===g?.difficulty_key)||DIFFICULTIES[0]; const enriched=ms.map(m=>({...m,class_key:normalizeClassKey(m.class_key),power:classPower(m.user_id,m.class_key),level:Number(getClassProgress(m.user_id,m.class_key)?.level||1)})); const n=enriched.length; const tanks=enriched.filter(x=>TANKS.has(x.class_key)).length, heals=enriched.filter(x=>HEALERS.has(x.class_key)).length, controls=enriched.filter(x=>CONTROL.has(x.class_key)).length; const avgPower=n?enriched.reduce((s,x)=>s+x.power,0)/n:0; const avgGear=n?enriched.reduce((sum,x)=>sum+dungeonLoadout(x.user_id,x.class_key).equipmentScore,0)/n:0; let bonus=0; const lines=[]; const add=(label,v)=>{bonus+=v;lines.push(`${v>=0?'✅':'❌'} ${label}: ${v>=0?'+':''}${v}%`)};
  // Характеристики помогают, но больше не разгоняют шанс почти до гарантии.
  add(`Сила героев (${Math.round(avgPower)})`,clamp(Math.round((avgPower-120)/45),-4,4));
- add(`Надетая экипировка, артефакты и спутники (${Math.round(avgGear)} очк.)`,clamp(Math.round(avgGear/18),0,8));
+ add(`Надетая экипировка, артефакты и спутники (${Math.round(avgGear)} очк.)`,clamp(Math.round(avgGear/14),0,10));
  if(tanks>=1)add('Есть танк',5);else add('Нет танка',-8);
  if(heals>=1)add('Есть лекарь',5);else add('Нет лекаря',-8);
  if(controls>=1)add('Есть контроль / поддержка',2);
@@ -113,7 +115,7 @@ function analyze(groupId){ const g=getGroup(groupId); const ms=members(groupId);
  // Максимальный положительный бонус — 20%: даже идеальная группа сохраняет риск.
  const positiveCap=20;
  if(bonus>positiveCap)bonus=positiveCap;
- const chance=clamp(Math.round(diff.base+bonus),5,diff.base+positiveCap); return {chance,base:diff.base,bonus,lines,tanks,heals,controls,avgPower:Math.round(avgPower),avgGear:Math.round(avgGear),members:enriched,difficulty:diff}; }
+ const chance=clamp(Math.round(diff.base+bonus),5,diff.base+positiveCap); console.log(`[Dungeon V20.2 LOADOUT] group=${groupId} members=${n} avgGear=${avgGear.toFixed(1)} avgPower=${avgPower.toFixed(1)} chance=${chance}`); return {chance,base:diff.base,bonus,lines,tanks,heals,controls,avgPower:Math.round(avgPower),avgGear:Math.round(avgGear),members:enriched,difficulty:diff}; }
 
 function queueEntry(guildId,userId,date=new Date()){const ctx=windowContext(date);if(!ctx)return null;return db.prepare('SELECT * FROM dungeon_queue_entries WHERE guild_id=? AND window_key=? AND user_id=?').get(guildId,ctx.key,userId)||null;}
 function queueCount(guildId,date=new Date()){const ctx=windowContext(date);if(!ctx)return 0;return Number(db.prepare('SELECT COUNT(*) AS c FROM dungeon_queue_entries WHERE guild_id=? AND window_key=?').get(guildId,ctx.key)?.c||0);}

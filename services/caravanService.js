@@ -107,7 +107,7 @@ ensureTables();
 
 function repairCaravanRarityStats(){
   db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);`);
-  const migrationKey='v20.1.0-caravan-rarity-stats';
+  const migrationKey='v20.2.0-caravan-rarity-stats-strict';
   if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey)) return;
   const rows=db.prepare(`SELECT item_key,item_type,rarity FROM hero_items WHERE item_key LIKE 'caravan_%' AND rarity IN ('common','rare','epic','legendary','mythic','exclusive')`).all();
   const update=db.prepare('UPDATE hero_items SET bonuses_json=? WHERE item_key=?');

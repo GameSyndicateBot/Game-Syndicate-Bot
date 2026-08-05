@@ -139,8 +139,60 @@ function getEquipmentBonuses(userId,classKey=null){
   }catch(_){}
   return total;
 }
+
+function getLoadoutBreakdown(userId,classKey=null){
+  const key=normalizeClassKey(classKey||getHero(userId)?.class_key);
+  const equipmentItems=key&&isValidClass(key)?getClassEquipment(userId,key,{fallback:true}):getEquipment(userId);
+  const equipment=sumEquipmentBonuses(equipmentItems);
+  const artifacts=Object.fromEntries(STAT_KEYS.map(k=>[k,0]));
+  let artifactItems=[];
+  try{
+    artifactItems=db.prepare(`SELECT hae.inventory_id,hi.item_key,COALESCE(hi.upgrade_level,0) upgrade_level,i.name,i.rarity,i.bonuses_json
+      FROM hero_artifact_equipment hae JOIN hero_inventory hi ON hi.id=hae.inventory_id JOIN hero_items i ON i.item_key=hi.item_key WHERE hae.user_id=?`).all(String(userId));
+    for(const row of artifactItems){const b=applyUpgradeToBonuses(parseBonuses(row.bonuses_json),row.upgrade_level);for(const k of STAT_KEYS)artifacts[k]+=Number(b[k]||0);}
+  }catch(_){}
+  const companions=Object.fromEntries(STAT_KEYS.map(k=>[k,0]));
+  let activePets=[],activeMount=null;
+  try{
+    const cs=require('./companionService');
+    const cb=cs.getCompanionBonuses(userId)||{};
+    for(const k of STAT_KEYS)companions[k]+=Number(cb[k]||0);
+    activePets=cs.getActiveCompanions(userId)||[];
+    activeMount=cs.getActiveMount(userId)||null;
+  }catch(_){}
+  const total={};
+  for(const k of STAT_KEYS) total[k]=Number(equipment[k]||0)+Number(artifacts[k]||0)+Number(companions[k]||0);
+  return {classKey:key,equipment,artifacts,companions,total,equipmentItems,artifactItems,activePets,activeMount};
+}
+function repairSameNameRarityDuplicates(){
+  try{
+    db.exec(`CREATE TABLE IF NOT EXISTS gs_one_time_migrations (migration_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`);
+    const migrationKey='v20.2.0-same-name-rarity-duplicates';
+    if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(migrationKey))return;
+    const rank={common:1,rare:2,epic:3,legendary:4,mythic:5,exclusive:6};
+    const rows=db.prepare(`SELECT item_key,name,item_type,rarity,bonuses_json FROM hero_items WHERE is_consumable=0 ORDER BY name`).all();
+    const groups=new Map();
+    for(const row of rows){const n=String(row.name||'').trim().toLocaleLowerCase('ru-RU').replace(/ё/g,'е');if(!groups.has(n))groups.set(n,[]);groups.get(n).push(row);}
+    const upd=db.prepare('UPDATE hero_items SET bonuses_json=? WHERE item_key=?');let fixed=0;
+    db.transaction(()=>{
+      for(const group of groups.values()){
+        if(group.length<2||new Set(group.map(x=>x.rarity)).size<2)continue;
+        group.sort((a,b)=>(rank[a.rarity]||1)-(rank[b.rarity]||1));
+        let prev={};
+        for(const row of group){const r=rank[row.rarity]||1;const b=parseBonuses(row.bonuses_json);const out={...b};
+          for(const [k,v] of Object.entries(b)){const n=Number(v);if(!Number.isFinite(n)||n<=0)continue;const percent=['expedition_success','rare_find','world_boss_damage','world_boss_resistance','injury_resistance','class_xp_bonus'].includes(k);const floor=percent?Math.max(n,r-1):Math.max(n,Math.ceil(n*(1+(r-1)*0.28)));out[k]=Math.max(floor,Number(prev[k]||0)+(percent?1:1));}
+          if(JSON.stringify(out)!==JSON.stringify(b)){upd.run(JSON.stringify(out),row.item_key);fixed++;}prev=out;
+        }
+      }
+      db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(migrationKey);
+    })();
+    console.log(`[Item Audit] Исправлено одинаковых предметов разных редкостей: ${fixed}.`);
+  }catch(e){console.error('[Item Audit] duplicate rarity repair',e);}
+}
+
 function getEffectiveHero(hero,options={}){if(!hero)return null;const classKey=options.classKey||hero.class_key;const b=getEquipmentBonuses(hero.user_id,classKey);const {totalStats,deriveStats}=require('./statSystem');const stats=totalStats(hero,b);const derived=deriveStats(stats,classKey);const maxHp=Number(hero.max_hp||0)+derived.bonusHp;return {...hero,equipmentBonuses:b,totalStats:stats,derivedStats:derived,max_hp:maxHp,hp:Math.min(Number(hero.hp||0)+derived.bonusHp,maxHp),strength:stats.strength,defense:stats.defense,dexterity:stats.dexterity,intelligence:stats.intelligence,wisdom:stats.wisdom,vitality:stats.vitality,luck:stats.luck};}
 function getCollection(userId){seedItems();const rows=db.prepare(`SELECT c.item_key,c.first_acquired_at,i.name,i.item_type,i.rarity FROM hero_item_collection c JOIN hero_items i ON i.item_key=c.item_key WHERE c.user_id=?`).all(userId);return {rows,found:rows.length,total:Object.keys(ITEMS).length};}
 function formatBonuses(value){const b=typeof value==='string'?parseBonuses(value):value||{};const labels={hp:'❤️ HP',strength:'⚔️ Сила',defense:'🛡️ Защита',dexterity:'🏃 Ловкость',intelligence:'🧠 Интеллект',wisdom:'✨ Мудрость',vitality:'🛡️ Выносливость',luck:'🍀 Удача',expedition_success:'🗺️ Успех экспедиции',rare_find:'✨ Шанс редкой добычи',world_boss_damage:'🐉 Урон по боссу',world_boss_resistance:'🛡️ Защита от босса',boss_flat_damage:'💣 Урон бомбы',injury_resistance:'❤️ Защита от ранений',class_xp_bonus:'📚 Опыт класса',heal:'🧪 Лечение'};return Object.entries(b).filter(([,v])=>v).map(([k,v])=>`${labels[k]||k}: +${v}${['expedition_success','rare_find','world_boss_damage','world_boss_resistance','injury_resistance','class_xp_bonus'].includes(k)?'%':''}`);}
 seedItems();
-module.exports={equipmentKind,validateEquipmentForClass,seedItems,grantItem,getInventory,getInventoryItem,getInventoryItemByKey,getEquipment,getClassEquipment,equipItem,equipItemForClass,unequipItem,unequipInventoryItem,unequipItemForClass,canonicalSlot,getEquipmentOnlyBonuses,getClassEquipmentOnlyBonuses,getEquipmentBonuses,getEffectiveHero,getCollection,formatBonuses,parseBonuses,applyUpgradeToBonuses};
+repairSameNameRarityDuplicates();
+module.exports={equipmentKind,validateEquipmentForClass,seedItems,grantItem,getInventory,getInventoryItem,getInventoryItemByKey,getEquipment,getClassEquipment,equipItem,equipItemForClass,unequipItem,unequipInventoryItem,unequipItemForClass,canonicalSlot,getEquipmentOnlyBonuses,getClassEquipmentOnlyBonuses,getEquipmentBonuses,getLoadoutBreakdown,getEffectiveHero,getCollection,formatBonuses,parseBonuses,applyUpgradeToBonuses};

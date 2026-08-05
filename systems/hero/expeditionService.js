@@ -4,7 +4,7 @@ const { getHero, addHistory, grantXp } = require('./heroService');
 const { HERO_CLASSES, ORIGINS } = require('./heroData');
 const { LOCATIONS, LOCATION_RARITIES, EVENTS } = require('./expeditionData');
 const { EXPEDITION_LOOT, RARITY_ORDER } = require('./itemData');
-const { grantItem, getEffectiveHero, getEquipmentBonuses } = require('./itemService');
+const { grantItem, getEffectiveHero, getEquipmentBonuses, getLoadoutBreakdown } = require('./itemService');
 const { grantCompanion } = require('./companionService');
 const { expeditionMaterialRewards } = require('./materialService');
 const { consumeContextBuffs, describeBuffKeys, getBuffBonuses } = require('./alchemyService');
@@ -215,6 +215,7 @@ function getExpeditionStartPreview(userId, locationKey, guildId = 'global', tact
   if (!location) return { ok:false, reason:'not_offered' };
   classKey = normalizeClassKey(classKey || hero.class_key);
   const effectiveHero = getEffectiveHero(hero, { classKey });
+  effectiveHero.loadoutBreakdown = getLoadoutBreakdown(userId, classKey);
   const alchemyBonuses = getBuffBonuses(userId, 'expedition') || {};
   const worldEffects = getRegionEffects(guildId || 'global', location.region);
   const bonuses = {
@@ -275,6 +276,7 @@ function startExpedition(userId, locationKey, guildId = 'global', classKey = nul
     intelligence: effectiveHero.intelligence, wisdom: effectiveHero.wisdom, vitality: effectiveHero.vitality, luck: effectiveHero.luck,
     equipmentBonuses: effectiveHero.equipmentBonuses || {},
     derivedStats: effectiveHero.derivedStats || {},
+    loadoutBreakdown: effectiveHero.loadoutBreakdown || getLoadoutBreakdown(userId, classKey),
   };
   const info = db.prepare(`INSERT INTO hero_expeditions
     (user_id,location_key,status,returns_at,buffs_json,guild_id,location_snapshot_json,hero_snapshot_json,hp_before,class_key,tactic_key,duration_hours)
@@ -322,7 +324,8 @@ function computeSuccessChanceBreakdown(hero, location, extraBonuses = {}, tactic
   const baseChance = baseByDifficulty[difficulty];
 
   const relevantKey = location.stat === 'defense' ? 'vitality' : location.stat;
-  const equipment = hero.equipmentBonuses || getEquipmentBonuses(hero.user_id, hero.class_key);
+  const loadout = hero.loadoutBreakdown || getLoadoutBreakdown(hero.user_id, hero.class_key);
+  const equipment = loadout.total || hero.equipmentBonuses || getEquipmentBonuses(hero.user_id, hero.class_key);
   const equipmentRelevant = Number(equipment[relevantKey] || equipment[location.stat] || 0);
   const equipmentLuck = Number(equipment.luck || 0);
   const equipmentDefense = Number(equipment.defense || 0);
@@ -339,10 +342,10 @@ function computeSuccessChanceBreakdown(hero, location, extraBonuses = {}, tactic
   // Каждая полезная характеристика на надетых предметах даёт реальный вклад.
   // Максимум +10%, чтобы экипировка была важной, но не возвращала шансы к 90–96%.
   const equipmentStatBonus = Math.min(7, Math.max(0,
-    equipmentRelevant * 0.45 + equipmentLuck * 0.20 + equipmentDefense * 0.10
+    equipmentRelevant * 0.55 + equipmentLuck * 0.25 + equipmentDefense * 0.12
   ));
-  const equipmentDirectBonus = Math.min(3, Math.max(0, Number(equipment.expedition_success || 0)));
-  const equipmentBonus = Math.min(10, equipmentStatBonus + equipmentDirectBonus);
+  const equipmentDirectBonus = Math.min(5, Math.max(0, Number(equipment.expedition_success || 0)));
+  const equipmentBonus = Math.min(15, equipmentStatBonus + equipmentDirectBonus);
 
   const buffBonus = Math.max(-8, Math.min(8, Number(extraBonuses.expedition_success || 0)));
   const environmentBonus = Math.max(-8, Math.min(8,
@@ -371,6 +374,7 @@ function computeSuccessChanceBreakdown(hero, location, extraBonuses = {}, tactic
     durationBonus,
     relevantKey,
     equipmentRelevant,
+    loadoutSources:{ equipment:loadout.equipment||{}, artifacts:loadout.artifacts||{}, companions:loadout.companions||{} },
   };
 }
 function computeSuccessChance(hero, location, extraBonuses = {}, tacticKey = 'balanced', durationHours = 4) {
@@ -436,7 +440,9 @@ function resolveExpedition(userId, { force = false } = {}) {
   if (roll <= chance * 0.25) outcome = 'great';
   else if (roll <= chance) outcome = 'success';
   else if (roll <= Math.min(97, chance + 18)) outcome = 'partial';
-  console.log(`[Expedition] #${expedition.id} user=${userId} chance=${Number(chance).toFixed(2)} roll=${roll.toFixed(4)} outcome=${outcome}`);
+  const lb=hero.loadoutBreakdown||getLoadoutBreakdown(userId,expeditionClassKey);
+  const sourceScore=x=>Object.values(x||{}).reduce((a,v)=>a+(Number(v)||0),0);
+  console.log(`[Expedition V20.2 LOADOUT] #${expedition.id} user=${userId} class=${expeditionClassKey} chance=${Number(chance).toFixed(2)} gear=${sourceScore(lb.equipment).toFixed(1)} artifacts=${sourceScore(lb.artifacts).toFixed(1)} companions=${sourceScore(lb.companions).toFixed(1)} rare=${Number(loadoutDerived.rareFindPercent||0).toFixed(1)} reward=${Number(loadoutDerived.rewardPercent||0).toFixed(1)} roll=${roll.toFixed(4)} outcome=${outcome}`);
 
   let dust = 0, xp = 0, reputation = 0, item = null, companion = null, injuryHours = 0, dustLost = 0;
   const theme = location.dailyTheme || {};

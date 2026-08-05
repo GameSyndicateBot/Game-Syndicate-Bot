@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const { buildInfo } = require('./utils/buildInfo');
+console.log('✅ RPG LOADOUT CORE V20.2: экипировка, артефакты, питомцы и маунты подключены к Expedition / Dungeon / World Boss');
 console.log(`🏷️ Runtime: ${buildInfo.name}`);
 console.log(`🆔 Runtime build ID: ${buildInfo.buildId}`);
 console.log(`🧭 Runtime entry: ${__filename}`);

@@ -55,6 +55,7 @@ function buildHeroSnapshot(userId) {
   if (!hero) return null;
   const effectiveHero = getEffectiveHero(hero,{classKey:hero.class_key});
   const equipmentBonuses = effectiveHero?.equipmentBonuses || getEquipmentOnlyBonuses(userId) || {};
+  const loadoutBreakdown = require('../../systems/hero/itemService').getLoadoutBreakdown(userId,hero.class_key);
   const equipment = getEquipment(userId).map(item => ({
     slot: item.slot, itemKey: item.item_key, name: item.name, rarity: item.rarity,
     upgradeLevel: Number(item.upgrade_level || 0),
@@ -98,6 +99,7 @@ function buildHeroSnapshot(userId) {
     },
     combat: { damagePercent, hpPercent, resistancePercent, healingPercent:Number(baseDerived.healingPercent||0), critChance:Number(baseDerived.critChance||0), dodgeChance:Number(baseDerived.dodgeChance||0) },
     equipmentBonuses,
+    loadoutBreakdown,
     companionBonuses,
     classEquipmentBonuses,
     classEquipment,
