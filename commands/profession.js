@@ -20,7 +20,7 @@ function specChoices(){
 module.exports={
  data:new SlashCommandBuilder().setName('profession').setDescription('Мирная профессия героя')
   .addSubcommand(s=>s.setName('choose').setDescription('Выбрать одну профессию').addStringOption(o=>o.setName('profession').setDescription('Профессия').setRequired(true).addChoices(...Object.entries(PROFESSIONS).map(([value,p])=>({name:`${p.icon} ${p.name}`,value})))))
-  .addSubcommand(s=>s.setName('change').setDescription('Сменить профессию за 500 GS Dust').addStringOption(o=>o.setName('profession').setDescription('Новая профессия').setRequired(true).addChoices(...Object.entries(PROFESSIONS).map(([value,p])=>({name:`${p.icon} ${p.name}`,value})))))
+  .addSubcommand(s=>s.setName('change').setDescription('Сменить профессию за 5000 GS Dust').addStringOption(o=>o.setName('profession').setDescription('Новая профессия').setRequired(true).addChoices(...Object.entries(PROFESSIONS).map(([value,p])=>({name:`${p.icon} ${p.name}`,value})))))
   .addSubcommand(s=>s.setName('process').setDescription('Переработать сырьё профессии').addIntegerOption(o=>o.setName('batches').setDescription('Количество партий (2 сырья → 1 материал)').setMinValue(1).setMaxValue(100)))
   .addSubcommand(s=>s.setName('status').setDescription('Показать профессию, прогрессию и энергию'))
   .addSubcommand(s=>s.setName('work').setDescription('Выполнить работу за энергию'))

@@ -145,7 +145,7 @@ function chooseProfession(userId,key){
   return {ok:true,row:getProfession(userId)};
 }
 
-const PROFESSION_CHANGE_COST = 500;
+const PROFESSION_CHANGE_COST = 5000;
 function changeProfession(userId,key){
   if(!PROFESSIONS[key]) return {ok:false,reason:'invalid'};
   const current=getProfession(userId);
