@@ -84,7 +84,12 @@ function dismantle(userId,inventoryId){
  const name=String(item.name||'').toLowerCase();
  let key=/сапог|перчат|кож|ботин/.test(name)?'leather':/лук|арбалет/.test(name)?'board':/кольц|амулет|ожерел|обруч/.test(name)?'gemstone':/посох|жезл|книга|гримуар/.test(name)?'crystal':'iron_ingot';
  const desired={common:2,rare:3,epic:5,legendary:8,mythic:12,exclusive:16}[item.rarity]||2;
- const upgrade=Math.max(0,Number(item.upgrade_level||0));
+ // hero_inventory stores identical copies in one row.  upgrade_level belongs to the
+ // upgraded/equipped copy, not to a fresh duplicate that later dropped into the same stack.
+ // When there is more than one copy, dismantling consumes a free base (+0) copy first.
+ // This closes the exploit where one +N item made every duplicate salvage as +N.
+ const storedUpgrade=Math.max(0,Number(item.upgrade_level||0));
+ const dismantledUpgrade=Number(item.quantity||0)>1 ? 0 : storedUpgrade;
  const materialValue=Math.max(1,Number(resourceMeta(key).value||1));
  // За основу берём фактическую цену покупки у Караванщика, если она известна.
  // Разбор никогда не возвращает материалов дороже 55% этой цены.
@@ -92,13 +97,13 @@ function dismantle(userId,inventoryId){
  try{referencePrice=Number(db.prepare(`SELECT current_price FROM caravan_offers WHERE item_key=? AND purchased=1 ORDER BY id DESC LIMIT 1`).get(item.item_key)?.current_price||0);}catch(_){}
  if(!referencePrice) referencePrice={common:300,rare:700,epic:1500,legendary:3500,mythic:8000,exclusive:18000}[item.rarity]||300;
  const economicCap=Math.max(1,Math.floor(referencePrice*0.55/materialValue));
- const qty=Math.max(1,Math.min(desired+Math.floor(upgrade/2),economicCap));
+ const qty=Math.max(1,Math.min(desired+Math.floor(dismantledUpgrade/2),economicCap));
  db.transaction(()=>{
    if(Number(item.quantity)>1)db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=? AND user_id=?').run(item.id,String(userId));
    else db.prepare('DELETE FROM hero_inventory WHERE id=? AND user_id=?').run(item.id,String(userId));
    grantResource(userId,key,qty,'equipment_dismantle');
  })();
- return {ok:true,item,key,qty,name:resourceMeta(key).name,referencePrice,salvageValue:qty*materialValue};
+ return {ok:true,item:{...item,dismantled_upgrade_level:dismantledUpgrade},key,qty,name:resourceMeta(key).name,referencePrice,salvageValue:qty*materialValue};
 }
 function giftMaterial(from,to,key,qty){key=normalizeResourceKey(key);qty=Math.max(1,Math.floor(Number(qty)||0));const r=consumeResources(from,{[key]:qty});if(!r.ok)return {ok:false,reason:'materials'};grantResource(to,key,qty,'gift');db.prepare('INSERT INTO item_gift_log(from_user_id,to_user_id,asset_type,asset_key,quantity) VALUES(?,?,?,?,?)').run(String(from),String(to),'material',key,qty);return {ok:true,key,qty,name:resourceMeta(key).name};}
 function giftItem(from,to,inventoryId,qty=1){

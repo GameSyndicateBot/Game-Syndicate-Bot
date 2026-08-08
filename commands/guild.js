@@ -556,11 +556,14 @@ async function showDismantleConfirm(interaction, inventoryId) {
   const item = getInventoryItem(interaction.user.id, Number(inventoryId));
   if (!item || !item.slot) return interaction.update({content:'❌ Предмет не найден или не является экипировкой.',embeds:[],components:[blacksmithBackRow()]});
   const previewBase = {common:3,rare:5,epic:8,legendary:12,mythic:18,exclusive:25}[String(item.rarity||'').toLowerCase()] || 3;
-  const qty = previewBase + Math.max(0,Number(item.upgrade_level||0))*2;
+  // If the stack has duplicates, the blacksmith dismantles a fresh +0 copy first.
+  // Do not show the upgraded copy's +N or upgraded salvage in that case.
+  const dismantledUpgrade = Number(item.quantity||0) > 1 ? 0 : Math.max(0,Number(item.upgrade_level||0));
+  const qty = previewBase + dismantledUpgrade*2;
   const name = String(item.name||'').toLowerCase();
   const key = /сапог|перчат|кож|ботин/.test(name)?'leather':/лук|арбалет/.test(name)?'board':/кольц|амулет|ожерел|обруч/.test(name)?'gemstone':/посох|жезл|книга|гримуар/.test(name)?'crystal':'iron_ingot';
   const meta = resourceMeta(key);
-  const embed = new EmbedBuilder().setColor(0xEF4444).setTitle('♻️ Разобрать экипировку?').setDescription(`**${item.name}${Number(item.upgrade_level||0)?` +${item.upgrade_level}`:''}**\nРедкость: **${RARITY_LABELS[item.rarity] || item.rarity}**\n\nПосле разбора будет получено:\n${meta.icon || '📦'} **${meta.name} ×${qty}**\n\n⚠️ Предмет будет уничтожен без возможности восстановления.`);
+  const embed = new EmbedBuilder().setColor(0xEF4444).setTitle('♻️ Разобрать экипировку?').setDescription(`**${item.name}${dismantledUpgrade?` +${dismantledUpgrade}`:''}**\nРедкость: **${RARITY_LABELS[item.rarity] || item.rarity}**\n\nПосле разбора будет получено:\n${meta.icon || '📦'} **${meta.name} ×${qty}**\n\n⚠️ Предмет будет уничтожен без возможности восстановления.`);
   return interaction.update({embeds:[embed],components:[new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`guild:blacksmith:dismantleconfirm:${inventoryId}`).setLabel('Разобрать').setEmoji('♻️').setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId('guild:blacksmith:menu:all').setLabel('Отмена').setEmoji('❌').setStyle(ButtonStyle.Secondary)

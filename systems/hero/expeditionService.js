@@ -359,8 +359,22 @@ function computeSuccessChanceBreakdown(hero, location, extraBonuses = {}, tactic
     + equipmentDefense * 0.10
     + equipmentAllStatsBonus
   ));
-  const equipmentDirectBonus = Math.min(8, Math.max(0, Number(equipment.expedition_success || 0)));
-  const equipmentBonus = Math.min(18, equipmentStatBonus + equipmentDirectBonus);
+  const equipmentDirectBonus = Math.min(12, Math.max(0, Number(equipment.expedition_success || 0)));
+
+  // Every active expedition loadout source must have a visible effect on success chance.
+  // Previously only the location's primary stat (plus tiny fractions of the other stats)
+  // mattered, so adding a sword/chest/gloves could double the displayed loadout score while
+  // the rounded percentage stayed unchanged.  Convert the whole *expedition-relevant* loadout
+  // into a small universal contribution, while direct expedition_success remains 1:1.
+  // World-boss-only/heal/class-xp stats intentionally do not affect expedition success.
+  const expeditionPower = Math.max(0,
+    Number(equipment.strength || 0) + Number(equipment.dexterity || 0) +
+    Number(equipment.intelligence || 0) + Number(equipment.wisdom || 0) +
+    Number(equipment.vitality || 0) + Number(equipment.luck || 0) +
+    Number(equipment.defense || 0) + Number(equipment.hp || 0) / 10
+  );
+  const universalLoadoutBonus = Math.min(14, expeditionPower * 0.12);
+  const equipmentBonus = Math.min(24, Math.max(equipmentStatBonus, universalLoadoutBonus) + equipmentDirectBonus);
 
   const buffBonus = Math.max(-8, Math.min(8, Number(extraBonuses.expedition_success || 0)));
   const environmentBonus = Math.max(-8, Math.min(8,
