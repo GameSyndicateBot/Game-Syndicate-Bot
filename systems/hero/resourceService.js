@@ -3,7 +3,11 @@ const { MATERIALS } = require('./materialData');
 const { ITEMS } = require('./itemData');
 const { logEconomyChange } = require('../../services/economyService');
 
-const RESOURCE_ALIASES = Object.freeze({ herb: 'forest_herbs' });
+const RESOURCE_ALIASES = Object.freeze({
+  herb: 'forest_herbs',
+  // V20.2.3: legacy duplicate of the same player-facing resource.
+  spicy_herbs: 'culinary_herbs',
+});
 
 const RESOURCE_RU_FALLBACK = Object.freeze({
   beast_bone: 'Кость зверя',
@@ -83,6 +87,20 @@ function ensureResourceTable() {
 
 function migrateLegacyResources() {
   ensureResourceTable();
+
+  // V20.2.3: `spicy_herbs` and `culinary_herbs` were two IDs with the same
+  // player-facing name "Пряные травы". Merge ALL old rows into the canonical
+  // `culinary_herbs` row before inventory output, crafting or profession checks.
+  const duplicateSpicyHerbs = db.prepare("SELECT user_id,quantity FROM hero_materials WHERE material_key='spicy_herbs' AND quantity>0").all();
+  if (duplicateSpicyHerbs.length) {
+    const mergeSpicyHerbs = db.transaction(() => {
+      const upsert = db.prepare(`INSERT INTO hero_materials(user_id,material_key,quantity,updated_at) VALUES(?,'culinary_herbs',?,CURRENT_TIMESTAMP) ON CONFLICT(user_id,material_key) DO UPDATE SET quantity=quantity+excluded.quantity,updated_at=CURRENT_TIMESTAMP`);
+      for (const row of duplicateSpicyHerbs) upsert.run(String(row.user_id), Math.max(0, Number(row.quantity) || 0));
+      db.prepare("DELETE FROM hero_materials WHERE material_key='spicy_herbs'").run();
+    });
+    mergeSpicyHerbs();
+    console.log(`[Unified Resources] Merged ${duplicateSpicyHerbs.length} legacy spicy_herbs rows into culinary_herbs.`);
+  }
 
   // V18.3.9: старые лечебные травы объединяются с лесными травами.
   const legacyHerbs = db.prepare("SELECT user_id,quantity FROM hero_materials WHERE material_key='herb' AND quantity>0").all();

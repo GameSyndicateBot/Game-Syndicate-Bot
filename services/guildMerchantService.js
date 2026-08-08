@@ -7,7 +7,7 @@ const { getProfessionCounts } = require('../systems/hero/professionService');
 const { sellableCompanions, takeCompanionForTransfer } = require('../systems/hero/companionService');
 
 const PROFESSION_KEYS = {
-  herbalist: ['forest_herbs','culinary_herbs','moon_blossom','spicy_herbs','herb_extract','herb'],
+  herbalist: ['forest_herbs','culinary_herbs','moon_blossom','herb_extract','herb'],
   miner: ['iron_ore','iron_ingot','gemstone','crystal','ancient_fragment','stone'],
   lumberjack: ['wood','hardwood','board','wild_berries','forest_mushrooms','ancient_wood'],
   fisher: ['fresh_fish','shellfish','moon_carp','pearl'],
