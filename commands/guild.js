@@ -955,7 +955,7 @@ function professionProcessingRecipe(professionKey) {
   if (professionKey === 'miner') return { input:'iron_ore', output:'iron_ingot', inputQty:2, outputQty:1, title:'Плавка руды' };
   if (professionKey === 'hunter') return { input:'beast_hide', output:'leather', inputQty:2, outputQty:1, title:'Выделка шкур' };
   if (professionKey === 'lumberjack') return { input:'hardwood', output:'board', inputQty:2, outputQty:1, title:'Обработка древесины' };
-  if (professionKey === 'herbalist') return { input:'spicy_herbs', output:'herb_extract', inputQty:3, outputQty:1, title:'Переработка пряных трав' };
+  if (professionKey === 'herbalist') return { input:'culinary_herbs', output:'herb_extract', inputQty:3, outputQty:1, title:'Переработка пряных трав' };
   if (professionKey === 'cook') return { input:'prepared_food', output:'food_ration', inputQty:3, outputQty:1, title:'Переработка еды' };
   return null;
 }

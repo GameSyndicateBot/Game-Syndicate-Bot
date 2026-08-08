@@ -94,9 +94,14 @@ function dismantle(userId,inventoryId){
  // За основу берём фактическую цену покупки у Караванщика, если она известна.
  // Разбор никогда не возвращает материалов дороже 55% этой цены.
  let referencePrice=0;
- try{referencePrice=Number(db.prepare(`SELECT current_price FROM caravan_offers WHERE item_key=? AND purchased=1 ORDER BY id DESC LIMIT 1`).get(item.item_key)?.current_price||0);}catch(_){}
- if(!referencePrice) referencePrice={common:300,rare:700,epic:1500,legendary:3500,mythic:8000,exclusive:18000}[item.rarity]||300;
- const economicCap=Math.max(1,Math.floor(referencePrice*0.55/materialValue));
+ try{referencePrice=Number(db.prepare(`SELECT current_price FROM caravan_offers WHERE user_id=? AND item_key=? AND purchased=1 ORDER BY id DESC LIMIT 1`).get(String(userId),item.item_key)?.current_price||0);}catch(_){}
+ if(!referencePrice) referencePrice={common:280,rare:700,epic:1500,legendary:3500,mythic:8000,exclusive:18000}[item.rarity]||280;
+ // Антиарбитраж: стоимость ресурсов при немедленной продаже NPC не может
+ // превышать 45% ориентировочной цены самой вещи. Используем фактическую
+ // цену скупки материала у Торговца, а не только внутренний value.
+ let npcUnitPrice=materialValue;
+ try{npcUnitPrice=Math.max(1,Number(require('../../services/guildMerchantService').materialBuyPrice(key)||materialValue));}catch(_){}
+ const economicCap=Math.max(1,Math.floor(referencePrice*0.45/Math.max(1,npcUnitPrice)));
  const qty=Math.max(1,Math.min(desired+Math.floor(dismantledUpgrade/2),economicCap));
  db.transaction(()=>{
    if(Number(item.quantity)>1)db.prepare('UPDATE hero_inventory SET quantity=quantity-1 WHERE id=? AND user_id=?').run(item.id,String(userId));

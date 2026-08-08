@@ -388,12 +388,13 @@ async function handleComponent(interaction) {
     const tacticMenu=new StringSelectMenuBuilder().setCustomId(`expedition:tactic:${locationKey}:${classKey}:${durationHours}`).setPlaceholder('Выбери тактику героя').addOptions(chances.map(({t,chance,preview})=>({label:`${t.name} — ${chance}%`,value:t.key,emoji:t.icon,description:`XP ${preview.heroXp[0]}–${preview.heroXp[1]} · класс ${preview.classXp[0]}–${preview.classXp[1]} · Dust ${preview.dust[0]}–${preview.dust[1]}`.slice(0,100)})));
     const sample=chances[0]?.exact?.expeditionStats||{};
     const sources=sample.loadoutSnapshot||{};
-    const score=x=>Math.round(Object.values(x||{}).reduce((sum,value)=>sum+(Number(value)||0),0));
+    const sb=sample.breakdown?.sourceBonuses||{};
+    const fmt=x=>`${Number(x||0)>=0?'+':''}${(Math.round(Number(x||0)*10)/10).toFixed(Number(x||0)%1?1:0)}%`;
     const sourceText=[
-      `⚔️ Экипировка: **${score(sources.equipment)} ед. бонусов**`,
-      `🔷 Артефакты: **${score(sources.artifacts)} ед. бонусов**`,
-      `🐾 Питомцы: **${score(sources.pets)} ед. бонусов**`,
-      `🐎 Маунт: **${score(sources.mount)} ед. бонусов**`,
+      `⚔️ Экипировка: **${fmt(sb.equipment)} к шансу**`,
+      `🔷 Артефакты: **${fmt(sb.artifacts)} к шансу**`,
+      `🐾 Питомцы: **${fmt(sb.pets)} к шансу**`,
+      `🐎 Маунт: **${fmt(sb.mount)} к шансу**`,
       `✨ Редкая добыча: **${Number(sample.rareLootBonus||0)>=0?'+':''}${Number(sample.rareLootBonus||0)}%**`,
       `🎁 Награды: **+${Number(sample.rewardPercent||0)}%**`,
       `❤️ Защита от ранений: **+${Number(sample.injuryResistance||0)}%**`,

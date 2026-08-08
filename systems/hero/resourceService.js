@@ -64,6 +64,7 @@ function resourceMeta(key) {
     icon: source.icon || '📦',
     rarity: source.rarity || 'common',
     description: source.description || '',
+    value: Math.max(0, Number(source.value) || 0),
   };
 }
 

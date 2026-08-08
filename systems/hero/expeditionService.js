@@ -341,40 +341,34 @@ function computeSuccessChanceBreakdown(hero, location, extraBonuses = {}, tactic
   const luckBonus = Math.min(4, Math.max(0, baseLuck * 0.35));
   const origin = Math.max(-4, Math.min(4, Number(originBonus(hero.origin_key, location) || 0)));
 
-  // В экспедиции участвует весь активный комплект: классовая и общая экипировка,
-  // два артефакта, активные питомцы, маунт и уровни улучшения.
-  // Главная характеристика локации влияет сильнее, но остальные надетые вещи
-  // тоже дают небольшой вклад, поэтому оружие/шлем/кольца больше не «пропадают».
-  const coreKeys = ['strength','dexterity','intelligence','wisdom','vitality'];
-  const otherCoreTotal = coreKeys
-    .filter(key => key !== relevantKey)
-    .reduce((sum,key) => sum + Math.max(0, Number(equipment[key] || 0)), 0);
-  const equipmentHp = Math.max(0, Number(equipment.hp || 0));
-  const equipmentAllStatsBonus = Math.min(5, Math.max(0,
-    otherCoreTotal * 0.08 + equipmentHp * 0.006
+  // V20.2.1: считаем вклад КАЖДОГО источника отдельно. Это гарантирует, что
+  // артефакт/питомец/маунт не сможет понизить шанс и не «растворится» внутри
+  // уже сильного комплекта экипировки. Все положительные свойства активного
+  // предмета дают небольшой вклад, а expedition_success идёт как прямой %.
+  const sourcePower = src => {
+    const x=src||{};
+    const stat = ['strength','dexterity','intelligence','wisdom','vitality','luck','defense']
+      .reduce((sum,key)=>sum+Math.max(0,Number(x[key]||0)),0);
+    const hp = Math.max(0,Number(x.hp||0))/10;
+    const utility = Math.max(0,Number(x.rare_find||0))*0.35
+      + Math.max(0,Number(x.world_boss_damage||0))*0.12
+      + Math.max(0,Number(x.world_boss_resistance||0))*0.12
+      + Math.max(0,Number(x.injury_resistance||0))*0.20;
+    return stat + hp + utility;
+  };
+  const hasPositive = src => Object.values(src||{}).some(v=>Number(v)>0);
+  const equipmentSourceBonus = Math.min(14, sourcePower(loadout.equipment) * 0.12);
+  const artifactSourceBonus = Math.min(8, sourcePower(loadout.artifacts) * 0.10 + (hasPositive(loadout.artifacts)?0.5:0));
+  const petSourceBonus = Math.min(6, sourcePower(loadout.pets) * 0.09 + (hasPositive(loadout.pets)?0.35:0));
+  const mountSourceBonus = Math.min(6, sourcePower(loadout.mount) * 0.10 + (hasPositive(loadout.mount)?0.5:0));
+  const equipmentDirectBonus = Math.min(12, Math.max(0,
+    Number(loadout.equipment?.expedition_success||0) + Number(loadout.artifacts?.expedition_success||0) +
+    Number(loadout.pets?.expedition_success||0) + Number(loadout.mount?.expedition_success||0)
   ));
-  const equipmentStatBonus = Math.min(10, Math.max(0,
-    equipmentRelevant * 0.50
-    + equipmentLuck * 0.22
-    + equipmentDefense * 0.10
-    + equipmentAllStatsBonus
-  ));
-  const equipmentDirectBonus = Math.min(12, Math.max(0, Number(equipment.expedition_success || 0)));
-
-  // Every active expedition loadout source must have a visible effect on success chance.
-  // Previously only the location's primary stat (plus tiny fractions of the other stats)
-  // mattered, so adding a sword/chest/gloves could double the displayed loadout score while
-  // the rounded percentage stayed unchanged.  Convert the whole *expedition-relevant* loadout
-  // into a small universal contribution, while direct expedition_success remains 1:1.
-  // World-boss-only/heal/class-xp stats intentionally do not affect expedition success.
-  const expeditionPower = Math.max(0,
-    Number(equipment.strength || 0) + Number(equipment.dexterity || 0) +
-    Number(equipment.intelligence || 0) + Number(equipment.wisdom || 0) +
-    Number(equipment.vitality || 0) + Number(equipment.luck || 0) +
-    Number(equipment.defense || 0) + Number(equipment.hp || 0) / 10
-  );
-  const universalLoadoutBonus = Math.min(14, expeditionPower * 0.12);
-  const equipmentBonus = Math.min(24, Math.max(equipmentStatBonus, universalLoadoutBonus) + equipmentDirectBonus);
+  const equipmentStatBonus = equipmentSourceBonus;
+  const equipmentAllStatsBonus = artifactSourceBonus + petSourceBonus + mountSourceBonus;
+  const universalLoadoutBonus = equipmentSourceBonus + artifactSourceBonus + petSourceBonus + mountSourceBonus;
+  const equipmentBonus = Math.min(24, universalLoadoutBonus + equipmentDirectBonus);
 
   const buffBonus = Math.max(-8, Math.min(8, Number(extraBonuses.expedition_success || 0)));
   const environmentBonus = Math.max(-8, Math.min(8,
@@ -398,6 +392,7 @@ function computeSuccessChanceBreakdown(hero, location, extraBonuses = {}, tactic
     equipmentStatBonus,
     equipmentAllStatsBonus,
     equipmentDirectBonus,
+    sourceBonuses:{ equipment:equipmentSourceBonus, artifacts:artifactSourceBonus, pets:petSourceBonus, mount:mountSourceBonus },
     buffBonus,
     environmentBonus,
     tacticBonus,

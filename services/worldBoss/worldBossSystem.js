@@ -195,13 +195,14 @@ function chooseUniqueBoss() {
 
 function raidSizeMultiplier(n) {
   const players = clamp(Math.round(Number(n || 6)), 4, 20);
-  // Базовые параметры конфигурации рассчитаны на 6 участников.
-  // До 6 человек масштаб мягко снижается, после 6 — растёт почти линейно.
+  // V20.2.1: после 6 игроков HP растёт намного мягче. Раньше крупная группа
+  // раздувала босса до 8–12k HP и бой мог тянуться около двух часов.
   if (players <= 6) return 0.72 + (players - 4) * 0.14; // 4=0.72, 5=0.86, 6=1.00
-  return Math.min(2.20, 1 + (players - 6) * 0.15);      // 12=1.90
+  return Math.min(1.35, 1 + (players - 6) * 0.05);
 }
 function scaledHp(base, n) {
-  return Math.round(Number(base || 1) * raidSizeMultiplier(n));
+  // Абсолютный потолок для текущего формата Quick World Boss.
+  return Math.min(6000, Math.round(Number(base || 1) * raidSizeMultiplier(n)));
 }
 function bossMinionHpMultiplier(n) {
   const players = clamp(Math.round(Number(n || 6)), 4, 20);

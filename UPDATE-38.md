@@ -1,9 +1,7 @@
-# V18.3.8 — Guild profile hotfix
+# V20.2.1 — Expedition / Economy / Boss / Dungeon / Profession fixes
 
-Дополнение к патчу V18.3.8:
-
-- Карточка профиля героя больше не выводит цветные emoji через Canvas, из-за которых появлялись квадраты и битые символы.
-- В строке класса профиля отображается класс, выбранный игроком для самой последней экспедиции.
-- Если игрок ещё ни разу не отправлялся в экспедицию, используется класс, выбранный при создании героя.
-- Текстовый раздел характеристик также использует последний экспедиционный класс в поле «Класс».
-- Боевые характеристики и экипировка не переписываются: исправление меняет отображаемый текущий класс профиля без повреждения исходных данных героя.
+- Expeditions: equipment, artifacts, pets and mount now contribute separately and can no longer lower success chance merely by being equipped. Preview shows effective +% contribution per source.
+- Profession processing: Herbalist recipe is unified to 3 Culinary Herbs -> 1 Herb Extract; Guild UI and backend use the same resource key.
+- Economy: dismantling uses the exact player caravan purchase price when available and caps NPC resale value of returned materials at ~45% of item reference price. Resource metadata now exposes material value.
+- World Boss: HP scaling after 6 players is gentler and boss HP is capped at 6000.
+- Dungeons: added “Who signed up” button showing queued players, classes and roles.
