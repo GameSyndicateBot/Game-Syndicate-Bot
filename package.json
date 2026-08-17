@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "20.3.0",
+  "version": "20.3.7",
   "private": true,
-  "description": "Game Syndicate V20.3.0: player feedback fixes",
+  "description": "Game Syndicate V20.3.7: backup transport, deploy build and rollback recovery fixes",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

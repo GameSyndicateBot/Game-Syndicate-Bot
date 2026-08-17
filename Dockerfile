@@ -1,8 +1,8 @@
 FROM node:22-bookworm-slim
 
 LABEL org.opencontainers.image.title="Game Syndicate Bot" \
-      org.opencontainers.image.version="18.4.9" \
-      org.opencontainers.image.revision="stable-6-20260720"
+      org.opencontainers.image.version="20.3.7" \
+      org.opencontainers.image.revision="v20.3.7-backup-deploy-fix"
 
 ENV NODE_ENV=production
 ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
@@ -37,9 +37,9 @@ COPY . .
 RUN chmod +x /app/scripts/container-entrypoint.sh \
     && node /app/scripts/verify-build.js \
     && test -f /app/services/automaticBackups.js \
-    && grep -q "SCHEDULED_BACKUP_SYSTEM_V5 loaded" /app/services/automaticBackups.js \
+    && grep -q "SCHEDULED_BACKUP_SYSTEM_V8 loaded" /app/services/automaticBackups.js \
     && ! grep -q "installCriticalBackupTracking" /app/services/automaticBackups.js \
-    && echo "✅ Verified SCHEDULED_BACKUP_SYSTEM_V5 during build" \
+    && echo "✅ Verified SCHEDULED_BACKUP_SYSTEM_V8 during build" \
     && sha256sum /app/services/automaticBackups.js
 
 RUN mkdir -p /opt/gs-data \

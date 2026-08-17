@@ -147,6 +147,15 @@ client.once('clientReady', () => {
         console.error('[V19.6.2 Extra Recovery] Ошибка:', error);
     }
 
+    // V20.3.4 — восстановление данных игроков после обнаруженного отката БД.
+    // Сервис одноразовый и сам ставит migration-key после успешного применения.
+    try {
+        const { applyRollbackRecoveryV2034 } = require('./services/rollbackRecoveryV2034');
+        applyRollbackRecoveryV2034();
+    } catch (error) {
+        console.error('[V20.3.4 Rollback Recovery] Ошибка:', error);
+    }
+
     // V20.3.6 — восстановление серии 5 Quick Events игроку 308557208147329025.
     try {
         const { applyQuickStreakRecoveryV2036 } = require('./services/quickStreakRecoveryV2036');
