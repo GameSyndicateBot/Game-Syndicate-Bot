@@ -74,6 +74,17 @@ function moscowHour(date = new Date()) {
     return new Date(date.getTime() + MOSCOW_OFFSET_MS).getUTCHours();
 }
 
+function moscowNoonEpoch(date = new Date()) {
+    const msk = new Date(date.getTime() + MOSCOW_OFFSET_MS);
+    const targetMsk = Date.UTC(
+        msk.getUTCFullYear(),
+        msk.getUTCMonth(),
+        msk.getUTCDate(),
+        12, 0, 0, 0
+    );
+    return targetMsk - MOSCOW_OFFSET_MS;
+}
+
 function previousDateKey(dateKey) {
     const date = new Date(`${dateKey}T00:00:00.000Z`);
     date.setUTCDate(date.getUTCDate() - 1);
@@ -358,9 +369,19 @@ function getLuckyStats(guildId, userId) {
 function startLuckyDayScheduler(client) {
     ensureLuckyDayTables();
     let running = false;
+    const schedulerStartedAt = Date.now();
 
     const tick = async () => {
-        if (running || moscowHour() < 12) return;
+        if (running) return;
+
+        const now = Date.now();
+        const todayNoon = moscowNoonEpoch(new Date(now));
+
+        // Главное правило: перезапуск после 12:00 не должен запускать
+        // пропущенный Lucky Day. Розыгрыш выполняется только если текущий
+        // процесс бота уже работал ДО сегодняшних 12:00 МСК.
+        if (todayNoon <= schedulerStartedAt || now < todayNoon) return;
+
         running = true;
         try {
             for (const guild of client.guilds.cache.values()) {
@@ -378,10 +399,9 @@ function startLuckyDayScheduler(client) {
         }
     };
 
-    tick().catch(console.error);
     const timer = setInterval(() => tick().catch(console.error), CHECK_INTERVAL_MS);
     timer.unref?.();
-    console.log('✅ Lucky Day: планировщик запущен, розыгрыш ежедневно в 12:00 МСК');
+    console.log('✅ Lucky Day: ежедневно в 12:00 МСК; пропущенный розыгрыш НЕ запускается после перезапуска');
     return timer;
 }
 

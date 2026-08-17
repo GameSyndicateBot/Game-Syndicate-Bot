@@ -128,13 +128,51 @@ async function drawGuild(client, guild) {
   return result;
 }
 
+function deferOverdueOpenRoundsAfterRestart(client, schedulerStartedAt) {
+  for (const guild of client.guilds.cache.values()) {
+    const round = getOpenRound(guild.id);
+    if (Number(round.draw_at) > schedulerStartedAt) continue;
+
+    const nextDrawAt = nextSaturday21Msk(schedulerStartedAt);
+    db.prepare('UPDATE weekly_lottery_rounds SET draw_at=? WHERE id=? AND status=\'open\'')
+      .run(nextDrawAt, round.id);
+
+    console.log(
+      `[Lottery] Просроченный раунд #${round.id} после перезапуска НЕ разыгран; ` +
+      `перенесён на ${new Date(nextDrawAt).toISOString()}`
+    );
+  }
+}
+
 function startScheduler(client) {
   ensureTables();
   let busy=false;
-  const tick=async()=>{ if(busy)return; busy=true; try { for(const guild of client.guilds.cache.values()) await drawGuild(client,guild).catch(e=>console.error('[Lottery draw]',e)); } finally { busy=false; } };
-  setTimeout(()=>tick().catch(console.error),5000);
-  const timer=setInterval(()=>tick().catch(console.error),CHECK_MS); timer.unref?.();
-  console.log('🎟️ Weekly Lottery scheduler started: Saturday 21:00 MSK');
+  const schedulerStartedAt = Date.now();
+
+  // Если бот был выключен в момент субботнего розыгрыша, запуск/перезапуск
+  // не должен внезапно разыгрывать старый раунд. Билеты и призовой фонд
+  // сохраняются, а сам открытый раунд переносится на следующую субботу.
+  deferOverdueOpenRoundsAfterRestart(client, schedulerStartedAt);
+
+  const tick=async()=>{
+    if(busy)return;
+    busy=true;
+    try {
+      for(const guild of client.guilds.cache.values()) {
+        const round = getOpenRound(guild.id);
+        // Защита от catch-up после рестарта: этот процесс может разыграть
+        // только дедлайн, который был в будущем на момент его запуска.
+        if (Number(round.draw_at) <= schedulerStartedAt) continue;
+        await drawGuild(client,guild).catch(e=>console.error('[Lottery draw]',e));
+      }
+    } finally {
+      busy=false;
+    }
+  };
+
+  const timer=setInterval(()=>tick().catch(console.error),CHECK_MS);
+  timer.unref?.();
+  console.log('🎟️ Weekly Lottery: Saturday 21:00 MSK; overdue draw is never fired by restart');
   return timer;
 }
 
