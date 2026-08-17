@@ -6,12 +6,12 @@ const RARITY_ICONS = Object.freeze({
 });
 const SLOT_LABELS = Object.freeze({
   weapon:'Оружие', melee:'Основное оружие', offhand:'Левая рука', armor:'Доспех', chest:'Нагрудник', helmet:'Шлем',
-  gloves:'Перчатки', boots:'Сапоги', ring:'Кольцо', amulet:'Амулет', backpack:'Рюкзак', belt:'Пояс', legs:'Поножи'
+  gloves:'Перчатки', boots:'Сапоги', ring:'Кольцо', amulet:'Амулет', backpack:'Рюкзак', belt:'Пояс', pants:'Штаны', legs:'Штаны', shield:'Щит / левая рука'
 });
 const TYPE_LABELS = Object.freeze({
-  weapon:'Оружие', armor:'Броня', helmet:'Шлем', gloves:'Перчатки', boots:'Сапоги', ring:'Кольцо', amulet:'Амулет', backpack:'Рюкзак'
+  weapon:'Оружие', armor:'Броня', helmet:'Шлем', gloves:'Перчатки', boots:'Сапоги', ring:'Кольцо', amulet:'Амулет', backpack:'Рюкзак', belt:'Пояс', pants:'Штаны', shield:'Щит / левая рука'
 });
-const TYPE_ICONS = Object.freeze({weapon:'⚔️',armor:'🛡️',helmet:'🪖',gloves:'🧤',boots:'🥾',ring:'💍',amulet:'📿',backpack:'🎒'});
+const TYPE_ICONS = Object.freeze({weapon:'⚔️',armor:'🛡️',helmet:'🪖',gloves:'🧤',boots:'🥾',ring:'💍',amulet:'📿',backpack:'🎒',belt:'🪢',pants:'👖',shield:'🛡️'});
 
 function formatItemDetails(item,{price=null,sellerId=null,includeHeader=true}={}){
   if(!item) return ['❓ Предмет недоступен'];
@@ -24,7 +24,7 @@ function formatItemDetails(item,{price=null,sellerId=null,includeHeader=true}={}
   const slot=item.slot||item.item_type;
   if(slot) lines.push(`📍 Слот: **${SLOT_LABELS[slot]||TYPE_LABELS[item.item_type]||slot}**`);
   const kind=equipmentKind(item);
-  if(kind && !['weapon','armor','helmet','gloves','boots','ring','amulet','backpack'].includes(kind)) {
+  if(kind && !['weapon','armor','helmet','gloves','boots','ring','amulet','backpack','belt','pants','shield'].includes(kind)) {
     const kinds={staff:'Магическое оружие',ranged:'Дальнобойное оружие',shield:'Щит',two_handed:'Двуручное оружие',martial:'Боевое оружие'};
     if(kinds[kind]) lines.push(`🧩 Тип: **${kinds[kind]}**`);
   }

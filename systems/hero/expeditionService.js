@@ -514,14 +514,15 @@ function resolveExpedition(userId, { force = false } = {}) {
   if (outcome === 'great') {
     dust = Math.round(randomInt(rng, ...location.dust) * 1.45 * dustMultiplier * tacticDustMultiplier); xp = Math.round(randomInt(rng, ...location.baseXp) * 1.35 * xpMultiplier); reputation = 18;
     const maxTier = Math.min(5, Math.max(1, location.difficulty + (rng() < 0.28 ? 1 : 0)));
-    const itemPool = [...(EXPEDITION_LOOT[maxTier] || []), ...(EXPEDITION_LOOT[Math.max(1,maxTier-1)] || [])];
-    item = grantItem(userId, pick(rng, itemPool), 1, `expedition:${expedition.id}`);
+    const itemPool = [...(EXPEDITION_LOOT[maxTier] || []), ...(EXPEDITION_LOOT[Math.max(1,maxTier-1)] || [])].filter(key => ITEMS[key]?.type !== 'material');
+    if(itemPool.length) item = grantItem(userId, pick(rng, itemPool), 1, `expedition:${expedition.id}`);
   } else if (outcome === 'success') {
     dust = Math.round(randomInt(rng, ...location.dust) * dustMultiplier * tacticDustMultiplier); xp = Math.round(randomInt(rng, ...location.baseXp) * xpMultiplier); reputation = 10;
     const findChance = Math.min(0.94, Math.max(0.05, 0.34 + (equipmentRareFind + themeRare) / 100));
     if (rng() < findChance) {
       const tier = Math.max(1, Math.min(4, location.difficulty + (rng() < 0.12 ? 1 : -1)));
-      item = grantItem(userId, pick(rng, EXPEDITION_LOOT[tier]), 1, `expedition:${expedition.id}`);
+      const equipmentPool=(EXPEDITION_LOOT[tier]||[]).filter(key=>ITEMS[key]?.type!=='material');
+      if(equipmentPool.length) item = grantItem(userId, pick(rng, equipmentPool), 1, `expedition:${expedition.id}`);
     }
   } else if (outcome === 'partial') {
     dust = Math.round(randomInt(rng, ...location.dust) * 0.45 * dustMultiplier * tacticDustMultiplier); xp = Math.round(randomInt(rng, ...location.baseXp) * 0.65 * xpMultiplier); reputation = 4;

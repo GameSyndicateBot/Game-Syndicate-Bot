@@ -47,6 +47,7 @@ function equipmentBonusesForClass(snapshot, classKey) {
     expeditionSuccess: Number(stats.expedition_success || 0),
     rareFindPercent: Math.round(clamp(Number(derived.rareFindPercent || 0),0,40)*10)/10,
     rewardPercent: Math.round(clamp(Number(derived.rewardPercent || 0),0,50)*10)/10,
+    maxManaBonus: Math.max(0, Math.round(Number(derived.maxManaBonus || 0))),
   };
 }
 

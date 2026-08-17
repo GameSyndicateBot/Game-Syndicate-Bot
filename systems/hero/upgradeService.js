@@ -9,7 +9,7 @@ const CHANCES = Object.freeze({ 1:100, 2:100, 3:100, 4:100, 5:100, 6:80, 7:65, 8
 const RARITY_MULTIPLIER = Object.freeze({ common:1, rare:1.35, epic:1.8, legendary:2.5, mythic:3.4, exclusive:4 });
 
 function isUpgradeable(item) {
-  return !!item?.slot && ['weapon','armor','helmet','gloves','boots','ring','amulet','backpack'].includes(item.item_type);
+  return !!item?.slot && ['weapon','armor','helmet','gloves','boots','ring','amulet','backpack','belt','pants','shield'].includes(item.item_type);
 }
 function classifyUpgradeGroup(item) {
   const text=`${item?.item_key||''} ${item?.name||''} ${item?.description||''}`.toLowerCase();
@@ -23,7 +23,7 @@ function classifyUpgradeGroup(item) {
   if (/лук|арбалет|bow|crossbow/.test(text)) return 'ranged';
   if (/щит|shield/.test(text)) return /дерев|wood/.test(text)?'wood_shield':'metal';
   if (/кожан|кожа|шкур|капюш|leather|hide|hood/.test(text)) return 'leather';
-  if (['armor','helmet','gloves','boots','weapon'].includes(type)||['chest','helmet','gloves','boots','melee','offhand'].includes(slot)) return 'metal';
+  if (['armor','helmet','gloves','boots','weapon','belt','pants','shield'].includes(type)||['chest','helmet','gloves','boots','melee','offhand','belt','legs'].includes(slot)) return 'metal';
   if (type==='backpack'||slot==='backpack') return 'leather';
   return 'metal';
 }

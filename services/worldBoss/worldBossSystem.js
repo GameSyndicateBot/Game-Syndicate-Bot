@@ -55,7 +55,7 @@ function init() {
   );
   CREATE TABLE IF NOT EXISTS world_boss_players(
    battle_id INTEGER NOT NULL,user_id TEXT NOT NULL,hero_name TEXT,hero_level INTEGER DEFAULT 1,hero_snapshot_json TEXT DEFAULT '{}',class_key TEXT,initiative INTEGER DEFAULT 0,hp INTEGER DEFAULT 0,max_hp INTEGER DEFAULT 0,
-   energy INTEGER DEFAULT 0,mana INTEGER DEFAULT 0,ult_charge INTEGER DEFAULT 0,damage_done INTEGER DEFAULT 0,healing_done INTEGER DEFAULT 0,damage_taken INTEGER DEFAULT 0,
+   energy INTEGER DEFAULT 0,mana INTEGER DEFAULT 0,max_mana INTEGER DEFAULT 100,ult_charge INTEGER DEFAULT 0,damage_done INTEGER DEFAULT 0,healing_done INTEGER DEFAULT 0,damage_taken INTEGER DEFAULT 0,
    contribution INTEGER DEFAULT 0,status TEXT DEFAULT 'alive',effects_json TEXT DEFAULT '{}',summons_json TEXT DEFAULT '[]',joined_at INTEGER NOT NULL,
    PRIMARY KEY(battle_id,user_id)
   );
@@ -68,6 +68,7 @@ function init() {
   `);
   const cols = new Set(db.prepare('PRAGMA table_info(world_boss_players)').all().map(x => x.name));
   if (!cols.has('mana')) db.exec('ALTER TABLE world_boss_players ADD COLUMN mana INTEGER DEFAULT 0');
+  if (!cols.has('max_mana')) db.exec('ALTER TABLE world_boss_players ADD COLUMN max_mana INTEGER DEFAULT 100');
   if (!cols.has('ult_charge')) db.exec('ALTER TABLE world_boss_players ADD COLUMN ult_charge INTEGER DEFAULT 0');
   if (!cols.has('hero_name')) db.exec('ALTER TABLE world_boss_players ADD COLUMN hero_name TEXT');
   if (!cols.has('hero_level')) db.exec('ALTER TABLE world_boss_players ADD COLUMN hero_level INTEGER DEFAULT 1');
@@ -507,7 +508,8 @@ async function assignChosenClass(id, user, key, auto = false) {
   const heroMaxHp = Math.max(1, Math.round(c.maxHp * hpMultiplier(playerWithClass) + Number(classBonus.equipment.flatHp || 0)));
   s.log.push(`📚 ${c.name} **Lv.${classBonus.level}** • ${classBonus.mastery.title}: ⚔️ +${classBonus.mastery.damagePercent}% ❤️ +${classBonus.mastery.hpPercent}% 🛡️ +${classBonus.mastery.resistancePercent}% • экипировка: ⚔️ +${classBonus.equipment.damagePercent}% ❤️ +${classBonus.equipment.hpPercent}% 🛡️ +${classBonus.equipment.resistancePercent}%.`);
   saveState(b,s);
-  db.prepare("UPDATE world_boss_players SET class_key=?,hp=?,max_hp=?,energy=0,mana=?,ult_charge=0,status='alive',effects_json='{}' WHERE battle_id=? AND user_id=?").run(classKey, heroMaxHp, heroMaxHp, c.resourceType === 'mana' ? 100 : 0, id, user);
+  const manaBonus=Math.max(0,Number(classBonus.equipment.maxManaBonus||0)); const maxMana=c.resourceType==='mana'?100+manaBonus:0;
+  db.prepare("UPDATE world_boss_players SET class_key=?,hp=?,max_hp=?,energy=0,mana=?,max_mana=?,ult_charge=0,status='alive',effects_json='{}' WHERE battle_id=? AND user_id=?").run(classKey, heroMaxHp, heroMaxHp, maxMana, maxMana, id, user);
   if (s.classChoiceIndex >= s.classOrder.length) {
     b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const ns = stateOf(b); ns.initiativeRolls = {}; ns.log.push('🎲 Классы выбраны. Теперь бросьте d20 на инициативу боя.'); saveState(b, ns);
     db.prepare("UPDATE world_boss_battles SET status='initiative_roll',turn_deadline=? WHERE id=?").run(Date.now() + ROLL_MS, id); clearTimer(id); await refresh(id); setTimer(id, () => autoFinishInitiative(id).catch(console.error), ROLL_MS); return { ok: true, done: true };
@@ -860,7 +862,7 @@ async function perform(id, userId, action, auto = false, targetId = null) {
       else { hit = true; let dmg = applyDamageBuff(p, rand(...c.damage)); if(p.class_key==='duelist'){const combo=Math.max(0,Number(e.combo||0));dmg=Math.round(dmg*(1+combo*0.08));if(Math.random()<0.45){e.combo=Math.min(5,combo+1);text+=` ⚔️ Стак Комбо: ${e.combo}/5.`;}} const crit = Math.random() * 100 < Number(c.critChance || CRIT_CHANCE); if (crit) { dmg = Math.round(dmg * Number(c.critMultiplier || CRIT_MULTIPLIER)); addBattleStat(id,userId,'crits',1); } const r = hurtEnemy(b, state, dmg, c.damageType || 'physical', p.class_key); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, userId); text = `🗡️ <@${userId}> наносит **${r.dealt}** → ${r.target}${crit ? ' • 💥 КРИТ!' : ''}.`;
         if (p.class_key === 'cleric') { const fresh = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id,userId); const healed = healPlayer(id,userId,fresh,20); text += ` ✨ Свет удара восстанавливает **${healed} HP**.`; }
       }
-      if (rType === 'mana') mana = clamp(mana + 15, 0, 100);
+      if (rType === 'mana') mana = clamp(mana + 15, 0, Math.max(100,Number(p.max_mana||100)));
       else if (rType === 'rage') energy = clamp(energy + (hit ? 15 : 8), 0, 100);
       else energy = clamp(energy + (hit ? 20 : 15), 0, 100);
       ultCharge = clamp(ultCharge + (hit ? 20 : 12), 0, 100);
@@ -966,7 +968,7 @@ function useSkill(b, p, c, e, state, targetId) {
     case 'mindlord': { const r=hurtEnemy(b,state,rand(60,80),'magic','mindlord'); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🧠 <@${u}> наносит **${r.dealt}** психического урона.`; }
     case 'druid': { const r=hurtEnemy(b,state,rand(45,60),'magic','druid'); state.bossWeakenRounds=2; state.bossWeaken=0.15; saveState(b,state); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,id,u); return `🌿 <@${u}> опутывает босса: **${r.dealt}** урона и -15% урона босса на 3 раунда и сам атакует врагов.`; }
     case 'shaman': state.teamDamageTotemRounds=3; state.teamDamageTotem=0.15; state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='strength_totem'); state.summons.push({owner:u,type:'strength_totem',icon:'🔥',name:'Тотем силы',hp:60,maxHp:60,rounds:3,support:true}); saveState(b,state); return `🪬 <@${u}> устанавливает Тотем силы на 3 раунда: +15% урона союзников.`;
-    case 'chronomancer': { const targets=validTargets(id,'alive').filter(x=>x.user_id!==u); const t=targetById(id,targetId)||targets[0]||p; if(resourceType(t.class_key)==='mana') db.prepare('UPDATE world_boss_players SET mana=MIN(100,mana+30) WHERE battle_id=? AND user_id=?').run(id,t.user_id); else db.prepare('UPDATE world_boss_players SET energy=MIN(100,energy+30) WHERE battle_id=? AND user_id=?').run(id,t.user_id); return `⏳ <@${u}> ускоряет <@${t.user_id}> и восстанавливает 30 ресурса.`; }
+    case 'chronomancer': { const targets=validTargets(id,'alive').filter(x=>x.user_id!==u); const t=targetById(id,targetId)||targets[0]||p; if(resourceType(t.class_key)==='mana') db.prepare('UPDATE world_boss_players SET mana=MIN(max_mana,mana+30) WHERE battle_id=? AND user_id=?').run(id,t.user_id); else db.prepare('UPDATE world_boss_players SET energy=MIN(100,energy+30) WHERE battle_id=? AND user_id=?').run(id,t.user_id); return `⏳ <@${u}> ускоряет <@${t.user_id}> и восстанавливает 30 ресурса.`; }
     case 'illusionist': state.summons=(state.summons||[]).filter(x=>x.owner!==u||x.type!=='illusion'); state.summons.push({owner:u,type:'illusion',icon:'🎭',name:'Иллюзия',hp:40,maxHp:40,damage:[0,0],miss:100,rounds:4,support:true}); saveState(b,state); return `🎭 <@${u}> создаёт иллюзию с 40 HP, способную принять атаку.`;
     default: return 'Способность использована.';
   }
@@ -1733,7 +1735,7 @@ async function finish(id, win) {
       if (!player || Number(value || 0) <= 0) return;
       const rewardPack = specialistPack(selectedClassBonuses(player)?.equipment?.rareFindPercent || 0);
       addPack(player.user_id, rewardPack, 1);
-      categoryAwards.push({ type, user_id: player.user_id, value: Number(value || 0), pack: rewardPack });
+      categoryAwards.push({ type, user_id: player.user_id, value: Number(value || 0), pack: rewardPack }); categoryWinners.add(String(player.user_id));
     };
 
     awardCategory('damage', damageTop[0], damageTop[0]?.damage_done);
@@ -1824,6 +1826,7 @@ const COMBAT_BAG = Object.freeze({
     barrier_scroll:{icon:'🛡️',name:'Свиток Барьера',text:'щит 70 HP'},
     blessing_scroll:{icon:'✨',name:'Свиток Благословения',text:'+15% урона и -10% входящего урона на 3 хода'},
     weakening_scroll:{icon:'☠️',name:'Свиток Ослабления',text:'следующая атака босса -20% урона'},
+    alchemist_bomb:{icon:'💣',name:'Алхимическая бомба',text:'120 алхимического урона'},
     cleanse_scroll:{icon:'🌀',name:'Свиток Очищения',text:'снимает проклятия и блокировки'},
   },
 });
@@ -1854,6 +1857,7 @@ function useCombatBagItem(b,p,itemKey,category){
   else if(['healing_potion_small','healing_potion_large','healing_potion_supreme'].includes(itemKey)){const amount={healing_potion_small:30,healing_potion_large:75,healing_potion_supreme:140}[itemKey],heal=Math.min(amount,p.max_hp-p.hp);db.prepare('UPDATE world_boss_players SET hp=MIN(max_hp,hp+?),healing_done=healing_done+? WHERE battle_id=? AND user_id=?').run(amount,heal,b.id,p.user_id);text=`восстанавливает **${heal} HP**`;}
   else if(itemKey==='war_elixir'||itemKey==='rage_scroll'){e.combatDamage=Math.max(Number(e.combatDamage||0),.20);e.combatDamageTurns=Math.max(Number(e.combatDamageTurns||0),3);text='даёт **+20% урона на 3 хода**';}
   else if(itemKey==='stone_skin_elixir'||itemKey==='defense_scroll'){e.combatResistance=Math.max(Number(e.combatResistance||0),.20);e.combatResistanceTurns=Math.max(Number(e.combatResistanceTurns||0),3);text='даёт **-20% входящего урона на 3 хода**';}
+  else if(itemKey==='alchemist_bomb'){const r=hurtEnemy(b,st,120,'magic',p.class_key);db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,b.id,p.user_id);saveState(b,st);text=`наносит **${r.dealt} алхимического урона**`;}
   else if(itemKey==='fire_scroll'||itemKey==='ice_scroll'||itemKey==='lightning_scroll'){const amount={fire_scroll:90,ice_scroll:55,lightning_scroll:130}[itemKey];const r=hurtEnemy(b,st,amount,'magic',p.class_key);db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt,r.dealt,b.id,p.user_id);if(itemKey==='ice_scroll')st.rage=Math.max(0,Number(st.rage||0)-20);saveState(b,st);text=`наносит **${r.dealt} магического урона**${itemKey==='ice_scroll'?' и снижает ярость босса на **20**':''}`;}
   else if(itemKey==='barrier_scroll'){e.shield=Number(e.shield||0)+70;text='создаёт **щит 70 HP**';}
   else if(itemKey==='blessing_scroll'){e.combatDamage=Math.max(Number(e.combatDamage||0),.15);e.combatDamageTurns=Math.max(Number(e.combatDamageTurns||0),3);e.combatResistance=Math.max(Number(e.combatResistance||0),.10);e.combatResistanceTurns=Math.max(Number(e.combatResistanceTurns||0),3);text='даёт **+15% урона и -10% входящего урона на 3 хода**';}

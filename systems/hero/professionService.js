@@ -170,7 +170,7 @@ function processProfessionMaterial(userId,batches=1){
     miner:{input:'iron_ore',output:'iron_ingot',inputQty:2,outputQty:1},
     hunter:{input:'beast_hide',output:'leather',inputQty:2,outputQty:1},
     lumberjack:{input:'hardwood',output:'board',inputQty:2,outputQty:1},
-    herbalist:{input:'culinary_herbs',output:'herb_extract',inputQty:3,outputQty:1},
+    herbalist:{input:'forest_herbs',output:'herb_extract',inputQty:2,outputQty:1},
   };
   const recipe=recipes[row.profession_key];
   if(!recipe)return {ok:false,reason:'unsupported',profession:row.profession_key};

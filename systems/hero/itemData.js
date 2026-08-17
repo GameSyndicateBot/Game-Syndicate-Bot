@@ -1,7 +1,7 @@
 const RARITY_ORDER = Object.freeze({ common: 1, rare: 2, epic: 3, legendary: 4, mythic: 5, exclusive: 6 });
 const RARITY_LABELS = Object.freeze({ common:'Common', rare:'Rare', epic:'Epic', legendary:'Legendary', mythic:'Mythic', exclusive:'Exclusive' });
-const SLOT_LABELS = Object.freeze({ weapon:'⚔️ Оружие', armor:'🛡️ Броня', helmet:'🪖 Шлем', gloves:'🧤 Перчатки', boots:'🥾 Ботинки', ring:'💍 Кольцо', amulet:'📿 Амулет', backpack:'🎒 Рюкзак' });
-const TYPE_LABELS = Object.freeze({ weapon:'Оружие', armor:'Броня', helmet:'Шлем', gloves:'Перчатки', boots:'Ботинки', ring:'Кольцо', amulet:'Амулет', backpack:'Рюкзак', consumable:'Расходник', material:'Материал', utility:'Инструмент', artifact:'Артефакт' });
+const SLOT_LABELS = Object.freeze({ weapon:'⚔️ Оружие', armor:'🛡️ Броня', helmet:'🪖 Шлем', gloves:'🧤 Перчатки', boots:'🥾 Ботинки', ring:'💍 Кольцо', amulet:'📿 Амулет', backpack:'🎒 Рюкзак', belt:'🪢 Пояс', pants:'👖 Штаны', legs:'👖 Штаны', shield:'🛡️ Щит / левая рука' });
+const TYPE_LABELS = Object.freeze({ weapon:'Оружие', armor:'Броня', helmet:'Шлем', gloves:'Перчатки', boots:'Ботинки', ring:'Кольцо', amulet:'Амулет', backpack:'Рюкзак', belt:'Пояс', pants:'Штаны', shield:'Щит / левая рука', consumable:'Расходник', material:'Материал', utility:'Инструмент', artifact:'Артефакт' });
 
 const ITEMS = Object.freeze({
   rusty_blade:{name:'Ржавый клинок',type:'weapon',slot:'weapon',rarity:'common',description:'Простой клинок начинающего странника.',lore:'На гарде едва различим знак забытой дружины.',bonuses:{strength:2}},
@@ -38,6 +38,18 @@ const ITEMS = Object.freeze({
   sun_amulet:{name:'Амулет Рассвета',type:'amulet',slot:'amulet',rarity:'rare',description:'Защищает владельца от тьмы.',lore:'Священники носили такие в ночных походах.',bonuses:{hp:10,defense:2,intelligence:2}},
   dragon_amulet:{name:'Амулет Драконьего Сердца',type:'amulet',slot:'amulet',rarity:'epic',description:'Согревается рядом с сильным противником.',lore:'Внутри заключена чешуя древнего дракона.',bonuses:{strength:5,hp:15,world_boss_damage:3}},
 
+
+  leather_belt:{name:'Кожаный пояс разведчика',type:'belt',slot:'belt',rarity:'common',description:'Простой пояс с подсумками для дороги.',lore:'На пряжке вырезана старая отметка следопыта.',bonuses:{dexterity:1,hp:4}},
+  rune_belt:{name:'Рунный пояс хранителя',type:'belt',slot:'belt',rarity:'epic',description:'Руны укрепляют тело и концентрацию.',lore:'Каждый символ вспыхивает перед опасностью.',bonuses:{vitality:4,intelligence:3,defense:2}},
+  scout_pants:{name:'Штаны следопыта',type:'pants',slot:'pants',rarity:'common',description:'Лёгкая экипировка для долгих переходов.',lore:'Не сковывают движения даже на скалах.',bonuses:{dexterity:2}},
+  shadow_leggings:{name:'Поножи Тихой Тени',type:'pants',slot:'pants',rarity:'epic',description:'Тёмные поножи для быстрых и бесшумных движений.',lore:'Ткань почти не отражает свет.',bonuses:{dexterity:6,luck:2}},
+  wooden_shield:{name:'Дорожный деревянный щит',type:'shield',slot:'weapon',rarity:'common',description:'Лёгкий щит для второй руки.',lore:'Собран из крепкой древесины и стянут железом.',bonuses:{defense:3,hp:6}},
+  dawn_shield:{name:'Щит Рассвета',type:'shield',slot:'weapon',rarity:'epic',description:'Щит защитников ордена Рассвета.',lore:'На стали всегда остаётся тёплый золотой отблеск.',bonuses:{defense:8,vitality:4,world_boss_resistance:3}},
+  windrunner_bow:{name:'Лук Ветра',type:'weapon',slot:'weapon',rarity:'epic',description:'Дальний бой для героев ловкости.',lore:'Тетива почти не издаёт звука.',bonuses:{dexterity:8,luck:2,world_boss_damage:2}},
+  starwood_staff:{name:'Посох Звёздного Древа',type:'weapon',slot:'weapon',rarity:'epic',description:'Магическое оружие для героев интеллекта.',lore:'Сердцевина проводит магию без потерь.',bonuses:{intelligence:8,wisdom:3,world_boss_damage:2}},
+  moon_crossbow:{name:'Лунный арбалет',type:'weapon',slot:'weapon',rarity:'legendary',description:'Точное дальнобойное оружие.',lore:'Механизм настраивали мастера Ночной Гильдии.',bonuses:{dexterity:11,luck:4,world_boss_damage:5}},
+  void_staff:{name:'Посох Бездны',type:'weapon',slot:'weapon',rarity:'legendary',description:'Мощный фокус для заклинателей.',lore:'Кристалл на вершине шепчет на неизвестном языке.',bonuses:{intelligence:12,wisdom:4,world_boss_damage:5}},
+  field_kit:{name:'Походный набор',type:'backpack',slot:'backpack',rarity:'rare',description:'Набор инструментов, ремней и припасов для экспедиций.',lore:'В нём всегда находится нужная мелочь.',bonuses:{expedition_success:3,hp:5}},
   canvas_backpack:{name:'Холщовый рюкзак',type:'backpack',slot:'backpack',rarity:'common',description:'Вмещает самое необходимое.',lore:'Его карманы всегда оказываются глубже, чем кажутся.',bonuses:{expedition_success:1}},
   explorers_pack:{name:'Рюкзак исследователя',type:'backpack',slot:'backpack',rarity:'rare',description:'Оснащён ремнями, крючками и отделениями.',lore:'Создан специально для опасных экспедиций.',bonuses:{expedition_success:2,rare_find:2}},
   bottomless_satchel:{name:'Сумка без дна',type:'backpack',slot:'backpack',rarity:'legendary',description:'Редкая пространственная реликвия.',lore:'Никто ещё не смог нащупать её дно.',bonuses:{expedition_success:4,rare_find:5,luck:3}},
@@ -105,10 +117,10 @@ const STARTER_BY_CLASS = Object.freeze({
 });
 
 const EXPEDITION_LOOT = Object.freeze({
-  1:['forest_herbs','iron_ore','healing_potion_small','lockpick_set','worn_boots','copper_ring','canvas_backpack'],
-  2:['chainmail','iron_helm','duelist_gloves','mountain_boots','ring_strength','sun_amulet','explorers_pack','treasure_map','ancient_fragment'],
-  3:['shadow_dagger','paladin_plate','seer_crown','rune_gauntlets','windstep_boots','ring_fortune','dragon_amulet','moon_dust','healing_potion_large'],
-  4:['last_lord_blade','north_guardian_armor','king_signet','bottomless_satchel','rage_scroll','defense_scroll','alchemist_bomb'],
+  1:['forest_herbs','iron_ore','healing_potion_small','lockpick_set','worn_boots','copper_ring','canvas_backpack','leather_belt','scout_pants','wooden_shield'],
+  2:['chainmail','iron_helm','duelist_gloves','mountain_boots','ring_strength','sun_amulet','explorers_pack','field_kit','treasure_map','ancient_fragment'],
+  3:['shadow_dagger','paladin_plate','seer_crown','rune_gauntlets','windstep_boots','ring_fortune','dragon_amulet','rune_belt','shadow_leggings','dawn_shield','windrunner_bow','starwood_staff','moon_dust','healing_potion_large'],
+  4:['last_lord_blade','north_guardian_armor','king_signet','bottomless_satchel','moon_crossbow','void_staff','rage_scroll','defense_scroll','alchemist_bomb'],
   5:['void_scepter','dragon_fang','angel_wing','bottomless_satchel','king_signet']
 });
 

@@ -1302,7 +1302,7 @@ function showMerchantBuy(interaction,notice=''){
 function showMerchantBuyConfirm(interaction,key){
   const row=guildMerchant.saleStock().find(x=>x.material_key===key);
   if(!row)return showMerchantBuy(interaction,'❌ Товар закончился.');
-  return interaction.update({content:'',embeds:[new EmbedBuilder().setColor(0x2563EB).setTitle(`${row.meta.icon||'📦'} ${row.meta.name||key}`).setDescription(`В наличии: **${row.quantity}**\nЦена: **${row.unit_price} GS Dust за 1**\nРедкость: **${RARITY_LABELS[row.meta.rarity]||row.meta.rarity||'Обычный'}**\n${row.meta.description?`\n${row.meta.description}`:''}${row.meta.bonuses?`\n\n📊 ${formatBonuses(row.meta.bonuses).join('\n')}`:''}\n\nУ игроков этот материал обычно можно купить дешевле.`)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`guild:merchant:buy:confirm:${key}`).setLabel(`Купить за ${row.unit_price}`).setEmoji('💠').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:merchant:buy').setLabel('Назад').setStyle(ButtonStyle.Secondary))]});
+  return interaction.update({content:'',embeds:[new EmbedBuilder().setColor(0x2563EB).setTitle(`${row.meta.icon||'📦'} ${row.meta.name||key}`).setDescription(`В наличии: **${row.quantity}**\nЦена: **${row.unit_price} GS Dust за 1**\nРедкость: **${RARITY_LABELS[row.meta.rarity]||row.meta.rarity||'Обычный'}**\n${row.meta.description?`\n${row.meta.description}`:''}${row.meta.bonuses?`\n\n📊 ${formatBonuses(row.meta.bonuses).join('\n')}`:''}\n\nУ игроков этот материал обычно можно купить дешевле.`)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`guild:merchant:buy:confirm:${key}`).setLabel('Купить количество').setEmoji('💠').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('guild:merchant:buy').setLabel('Назад').setStyle(ButtonStyle.Secondary))]});
 }
 
 
@@ -1403,8 +1403,9 @@ async function handleComponent(interaction) {
   if (action === 'merchant' && parts[2] === 'buy' && parts.length===3) return showMerchantBuy(interaction);
   if (action === 'merchant' && parts[2] === 'buy' && parts[3] === 'select') return showMerchantBuyConfirm(interaction,interaction.values?.[0]);
   if (action === 'merchant' && parts[2] === 'buy' && parts[3] === 'confirm') {
-    const r=guildMerchant.buyMaterial(interaction.user.id,parts[4],1);
-    return showMerchantBuy(interaction,r.ok?`✅ Куплено: **${r.meta?.name||parts[4]} ×1** за **${r.total} GS Dust**.`:r.reason==='dust'?`❌ Недостаточно GS Dust. Нужно **${r.total}**, баланс **${r.balance}**.`:'❌ Товар уже закончился.');
+    const key=parts.slice(4).join(':'); const row=guildMerchant.saleStock().find(x=>x.material_key===key);
+    if(!row)return showMerchantBuy(interaction,'❌ Товар уже закончился.');
+    return interaction.showModal(marketModal(`guild:merchant:buyqty:${key}`,'Покупка у торговца',[{id:'quantity',label:`Количество (макс. ${row.quantity})`,placeholder:'Например: 10'}]));
   }
 
 
@@ -1821,6 +1822,13 @@ async function handleModal(interaction) {
       console.error('[Guild Rename]', interaction.user.id, error);
       return interaction.editReply({ content: '❌ Не удалось изменить имя. Dust не списан. Ошибка записана в лог.' });
     }
+  }
+  if(parts[0]==='guild'&&parts[1]==='merchant'&&parts[2]==='buyqty'){
+    const key=parts.slice(3).join(':');
+    const qty=Math.max(1,Math.floor(Number(interaction.fields.getTextInputValue('quantity'))||0));
+    const r=guildMerchant.buyMaterial(interaction.user.id,key,qty);
+    const content=r.ok?`✅ Куплено: **${r.meta?.name||key} ×${r.qty||qty}** за **${r.total} GS Dust**.`:r.reason==='dust'?`❌ Недостаточно GS Dust. Нужно **${r.total}**, баланс **${r.balance}**.`:r.reason==='quantity'?'❌ Указано неверное количество или товара столько нет.':'❌ Товар уже закончился.';
+    return interaction.reply({content,flags:MessageFlags.Ephemeral});
   }
   if(parts[0]==='guild'&&parts[1]==='merchant'&&parts[2]==='materialqty'){
     const key=parts.slice(3).join(':');
