@@ -147,6 +147,14 @@ client.once('clientReady', () => {
         console.error('[V19.6.2 Extra Recovery] Ошибка:', error);
     }
 
+    // V20.3.6 — восстановление серии 5 Quick Events игроку 308557208147329025.
+    try {
+        const { applyQuickStreakRecoveryV2036 } = require('./services/quickStreakRecoveryV2036');
+        applyQuickStreakRecoveryV2036();
+    } catch (error) {
+        console.error('[V20.3.6 Quick Streak Recovery] Ошибка:', error);
+    }
+
     // V20.3.0 — добавление базовых карточек №091–097 и безопасная
     // одноразовая выдача всех 35 вариантов владельцу полной коллекции.
     // Выполняется до аудита карточных достижений, чтобы ранее собранные
@@ -156,16 +164,6 @@ client.once('clientReady', () => {
         applyBaseCards9197Grant();
     } catch (error) {
         console.error('[Base Cards 091-097 Grant] Ошибка:', error);
-    }
-
-    // V20.3.4 — точечное восстановление игроков после отката базы 17.08.2026.
-    // Сначала пытается поднять реальные значения из локальных SQLite-бэкапов,
-    // затем применяет только безопасные минимумы из подтверждённых жалоб игроков.
-    try {
-        const { applyRollbackRecoveryV2034 } = require('./services/rollbackRecoveryV2034');
-        applyRollbackRecoveryV2034();
-    } catch (error) {
-        console.error('[Rollback Recovery V20.3.4] Ошибка:', error);
     }
 
     // Repeat the safe check every minute. This covers expeditions that finish
