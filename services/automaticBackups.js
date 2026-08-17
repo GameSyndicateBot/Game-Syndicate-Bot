@@ -9,13 +9,13 @@ const { getGuildSetting } = require('../utils/guildSettings');
 
 const DEFAULT_INTERVAL_MINUTES = 360;
 const DEFAULT_DISCORD_RETENTION = 30;
-const DEFAULT_DISCORD_PART_SIZE_MB = 20;
+const DEFAULT_DISCORD_PART_SIZE_MB = 7;
 
 let intervalHandle = null;
 let backupInProgress = false;
 let activeClient = null;
 
-console.log('✅ SCHEDULED_BACKUP_SYSTEM_V6 loaded');
+console.log('✅ SCHEDULED_BACKUP_SYSTEM_V7 loaded');
 
 function readPositiveInteger(name, fallback, minimum = 1) {
     const value = Number(process.env[name]);
@@ -172,25 +172,50 @@ async function uploadBackupToDiscord(client, backupPath, reason) {
             if (part !== gzipPath) tempFiles.push(part);
         }
 
-        const totalParts = parts.length;
-        for (let i = 0; i < parts.length; i += 1) {
-            const partPath = parts[i];
-            const isMultipart = totalParts > 1;
-            const partLabel = isMultipart ? `\nЧасть: **${i + 1}/${totalParts}**` : '';
-            const restoreHint = isMultipart
-                ? '\nДля восстановления сначала склей части по порядку в один `.sqlite.gz`, затем распакуй gzip.'
-                : '\nФайл сжат gzip; для восстановления распакуй его до `.sqlite`.';
+        async function sendParts(partPaths) {
+            const totalParts = partPaths.length;
+            for (let i = 0; i < partPaths.length; i += 1) {
+                const partPath = partPaths[i];
+                const isMultipart = totalParts > 1;
+                const partLabel = isMultipart ? `\nЧасть: **${i + 1}/${totalParts}**` : '';
+                const restoreHint = isMultipart
+                    ? '\nДля восстановления склей части по порядку в один `.sqlite.gz`, затем распакуй gzip.'
+                    : '\nФайл сжат gzip; для восстановления распакуй его до `.sqlite`.';
 
-            await channel.send({
-                content: [
-                    '🛡️ **Бэкап Game Syndicate**',
-                    `Причина: **${reason}**`,
-                    `Источник: \`${databasePath}\``,
-                    `Время: <t:${Math.floor(Date.now() / 1000)}:F>${partLabel}`,
-                    restoreHint,
-                ].join('\n'),
-                files: [new AttachmentBuilder(partPath, { name: path.basename(partPath) })],
-            });
+                await channel.send({
+                    content: [
+                        '🛡️ **Бэкап Game Syndicate**',
+                        `Причина: **${reason}**`,
+                        `Источник: \`${databasePath}\``,
+                        `Время: <t:${Math.floor(Date.now() / 1000)}:F>${partLabel}`,
+                        restoreHint,
+                    ].join('\n'),
+                    files: [new AttachmentBuilder(partPath, { name: path.basename(partPath) })],
+                });
+            }
+            return totalParts;
+        }
+
+        let totalParts;
+        try {
+            totalParts = await sendParts(parts);
+        } catch (error) {
+            const tooLarge = error?.code === 40005 || error?.status === 413;
+            if (!tooLarge) throw error;
+
+            console.warn('⚠️ Discord отклонил размер части бэкапа. Повторяю с частями по 4 MB.');
+            const firstPassParts = parts.filter(p => p !== gzipPath);
+            await removeTempFiles(firstPassParts);
+            for (const p of firstPassParts) {
+                const idx = tempFiles.indexOf(p);
+                if (idx >= 0) tempFiles.splice(idx, 1);
+            }
+
+            const retryParts = await splitFile(gzipPath, 4 * 1024 * 1024);
+            for (const part of retryParts) {
+                if (part !== gzipPath) tempFiles.push(part);
+            }
+            totalParts = await sendParts(retryParts);
         }
 
         console.log(`✅ Backup uploaded to Discord channel ${channelId}${totalParts > 1 ? ` (${totalParts} parts)` : ''}`);
