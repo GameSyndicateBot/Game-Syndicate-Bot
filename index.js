@@ -158,6 +158,16 @@ client.once('clientReady', () => {
         console.error('[Base Cards 091-097 Grant] Ошибка:', error);
     }
 
+    // V20.3.4 — точечное восстановление игроков после отката базы 17.08.2026.
+    // Сначала пытается поднять реальные значения из локальных SQLite-бэкапов,
+    // затем применяет только безопасные минимумы из подтверждённых жалоб игроков.
+    try {
+        const { applyRollbackRecoveryV2034 } = require('./services/rollbackRecoveryV2034');
+        applyRollbackRecoveryV2034();
+    } catch (error) {
+        console.error('[Rollback Recovery V20.3.4] Ошибка:', error);
+    }
+
     // Repeat the safe check every minute. This covers expeditions that finish
     // while the bot is already running and survives missed UI refreshes.
     setInterval(() => {
