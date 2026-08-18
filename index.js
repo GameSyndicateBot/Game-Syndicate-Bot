@@ -147,6 +147,14 @@ client.once('clientReady', () => {
         console.error('[V19.6.2 Extra Recovery] Ошибка:', error);
     }
 
+    // V20.3.4 — восстановление уровней/пыли/истории и потерянных покупок из локальных snapshots.
+    try {
+        const { applyRollbackRecoveryV2034 } = require('./services/rollbackRecoveryV2034');
+        applyRollbackRecoveryV2034();
+    } catch (error) {
+        console.error('[V20.3.4 Rollback Recovery] Ошибка:', error);
+    }
+
     // V20.3.6 — восстановление серии 5 Quick Events игроку 308557208147329025.
     try {
         const { applyQuickStreakRecoveryV2036 } = require('./services/quickStreakRecoveryV2036');
@@ -160,6 +168,16 @@ client.once('clientReady', () => {
         applyManualPlayerCorrectionsV2041();
     } catch (error) {
         console.error('[V20.4.1 Manual Player Corrections] Ошибка:', error);
+    }
+
+    // V20.4.2 — повторная выдача заявленных восстановлений после обнаруженного отката БД.
+    // Ключ новый, поэтому сработает один раз на текущей базе; persistent /app/shared
+    // гарантирует, что отметка и выданный прогресс переживут deploy/restart.
+    try {
+        const { applyDurablePlayerRestoresV2042 } = require('./services/durablePlayerRestoresV2042');
+        applyDurablePlayerRestoresV2042();
+    } catch (error) {
+        console.error('[V20.4.2 Durable Player Restores] Ошибка:', error);
     }
 
     // V20.3.0 — добавление базовых карточек №091–097 и безопасная

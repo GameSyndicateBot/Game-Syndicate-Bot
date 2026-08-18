@@ -3,9 +3,17 @@ const path = require('path');
 const Database = require('better-sqlite3');
 
 const bundledDatabasePath = path.join(__dirname, 'database.sqlite');
+const persistentSharedDatabasePath = '/app/shared/database.sqlite';
 const configuredDatabasePath = process.env.DATABASE_PATH
     ? path.resolve(process.env.DATABASE_PATH)
-    : bundledDatabasePath;
+    : (fs.existsSync('/app/shared') ? persistentSharedDatabasePath : bundledDatabasePath);
+
+// На хосте /app/shared является постоянным диском. Никогда не используем
+// database/database.sqlite как рабочую БД при наличии persistent volume:
+// файлы проекта могут заменяться при каждом deploy/restart.
+if (!process.env.DATABASE_PATH && configuredDatabasePath === persistentSharedDatabasePath) {
+    console.log('🛡️ Persistent SQLite selected automatically: /app/shared/database.sqlite');
+}
 
 fs.mkdirSync(path.dirname(configuredDatabasePath), { recursive: true });
 

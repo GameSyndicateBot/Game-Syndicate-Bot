@@ -1,8 +1,8 @@
 {
   "name": "game-syndicate-bot",
-  "version": "20.3.7",
+  "version": "20.4.2",
   "private": true,
-  "description": "Game Syndicate V20.3.7: backup transport, deploy build and rollback recovery fixes",
+  "description": "Game Syndicate V20.4.2: persistent SQLite, verified backups and durable player restores",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

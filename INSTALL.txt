@@ -1,0 +1,8 @@
+GAME SYNDICATE V20.4.2 LIGHT PATCH
+
+1. Распаковать архив поверх текущего проекта с заменой файлов.
+2. НЕ удалять /app/shared/database.sqlite.
+3. Перезапустить приложение.
+4. В логах проверить выбор постоянной БД /app/shared/database.sqlite.
+
+Патч не содержит node_modules, SQLite-базы, backups, изображений и прочих тяжёлых файлов.

@@ -9,7 +9,7 @@ const { getGuildSetting } = require('../utils/guildSettings');
 
 const DEFAULT_INTERVAL_MINUTES = 360;
 const DEFAULT_DISCORD_RETENTION = 30;
-const DEFAULT_DISCORD_PART_SIZE_MB = 7;
+const DEFAULT_DISCORD_PART_SIZE_MB = 4;
 
 let intervalHandle = null;
 let backupInProgress = false;
@@ -237,13 +237,30 @@ async function runAutomaticBackup(client = activeClient, reason = 'scheduled') {
     backupInProgress = true;
     try {
         const backupPath = await backupDatabase({ reason });
-        const upload = await uploadBackupToDiscord(client, backupPath, reason);
-        return {
-            created: true,
-            busy: false,
-            backupPath,
-            discordParts: upload.parts,
-        };
+
+        // Локальный snapshot уже является успешным бэкапом. Ошибка Discord
+        // не должна превращать /backup create в ложное "бэкап не создан".
+        try {
+            const upload = await uploadBackupToDiscord(client, backupPath, reason);
+            return {
+                created: true,
+                busy: false,
+                backupPath,
+                discordUploaded: true,
+                discordParts: upload.parts,
+                discordError: null,
+            };
+        } catch (error) {
+            console.error('⚠️ Backup created locally, Discord upload failed:', error);
+            return {
+                created: true,
+                busy: false,
+                backupPath,
+                discordUploaded: false,
+                discordParts: 0,
+                discordError: error?.message || String(error),
+            };
+        }
     } finally {
         backupInProgress = false;
     }
