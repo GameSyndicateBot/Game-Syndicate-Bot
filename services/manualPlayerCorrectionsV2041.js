@@ -3,10 +3,12 @@
 const { db, addCardDust, unlockAchievement } = require('../database/db');
 
 const KEY = 'v20.4.1-manual-player-corrections-2026-08-18';
+const BACKPACK_KEY = 'v20.4.1-restore-506371696878551041-runic-shadow-bag-2026-08-18';
 const QUICK_USER = '308557208147329025';
 const STREAK_USER = '561961056197672991';
 const SPEAR_USER = '695364739987013673';
 const WOLF_USER = '1080729129915256843';
+const BACKPACK_USER = '506371696878551041';
 
 function tableExists(name) {
   try { return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name)); }
@@ -119,20 +121,68 @@ function grantMaterials() {
     ON CONFLICT(user_id,material_key) DO UPDATE SET quantity=hero_materials.quantity+5,updated_at=CURRENT_TIMESTAMP`).run(SPEAR_USER,'beast_hide');
   return 'beast_hide +5';
 }
+
+function restoreRunicShadowBag() {
+  const item = {
+    key: 'caravan_backpack_1081',
+    name: 'Рунный Сумка Тихой тени',
+    type: 'backpack',
+    rarity: 'mythic',
+    description: 'Редкий товар странствующего Караванщика: рунный сумка тихой тени.',
+    slot: 'backpack',
+    bonuses: { expedition_success: 7, rare_find: 5 },
+    lore: 'Эта вещь прошла множество земель, прежде чем оказаться у ворот Гильдии.'
+  };
+
+  db.prepare(`INSERT INTO hero_items(item_key,name,item_type,rarity,description,slot,bonuses_json,lore,is_consumable)
+    VALUES(?,?,?,?,?,?,?,?,0)
+    ON CONFLICT(item_key) DO UPDATE SET name=excluded.name,item_type=excluded.item_type,rarity=excluded.rarity,
+      description=excluded.description,slot=excluded.slot,bonuses_json=excluded.bonuses_json,lore=excluded.lore`)
+    .run(item.key,item.name,item.type,item.rarity,item.description,item.slot,JSON.stringify(item.bonuses),item.lore);
+
+  const owned = db.prepare(`SELECT quantity FROM hero_inventory WHERE user_id=? AND item_key=?`).get(BACKPACK_USER,item.key);
+  if (Number(owned?.quantity || 0) <= 0) {
+    db.prepare(`INSERT INTO hero_inventory(user_id,item_key,quantity,acquired_from) VALUES(?,?,1,'manual_restore_v20.4.1_backpack')
+      ON CONFLICT(user_id,item_key) DO UPDATE SET quantity=MAX(hero_inventory.quantity,1),acquired_from=excluded.acquired_from`)
+      .run(BACKPACK_USER,item.key);
+  }
+  if (tableExists('hero_item_collection')) {
+    db.prepare(`INSERT OR IGNORE INTO hero_item_collection(user_id,item_key,first_acquired_from) VALUES(?,?,'manual_restore_v20.4.1_backpack')`)
+      .run(BACKPACK_USER,item.key);
+  }
+  return { ...item, alreadyOwned: Number(owned?.quantity || 0) > 0 };
+}
+
+function applyBackpackCorrectionV2041() {
+  ensureMigrationTable();
+  if (db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(BACKPACK_KEY)) return {applied:false};
+  const result = db.transaction(() => {
+    const backpack = restoreRunicShadowBag();
+    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(BACKPACK_KEY);
+    return backpack;
+  })();
+  console.log('[V20.4.1 Backpack Restore] applied', JSON.stringify(result));
+  return {applied:true,backpack:result};
+}
+
 function applyManualPlayerCorrectionsV2041() {
   ensureMigrationTable();
-  if(db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(KEY)) return {applied:false};
-  const result=db.transaction(()=>{
-    const quick=restoreQuickStreak();
-    const streaks=set39DayStreaks();
-    const material=grantMaterials();
-    const spear=findLegendarySpear(); grantInventoryItem(SPEAR_USER,spear,'manual_restore_v20.4.1');
-    addCardDust(SPEAR_USER,3000);
-    const wolf=grantWolf();
-    db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(KEY);
-    return {quick,streaks,material,spear,wolf};
-  })();
-  console.log('[V20.4.1 Manual Corrections] applied', JSON.stringify(result));
-  return {applied:true,...result};
+  let base = {applied:false};
+  if(!db.prepare('SELECT 1 FROM gs_one_time_migrations WHERE migration_key=?').get(KEY)) {
+    const result=db.transaction(()=>{
+      const quick=restoreQuickStreak();
+      const streaks=set39DayStreaks();
+      const material=grantMaterials();
+      const spear=findLegendarySpear(); grantInventoryItem(SPEAR_USER,spear,'manual_restore_v20.4.1');
+      addCardDust(SPEAR_USER,3000);
+      const wolf=grantWolf();
+      db.prepare('INSERT INTO gs_one_time_migrations(migration_key) VALUES(?)').run(KEY);
+      return {quick,streaks,material,spear,wolf};
+    })();
+    console.log('[V20.4.1 Manual Corrections] applied', JSON.stringify(result));
+    base = {applied:true,...result};
+  }
+  const backpack = applyBackpackCorrectionV2041();
+  return {...base, backpackCorrection:backpack};
 }
 module.exports={applyManualPlayerCorrectionsV2041};
