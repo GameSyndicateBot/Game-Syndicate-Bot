@@ -176,6 +176,9 @@ client.once('clientReady', () => {
     try {
         const { applyDurablePlayerRestoresV2042 } = require('./services/durablePlayerRestoresV2042');
         applyDurablePlayerRestoresV2042();
+
+        const { applyManualDustGrantV2043 } = require('./services/manualDustGrantV2043');
+        applyManualDustGrantV2043();
     } catch (error) {
         console.error('[V20.4.2 Durable Player Restores] Ошибка:', error);
     }
