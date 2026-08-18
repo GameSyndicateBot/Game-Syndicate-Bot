@@ -1099,11 +1099,29 @@ async function showMarketMine(interaction,notice=''){
  return interaction.update({content:'',embeds:[new EmbedBuilder().setColor(0x60A5FA).setTitle('📦 Мои сделки').setDescription([notice,`⚔️ Лотов экипировки: **${eq.length}**`,`🐾 Лотов питомцев/маунтов: **${companions.length}**`,`📋 Заказов: **${orders.length}**`,`🔄 Обменов: **${ex.length}**`].filter(Boolean).join('\n'))],components});
 }
 async function showExchangeHub(interaction,notice=''){
- const lots=db.prepare("SELECT * FROM market_exchange_lots WHERE status='open' ORDER BY id DESC LIMIT 25").all();const components=[];
- if(lots.length)components.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('guild:orders:exchange:take').setPlaceholder('Выбери предложение обмена').addOptions(lots.filter(x=>x.creator_id!==interaction.user.id).map(x=>({label:`${x.offer_name} ×${x.offer_qty} → ${x.want_name} ×${x.want_qty}`.slice(0,100),description:`Предложение №${x.id}`.slice(0,100),value:String(x.id),emoji:'🔄'})).slice(0,25))));
+ const lots=db.prepare("SELECT * FROM market_exchange_lots WHERE status='open' ORDER BY id DESC LIMIT 25").all();
+ const availableLots=lots.filter(x=>String(x.creator_id)!==String(interaction.user.id));
+ const components=[];
+ // Discord не принимает StringSelectMenu без options. Раньше при наличии
+ // только собственных обменов lots.length > 0, но после filter список был
+ // пустым, из-за чего кнопка «Обмен» падала с Invalid Form Body.
+ if(availableLots.length){
+   components.push(new ActionRowBuilder().addComponents(
+     new StringSelectMenuBuilder()
+       .setCustomId('guild:orders:exchange:take')
+       .setPlaceholder('Выбери предложение обмена')
+       .addOptions(availableLots.slice(0,25).map(x=>({
+         label:`${x.offer_name} ×${x.offer_qty} → ${x.want_name} ×${x.want_qty}`.slice(0,100),
+         description:`Предложение №${x.id}`.slice(0,100),
+         value:String(x.id),
+         emoji:'🔄'
+       })))
+   ));
+ }
  components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('guild:orders:exchange:create').setLabel('Создать обмен').setEmoji('➕').setStyle(ButtonStyle.Success)),marketBackRow());
  const text=lots.length?lots.map(x=>x.want_type==='free'?`**№${x.id}** • 🎁 ${x.offer_name} ×${x.offer_qty} **бесплатно**`:`**№${x.id}** • ${x.offer_name} ×${x.offer_qty} **⇄** ${x.want_name} ×${x.want_qty}`).join('\n'):'Предложений обмена пока нет.';
- return interaction.update({content:'',embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('🔄 Безопасный обмен').setDescription([notice,text,'','Предметы создателя резервируются сразу. Обмен проходит одной операцией: никто не потеряет вещи без встречной передачи.'].filter(Boolean).join('\n'))],components});
+ const ownOnlyNotice=lots.length && !availableLots.length ? 'ℹ️ Сейчас доступны только твои собственные предложения. Их можно отменить в «Мои сделки» или создать новый обмен.' : '';
+ return interaction.update({content:'',embeds:[new EmbedBuilder().setColor(0xEC4899).setTitle('🔄 Безопасный обмен').setDescription([notice,ownOnlyNotice,text,'','Предметы создателя резервируются сразу. Обмен проходит одной операцией: никто не потеряет вещи без встречной передачи.'].filter(Boolean).join('\n'))],components});
 }
 async function showChestsHub(interaction, notice=''){
   const hero=getHero(interaction.user.id);

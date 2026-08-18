@@ -147,21 +147,19 @@ client.once('clientReady', () => {
         console.error('[V19.6.2 Extra Recovery] Ошибка:', error);
     }
 
-    // V20.3.4 — восстановление прогресса после отката: уровни, Dust, история и пропавшие покупки Караванщика.
-    // Безопасно и идемпотентно: выполняется только один раз по migration key.
-    try {
-        const { applyRollbackRecoveryV2034 } = require('./services/rollbackRecoveryV2034');
-        applyRollbackRecoveryV2034();
-    } catch (error) {
-        console.error('[V20.3.4 Rollback Recovery] Ошибка:', error);
-    }
-
     // V20.3.6 — восстановление серии 5 Quick Events игроку 308557208147329025.
     try {
         const { applyQuickStreakRecoveryV2036 } = require('./services/quickStreakRecoveryV2036');
         applyQuickStreakRecoveryV2036();
     } catch (error) {
         console.error('[V20.3.6 Quick Streak Recovery] Ошибка:', error);
+    }
+
+    try {
+        const { applyManualPlayerCorrectionsV2041 } = require('./services/manualPlayerCorrectionsV2041');
+        applyManualPlayerCorrectionsV2041();
+    } catch (error) {
+        console.error('[V20.4.1 Manual Player Corrections] Ошибка:', error);
     }
 
     // V20.3.0 — добавление базовых карточек №091–097 и безопасная
