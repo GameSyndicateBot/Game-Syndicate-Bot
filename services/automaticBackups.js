@@ -15,7 +15,7 @@ let intervalHandle = null;
 let backupInProgress = false;
 let activeClient = null;
 
-console.log('✅ SCHEDULED_BACKUP_SYSTEM_V8 loaded');
+console.log('✅ SCHEDULED_BACKUP_SYSTEM_V7 loaded');
 
 function readPositiveInteger(name, fallback, minimum = 1) {
     const value = Number(process.env[name]);
@@ -237,34 +237,13 @@ async function runAutomaticBackup(client = activeClient, reason = 'scheduled') {
     backupInProgress = true;
     try {
         const backupPath = await backupDatabase({ reason });
-
-        // Локальная SQLite-копия — главный результат операции.
-        // Ошибка транспорта Discord не должна превращать уже созданный
-        // корректный backup в "бэкап не создан".
-        try {
-            const upload = await uploadBackupToDiscord(client, backupPath, reason);
-            return {
-                created: true,
-                busy: false,
-                backupPath,
-                discordUploaded: true,
-                discordParts: upload.parts,
-                discordError: null,
-            };
-        } catch (error) {
-            console.error(
-                `⚠️ Discord backup upload failed; local backup preserved at ${backupPath}:`,
-                error
-            );
-            return {
-                created: true,
-                busy: false,
-                backupPath,
-                discordUploaded: false,
-                discordParts: 0,
-                discordError: error?.message || String(error),
-            };
-        }
+        const upload = await uploadBackupToDiscord(client, backupPath, reason);
+        return {
+            created: true,
+            busy: false,
+            backupPath,
+            discordParts: upload.parts,
+        };
     } finally {
         backupInProgress = false;
     }

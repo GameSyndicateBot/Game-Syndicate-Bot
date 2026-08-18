@@ -147,8 +147,8 @@ client.once('clientReady', () => {
         console.error('[V19.6.2 Extra Recovery] Ошибка:', error);
     }
 
-    // V20.3.4 — восстановление данных игроков после обнаруженного отката БД.
-    // Сервис одноразовый и сам ставит migration-key после успешного применения.
+    // V20.3.4 — восстановление прогресса после отката: уровни, Dust, история и пропавшие покупки Караванщика.
+    // Безопасно и идемпотентно: выполняется только один раз по migration key.
     try {
         const { applyRollbackRecoveryV2034 } = require('./services/rollbackRecoveryV2034');
         applyRollbackRecoveryV2034();
