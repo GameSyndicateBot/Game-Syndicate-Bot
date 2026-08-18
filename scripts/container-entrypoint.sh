@@ -32,7 +32,7 @@ echo '✅ Data-файлы восстановлены'
 echo "📁 DATABASE_PATH=${DATABASE_PATH:-/app/shared/database.sqlite}"
 echo "📁 BACKUP_DIR=${BACKUP_DIR:-/app/shared/backups}"
 echo '=== BACKUP SERVICE V8 CHECK ==='
-grep 'SCHEDULED_BACKUP_SYSTEM_V8 loaded' /app/services/automaticBackups.js
+grep 'SCHEDULED_BACKUP_SYSTEM_V7 loaded' /app/services/automaticBackups.js
 ! grep -q 'installCriticalBackupTracking' /app/services/automaticBackups.js
 sha256sum /app/services/automaticBackups.js
 ls -la /app/shared
