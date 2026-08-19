@@ -20,7 +20,7 @@ const { checkAchievementsForUsers } = require('../../utils/checkAchievementsForU
 
 const CHANNEL_ID = GAME_CHANNELS.worldBoss;
 const AUTO_SCHEDULE_ENABLED = String(process.env.WORLD_BOSS_AUTO_SCHEDULE ?? 'true').toLowerCase() !== 'false';
-const REGISTRATION_MS = 5 * 60 * 1000;
+const REGISTRATION_MS = 10 * 60 * 1000;
 const ROLL_MS = 30 * 1000;
 const CHOICE_MS = 30 * 1000;
 const TURN_MS = 30 * 1000;
@@ -63,7 +63,14 @@ function init() {
   CREATE TABLE IF NOT EXISTS world_boss_player_stats(
    battle_id INTEGER NOT NULL,user_id TEXT NOT NULL,shield_given INTEGER DEFAULT 0,damage_prevented INTEGER DEFAULT 0,aggro_hits INTEGER DEFAULT 0,
    support_points INTEGER DEFAULT 0,rage_reduced INTEGER DEFAULT 0,summon_damage INTEGER DEFAULT 0,summon_healing INTEGER DEFAULT 0,dot_damage INTEGER DEFAULT 0,
-   crits INTEGER DEFAULT 0,misses INTEGER DEFAULT 0,executions INTEGER DEFAULT 0,PRIMARY KEY(battle_id,user_id)
+   crits INTEGER DEFAULT 0,misses INTEGER DEFAULT 0,executions INTEGER DEFAULT 0,missed_turns INTEGER DEFAULT 0,PRIMARY KEY(battle_id,user_id)
+  );
+  CREATE TABLE IF NOT EXISTS world_boss_join_penalties(
+   user_id TEXT NOT NULL,source_battle_id INTEGER NOT NULL,skip_battle_id INTEGER,created_at INTEGER NOT NULL,
+   PRIMARY KEY(user_id,source_battle_id)
+  );
+  CREATE TABLE IF NOT EXISTS world_boss_recovery_markers(
+   marker TEXT PRIMARY KEY,created_at INTEGER NOT NULL
   );
   `);
   const cols = new Set(db.prepare('PRAGMA table_info(world_boss_players)').all().map(x => x.name));
@@ -73,6 +80,8 @@ function init() {
   if (!cols.has('hero_name')) db.exec('ALTER TABLE world_boss_players ADD COLUMN hero_name TEXT');
   if (!cols.has('hero_level')) db.exec('ALTER TABLE world_boss_players ADD COLUMN hero_level INTEGER DEFAULT 1');
   if (!cols.has('hero_snapshot_json')) db.exec("ALTER TABLE world_boss_players ADD COLUMN hero_snapshot_json TEXT DEFAULT '{}'");
+  const statCols = new Set(db.prepare('PRAGMA table_info(world_boss_player_stats)').all().map(x => x.name));
+  if (!statCols.has('missed_turns')) db.exec('ALTER TABLE world_boss_player_stats ADD COLUMN missed_turns INTEGER DEFAULT 0');
 }
 
 function activeBattle() { init(); return db.prepare("SELECT * FROM world_boss_battles WHERE status IN ('registration','class_roll','class_select','initiative_roll','active') ORDER BY id DESC LIMIT 1").get(); }
@@ -106,7 +115,7 @@ function clearTimer(id) { const t = timers.get(Number(id)); if (t) clearTimeout(
 function setTimer(id, fn, ms) { clearTimer(id); const t = setTimeout(fn, Math.max(500, ms)); t.unref?.(); timers.set(Number(id), t); }
 function addLog(b, text) { const s = stateOf(b); s.log = [...(s.log || []), text].slice(-40); saveState(b, s); return s; }
 
-const STAT_COLUMNS = new Set(['shield_given','damage_prevented','aggro_hits','support_points','rage_reduced','summon_damage','summon_healing','dot_damage','crits','misses','executions']);
+const STAT_COLUMNS = new Set(['shield_given','damage_prevented','aggro_hits','support_points','rage_reduced','summon_damage','summon_healing','dot_damage','crits','misses','executions','missed_turns']);
 function addBattleStat(battleId,userId,key,amount=0){
   if(!STAT_COLUMNS.has(key)||!userId||!Number.isFinite(Number(amount))||Number(amount)===0)return;
   db.prepare('INSERT OR IGNORE INTO world_boss_player_stats(battle_id,user_id) VALUES(?,?)').run(battleId,String(userId));
@@ -372,8 +381,9 @@ async function startRegistration(client, { manual = false } = {}) {
     const st = { bossCardId: boss.cardId, allowedMinions: [...boss.minions], minions: [], summons: [], rage: 0, lastDestroyRound: -99, lastGroupCurseRound: -99, lastSummonRound: -99, lastCurseRound: -99, bossActionStats: {}, stormCharge: 0, ironHeat: 0, shadowDomeActive: false, chaosRiftRound: null, deathStats: { players: 0, bossMinions: 0, playerSummons: 0 }, log: [manual ? '🛠️ Босс вызван вручную.' : '⏰ Босс появился по расписанию.'] };
     const info = db.prepare(`INSERT INTO world_boss_battles(channel_id,boss_card_id,boss_name,boss_hp,boss_max_hp,status,registration_ends_at,state_json,created_at) VALUES(?,?,?,?,?,'registration',?,?,?)`).run(CHANNEL_ID, boss.cardId, boss.name, boss.baseHp, boss.baseHp, now + REGISTRATION_MS, JSON.stringify(st), now);
     const id = Number(info.lastInsertRowid); createdBattleId = id;
+    db.prepare('UPDATE world_boss_join_penalties SET skip_battle_id=? WHERE skip_battle_id IS NULL AND source_battle_id<?').run(id, id);
     const b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
-    const msg = await ch.send({ content: '@everyone\n## 🌍 GS WORLD BOSS\n⏳ Регистрация открыта на **5 минут**.', allowedMentions: { parse: ['everyone'] }, embeds: [buildEmbed(b, [])], components: buttons(b) });
+    const msg = await ch.send({ content: '@everyone\n## 🌍 GS WORLD BOSS\n⏳ Регистрация открыта на **10 минут**.', allowedMentions: { parse: ['everyone'] }, embeds: [buildEmbed(b, [])], components: buttons(b) });
     db.prepare('UPDATE world_boss_battles SET message_id=? WHERE id=?').run(msg.id, id);
     await refresh(id);
     setTimer(id, () => beginBattle(id).catch(console.error), REGISTRATION_MS); return { ok: true, id };
@@ -508,7 +518,7 @@ async function assignChosenClass(id, user, key, auto = false) {
   const heroMaxHp = Math.max(1, Math.round(c.maxHp * hpMultiplier(playerWithClass) + Number(classBonus.equipment.flatHp || 0)));
   s.log.push(`📚 ${c.name} **Lv.${classBonus.level}** • ${classBonus.mastery.title}: ⚔️ +${classBonus.mastery.damagePercent}% ❤️ +${classBonus.mastery.hpPercent}% 🛡️ +${classBonus.mastery.resistancePercent}% • экипировка: ⚔️ +${classBonus.equipment.damagePercent}% ❤️ +${classBonus.equipment.hpPercent}% 🛡️ +${classBonus.equipment.resistancePercent}%.`);
   saveState(b,s);
-  const manaBonus=Math.max(0,Number(classBonus.equipment.maxManaBonus||0)); const maxMana=c.resourceType==='mana'?100+manaBonus:0;
+  const maxMana=c.resourceType==='mana'?100:0;
   db.prepare("UPDATE world_boss_players SET class_key=?,hp=?,max_hp=?,energy=0,mana=?,max_mana=?,ult_charge=0,status='alive',effects_json='{}' WHERE battle_id=? AND user_id=?").run(classKey, heroMaxHp, heroMaxHp, maxMana, maxMana, id, user);
   if (s.classChoiceIndex >= s.classOrder.length) {
     b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id); const ns = stateOf(b); ns.initiativeRolls = {}; ns.log.push('🎲 Классы выбраны. Теперь бросьте d20 на инициативу боя.'); saveState(b, ns);
@@ -538,7 +548,21 @@ async function startCombat(id) {
 
 function currentPlayer(b) { const alive = battlePlayers(b.id).filter(p => p.status === 'alive'); return { alive, p: alive.length ? alive[b.turn_index % alive.length] : null }; }
 function armTurn(id) { const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='active'").get(id); if (!b) return; setTimer(id, () => autoTurn(id).catch(console.error), Number(b.turn_deadline) - Date.now()); }
-async function autoTurn(id) { const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='active'").get(id); if (!b) return; const { p } = currentPlayer(b); if (p) await perform(id, p.user_id, 'attack', true); }
+async function autoTurn(id) {
+  const b = db.prepare("SELECT * FROM world_boss_battles WHERE id=? AND status='active'").get(id);
+  if (!b) return;
+  const { p } = currentPlayer(b);
+  if (!p) return;
+  db.prepare('INSERT OR IGNORE INTO world_boss_player_stats(battle_id,user_id) VALUES(?,?)').run(id,String(p.user_id));
+  db.prepare('UPDATE world_boss_player_stats SET missed_turns=missed_turns+1 WHERE battle_id=? AND user_id=?').run(id,String(p.user_id));
+  const missed = Number(db.prepare('SELECT missed_turns FROM world_boss_player_stats WHERE battle_id=? AND user_id=?').get(id,String(p.user_id))?.missed_turns || 0);
+  if (missed === 3) {
+    db.prepare('INSERT OR IGNORE INTO world_boss_join_penalties(user_id,source_battle_id,skip_battle_id,created_at) VALUES(?,?,NULL,?)').run(String(p.user_id),id,Date.now());
+    const fresh = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
+    addLog(fresh, `🚫 <@${p.user_id}> пропустил **${missed}** своих хода. Запись на следующий World Boss будет недоступна.`);
+  }
+  await perform(id, p.user_id, 'attack', true);
+}
 function playerResistanceMultiplier(target, damageType) {
   const cls = CLASSES[target.class_key] || {};
   const key = damageType === 'magic' ? 'magicResist' : 'physicalResist';
@@ -862,7 +886,7 @@ async function perform(id, userId, action, auto = false, targetId = null) {
       else { hit = true; let dmg = applyDamageBuff(p, rand(...c.damage)); if(p.class_key==='duelist'){const combo=Math.max(0,Number(e.combo||0));dmg=Math.round(dmg*(1+combo*0.08));if(Math.random()<0.45){e.combo=Math.min(5,combo+1);text+=` ⚔️ Стак Комбо: ${e.combo}/5.`;}} const crit = Math.random() * 100 < Number(c.critChance || CRIT_CHANCE); if (crit) { dmg = Math.round(dmg * Number(c.critMultiplier || CRIT_MULTIPLIER)); addBattleStat(id,userId,'crits',1); } const r = hurtEnemy(b, state, dmg, c.damageType || 'physical', p.class_key); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, userId); text = `🗡️ <@${userId}> наносит **${r.dealt}** → ${r.target}${crit ? ' • 💥 КРИТ!' : ''}.`;
         if (p.class_key === 'cleric') { const fresh = db.prepare('SELECT * FROM world_boss_players WHERE battle_id=? AND user_id=?').get(id,userId); const healed = healPlayer(id,userId,fresh,20); text += ` ✨ Свет удара восстанавливает **${healed} HP**.`; }
       }
-      if (rType === 'mana') mana = clamp(mana + 15, 0, Math.max(100,Number(p.max_mana||100)));
+      if (rType === 'mana') mana = clamp(mana + 15, 0, 100);
       else if (rType === 'rage') energy = clamp(energy + (hit ? 15 : 8), 0, 100);
       else energy = clamp(energy + (hit ? 20 : 15), 0, 100);
       ultCharge = clamp(ultCharge + (hit ? 20 : 12), 0, 100);
@@ -899,7 +923,7 @@ async function perform(id, userId, action, auto = false, targetId = null) {
       }
       saveState(b, state);
     }
-    db.prepare('UPDATE world_boss_players SET energy=?,mana=?,ult_charge=? WHERE battle_id=? AND user_id=?').run(energy,mana,ultCharge,id,userId);
+    db.prepare('UPDATE world_boss_players SET energy=?,mana=?,max_mana=CASE WHEN max_mana>0 THEN 100 ELSE 0 END,ult_charge=? WHERE battle_id=? AND user_id=?').run(clamp(energy,0,100),clamp(mana,0,100),clamp(ultCharge,0,100),id,userId);
     b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
     addLog(b, (auto ? '⏱️ ' : '') + text);
     b = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(id);
@@ -953,7 +977,7 @@ function useSkill(b, p, c, e, state, targetId) {
     case 'paladin': { const t = targetById(id, targetId) || p; if (t.user_id === u) { addTrackedShield(e, 70, u, 'add'); } else { const te = effects(t); addTrackedShield(te, 55, u, 'add'); updateEffects(id, t.user_id, te); addTrackedShield(e, 30, u, 'add'); } e.guardRounds = Math.max(Number(e.guardRounds || 0), 1); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); markLatestTankAggro(state,u); saveState(b,state); return t.user_id === u ? `✨ <@${u}> не выбирает цель и накладывает **щит 70 HP на себя**, снижает входящий урон на 1 ход и повышает агро.` : `✨ <@${u}> накладывает на <@${t.user_id}> щит **55 HP**, себе — **30 HP**, снижает входящий урон на 1 ход и повышает агро.`; }
     case 'guardian': e.guardRounds = 2; e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); markLatestTankAggro(state,u); saveState(b,state); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); e.interceptChance = 0.35; return `🛡️ <@${u}> снижает входящий урон на 50%, провоцирует босса на 2 атаки и получает 35% шанс перехватить одиночный удар по союзнику.`;
     case 'cleric': { const t = targetById(id, targetId) || p, sacrifice = Math.min(rand(20, 30), Math.max(0, p.hp - 1)); if (sacrifice <= 0) return `💔 <@${u}> не хватает HP для жертвы.`; db.prepare('UPDATE world_boss_players SET hp=? WHERE battle_id=? AND user_id=?').run(p.hp - sacrifice, id, u); const healed = healPlayer(id, u, t, rand(68, 88)); const te = effects(t); const shield = Math.max(1, Math.round(healed * 0.20)); te.shield = Number(te.shield || 0) + shield; updateEffects(id, t.user_id, te); return `💚 <@${u}> жертвует **${sacrifice} HP**, лечит <@${t.user_id}> на **${healed} HP** и даёт щит **${shield} HP**.`; }
-    case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 100, maxHp: 100, heal: [15, 21], rounds: 5, support: true }); saveState(b, state); return `👼 <@${u}> призывает усиленного Ангела-хранителя на 5 ходов. В конце каждого раунда ангел лечит всю живую группу.`; }
+    case 'priest': { state.summons = (state.summons || []).filter(x => x.owner !== u || x.type !== 'angel'); state.summons.push({ owner: u, type: 'angel', icon: '👼', name: 'Ангел-хранитель', hp: 100, maxHp: 100, heal: [7, 11], rounds: 4, support: true }); saveState(b, state); return `👼 <@${u}> призывает усиленного Ангела-хранителя на 4 хода. В конце каждого раунда ангел умеренно лечит всю живую группу.`; }
     case 'bard': { const t = targetById(id, targetId) || p, te = effects(t); te.damageBuffTurns = 3; te.damageBuff = 0.20; updateEffects(id, t.user_id, te); return `🎵 <@${u}> усиливает <@${t.user_id}> на 20% на 3 хода.`; }
     case 'assassin': { const r = hurtEnemy(b, state, rand(75, 95), 'physical', 'assassin', 0.5); db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(r.dealt, r.dealt, id, u); return `🗡️ <@${u}> наносит **${r.dealt}** теневого урона.`; }
     case 'archer': { let total = 0; const shots = []; for (let i = 0; i < 3; i++) { if (Math.random() * 100 < c.miss) { shots.push(`Стрела ${i + 1}: ❌ промах`); continue; } const r = hurtEnemy(b, state, rand(30, 38), 'physical', 'archer'); total += r.dealt; shots.push(`Стрела ${i + 1}: 💥 ${r.dealt} → ${r.target}`); } db.prepare('UPDATE world_boss_players SET damage_done=damage_done+?,contribution=contribution+? WHERE battle_id=? AND user_id=?').run(total, total, id, u); return `🏹 <@${u}> использует **Три выстрела**:\n${shots.join('\n')}\n**Всего: ${total} урона**.`; }
@@ -1007,7 +1031,7 @@ function useSecondSkill(b, p, c, e, state, targetId) {
     }
     case 'priest': {
       let total = 0;
-      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, rand(16, 22));
+      for (const t of validTargets(id, 'alive')) total += healPlayer(id, u, t, rand(10, 14));
       return `🙏 <@${u}> читает Массовую молитву и восстанавливает группе **${total} HP**.`;
     }
     case 'bard': {
@@ -1101,7 +1125,7 @@ function useUlt(b, p, c, e, state, targetId) {
     case 'paladin': markLatestTankAggro(state,u); saveState(b,state); for (const t of validTargets(id, 'alive')) { const te = effects(t); addTrackedShield(te, t.user_id === u ? 60 : 40, u, 'add'); updateEffects(id, t.user_id, te); } e.guardRounds = Math.max(Number(e.guardRounds || 0), 2); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 3); return `✨ <@${u}> накладывает союзникам щиты по **40 HP**, себе **60 HP**, получает -50% входящего урона на 2 хода и провоцирует босса с миньонами на 3 раунда.`;
     case 'guardian': { markLatestTankAggro(state,u); saveState(b,state); e.tauntRounds = Math.max(Number(e.tauntRounds || 0), 2); e.guardianUltRounds = Math.max(Number(e.guardianUltRounds || 0), 2); e.interceptRounds = Math.max(Number(e.interceptRounds || 0), 2); for (const t of validTargets(id, 'alive')) { if (t.user_id === u) continue; const te = effects(t); te.partyGuardRounds = Math.max(Number(te.partyGuardRounds || 0), 2); te.partyGuardMultiplier = 0.8; updateEffects(id, t.user_id, te); } return `🛡️ <@${u}> применяет абсолютную провокацию: следующие 2 одиночные атаки направлены в Стража, он получает -40% урона, союзники — -20% урона.`; }
     case 'cleric': { const t = targetById(id, targetId) || p, healed = healPlayer(id, u, t, t.max_hp); return `🌟 <@${u}> полностью исцеляет <@${t.user_id}> на **${healed} HP**.`; }
-    case 'priest': { const dead = targetById(id, targetId, 'dead'); if (!dead) return `✨ Нет выбранной погибшей цели.`; const de=effects(dead),snap=de.deathResourceSnapshot||{}; const restoredEnergy=Number(snap.energy ?? dead.energy ?? 0),restoredMana=Number(snap.mana ?? dead.mana ?? 0),restoredUlt=Number(snap.ultCharge ?? dead.ult_charge ?? 0); db.prepare("UPDATE world_boss_players SET status='alive',hp=ROUND(max_hp*0.5),energy=?,mana=?,ult_charge=? WHERE battle_id=? AND user_id=?").run(restoredEnergy,restoredMana,restoredUlt,id,dead.user_id); delete de.deathResourceSnapshot; updateEffects(id,dead.user_id,de); return `✨ <@${u}> воскрешает <@${dead.user_id}>! Игрок возвращается с **${Math.round(dead.max_hp * 0.5)} HP**, а ресурс и заряд ульты восстановлены до значений перед смертью.`; }
+    case 'priest': { const dead = targetById(id, targetId, 'dead'); if (!dead) return `✨ Нет выбранной погибшей цели.`; const de=effects(dead),snap=de.deathResourceSnapshot||{}; const restoredEnergy=clamp(Number(snap.energy ?? dead.energy ?? 0),0,100),restoredMana=clamp(Number(snap.mana ?? dead.mana ?? 0),0,100),restoredUlt=clamp(Number(snap.ultCharge ?? dead.ult_charge ?? 0),0,100); db.prepare("UPDATE world_boss_players SET status='alive',hp=ROUND(max_hp*0.5),energy=?,mana=?,ult_charge=? WHERE battle_id=? AND user_id=?").run(restoredEnergy,restoredMana,restoredUlt,id,dead.user_id); delete de.deathResourceSnapshot; updateEffects(id,dead.user_id,de); return `✨ <@${u}> воскрешает <@${dead.user_id}>! Игрок возвращается с **${Math.round(dead.max_hp * 0.5)} HP**, а ресурс и заряд ульты восстановлены до значений перед смертью.`; }
     case 'bard': {
       let totalHealed = 0;
       const healedTargets = [];
@@ -1719,7 +1743,15 @@ async function finish(id, win) {
       classXpLines.push(`<@${p.user_id}>: **+${classXp} XP класса** → Lv.${progress?.level||1}`);
     }
     const extraStats=battleExtraStats(id);
-    const enriched=ps.map(p=>{const x=extraStats[p.user_id]||{};const tankScore=Math.round(Number(p.damage_taken||0)*0.30+Number(x.damage_prevented||0)+Number(x.aggro_hits||0)*25);const supportScore=Math.round(Number(x.support_points||0)+Number(x.rage_reduced||0)*5+Number(x.summon_healing||0)*1.1);const mvpScore=Math.round(Number(p.damage_done||0)+Number(p.healing_done||0)*1.2+tankScore+supportScore);return {...p,...x,tankScore,supportScore,mvpScore};});
+    const enriched=ps.map(p=>{
+      const x=extraStats[p.user_id]||{};
+      const tankScore=Math.round(Number(p.damage_taken||0)*0.30+Number(x.damage_prevented||0)+Number(x.aggro_hits||0)*25);
+      const summonHealWeight = p.class_key === 'priest' ? 0.25 : 0.40;
+      const supportScore=Math.round(Number(x.support_points||0)+Number(x.rage_reduced||0)*5+Number(x.summon_healing||0)*summonHealWeight);
+      const healWeight = p.class_key === 'priest' ? 0.55 : 0.75;
+      const mvpScore=Math.round(Number(p.damage_done||0)+Number(p.healing_done||0)*healWeight+tankScore+supportScore);
+      return {...p,...x,tankScore,supportScore,mvpScore};
+    });
     const ranked=[...enriched].sort((a,b)=>b.mvpScore-a.mvpScore);
     const mvp = ranked[0], pack = mvpPack(selectedClassBonuses(mvp)?.equipment?.rareFindPercent || 0);
     addPack(mvp.user_id, pack, 1);
@@ -1799,6 +1831,25 @@ async function finish(id, win) {
   const guildId = clientRef?.channels?.cache?.get(String(b.channel_id))?.guildId;
   if (guildId) await checkAchievementsForUsers(clientRef, guildId, ps.map(p => p.user_id));
   scheduleRegular();
+}
+
+async function recoverStuckShadowGuardV2044() {
+  init();
+  const marker = 'v20.4.4-shadow-guard-4p-force-finish';
+  if (db.prepare('SELECT 1 FROM world_boss_recovery_markers WHERE marker=?').get(marker)) return false;
+  const b = db.prepare("SELECT * FROM world_boss_battles WHERE status='active' AND boss_card_id=2037 ORDER BY id DESC LIMIT 1").get();
+  if (!b) return false;
+  const required = new Set(['1175083839794716703','695364739987013673','308557208147329025','1080729129915256843']);
+  const players = battlePlayers(b.id);
+  const ids = new Set(players.map(x => String(x.user_id)));
+  if (![...required].every(id => ids.has(id))) return false;
+  db.prepare('INSERT OR IGNORE INTO world_boss_recovery_markers(marker,created_at) VALUES(?,?)').run(marker,Date.now());
+  db.prepare('UPDATE world_boss_battles SET boss_hp=0 WHERE id=?').run(b.id);
+  const fresh = db.prepare('SELECT * FROM world_boss_battles WHERE id=?').get(b.id);
+  addLog(fresh, '🛠️ **V20.4.4:** зависший бой восстановлен. Теневой Страж засчитан побеждённым, результаты и награды рассчитаны штатной системой.');
+  console.warn(`[WorldBoss V20.4.4] Force finishing stuck Shadow Guard battle=${b.id} for 4 confirmed participants.`);
+  await finish(b.id, true);
+  return true;
 }
 
 function scheduleRegular() { setTimeout(() => { try { require('../../systems/quickEventSystem').postQuickEvent(clientRef).catch(console.error); } catch (e) { console.error(e); } }, 5000).unref?.(); }
@@ -1881,6 +1932,11 @@ async function handle(interaction) {
   if (interaction.customId === `wb_join_${id}` || interaction.customId === `wb_leave_${id}`) {
     if (b.status !== 'registration') { await interaction.reply({ content: 'Регистрация уже завершена.', flags: MessageFlags.Ephemeral }); return true; }
     if (interaction.customId.includes('join')) {
+      const penalty = db.prepare('SELECT source_battle_id FROM world_boss_join_penalties WHERE user_id=? AND skip_battle_id=? LIMIT 1').get(uid,id);
+      if (penalty) {
+        await interaction.reply({ content: '🚫 Ты пропустил 3 своих хода в прошлом бою. Этот World Boss по штрафу пропускается; на следующего записаться снова можно.', flags: MessageFlags.Ephemeral });
+        return true;
+      }
       try {
         const expedition = db.prepare("SELECT returns_at FROM hero_expeditions WHERE user_id=? AND status='active' AND datetime(returns_at) > datetime('now') ORDER BY id DESC LIMIT 1").get(uid);
         if (expedition) {
@@ -2008,6 +2064,30 @@ ${enemyText}
 function resultText(r) { if (r?.ok) return `✅ ${r.text}`; if (r?.reason === 'turn') return '⏳ Сейчас не твой ход.'; if (r?.reason === 'energy') return '⚡ Недостаточно энергии.'; if (r?.reason === 'rage') return '🔥 Недостаточно ярости.'; if (r?.reason === 'mana') return '🔷 Недостаточно маны.'; if (r?.reason === 'burst') return '💥 Ульта ещё не заряжена.'; if (r?.reason === 'cooldown') return `🔁 Действие на перезарядке: ещё ${r.cd} ход(а).`; if (r?.reason === 'silenced_skill') return `🔒 Босс запретил способности ещё на ${r.cd} ход(а).`; if (r?.reason === 'silenced_ult') return `⛓️ Босс запретил ульту ещё на ${r.cd} ход(а).`; return 'Событие уже завершено или действие недоступно.'; }
 function nextSlotDelay() { const now = Date.now(); for (let d = 0; d < 2; d++) for (const h of SLOTS) { const base = new Date(now + d * 86400000), parts = moscowParts(base), utc = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), h - 3, 0, 0); if (utc > now + 1000) return utc - now; } return 6 * 3600000; }
 function schedulerTick() { const p = moscowParts(), h = Number(p.hour), min = Number(p.minute), key = dateKey(); if (SLOTS.includes(h) && min < 2) { const done = db.prepare('SELECT 1 FROM world_boss_schedule WHERE date_key=? AND slot_hour=?').get(key, h); if (!done) { db.prepare('INSERT INTO world_boss_schedule(date_key,slot_hour,created_at) VALUES(?,?,?)').run(key, h, Date.now()); startRegistration(clientRef).then(r => { if (r.ok) db.prepare('UPDATE world_boss_schedule SET battle_id=? WHERE date_key=? AND slot_hour=?').run(r.id, key, h); }).catch(console.error); } } scheduler = setTimeout(schedulerTick, Math.min(nextSlotDelay(), 60000)); scheduler.unref?.(); }
-function startScheduler(client) { init(); clientRef = client; if (scheduler) clearTimeout(scheduler); const a = activeBattle(); if (a) { if (a.status === 'registration') setTimer(a.id, () => beginBattle(a.id).catch(console.error), a.registration_ends_at - Date.now()); else if (a.status === 'class_select') armStageTimer(a.id); else if (a.status === 'active') armTurn(a.id); refresh(a.id).catch(() => {}); } if (AUTO_SCHEDULE_ENABLED) { schedulerTick(); console.log('[WorldBoss] Автозапуск включён: 13:00, 20:00 МСК'); } else console.log('[WorldBoss] Тестовый режим: автозапуск отключён, доступен только ручной запуск'); }
+function startScheduler(client) {
+  init();
+  clientRef = client;
+  if (scheduler) clearTimeout(scheduler);
+  db.prepare("UPDATE world_boss_players SET mana=MIN(100,MAX(0,mana)),max_mana=CASE WHEN max_mana>0 THEN 100 ELSE 0 END WHERE mana>100 OR max_mana>100 OR mana<0").run();
+  setTimeout(async () => {
+    try {
+      const repaired = await recoverStuckShadowGuardV2044();
+      if (repaired) return;
+      const a = activeBattle();
+      if (a) {
+        if (a.status === 'registration') setTimer(a.id, () => beginBattle(a.id).catch(console.error), a.registration_ends_at - Date.now());
+        else if (a.status === 'class_select') armStageTimer(a.id);
+        else if (a.status === 'active') armTurn(a.id);
+        refresh(a.id).catch(() => {});
+      }
+    } catch (error) {
+      console.error('[WorldBoss V20.4.4 recovery] Ошибка:', error);
+    }
+  }, 2500).unref?.();
+  if (AUTO_SCHEDULE_ENABLED) {
+    schedulerTick();
+    console.log('[WorldBoss] Автозапуск включён: 13:00, 20:00 МСК • запись 10 минут');
+  } else console.log('[WorldBoss] Тестовый режим: автозапуск отключён, доступен только ручной запуск');
+}
 
 module.exports = { startScheduler, startRegistration, resetWorldBoss, handle, isActive: () => Boolean(activeBattle()), beginBattle };

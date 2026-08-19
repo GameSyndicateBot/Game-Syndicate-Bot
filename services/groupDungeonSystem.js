@@ -66,6 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_dungeon_groups_status ON dungeon_groups(guild_id,
 CREATE INDEX IF NOT EXISTS idx_dungeon_entries_group ON dungeon_window_entries(group_id);
 CREATE TABLE IF NOT EXISTS dungeon_queue_entries(guild_id TEXT NOT NULL,window_key TEXT NOT NULL,user_id TEXT NOT NULL,class_key TEXT NOT NULL,role_pref TEXT NOT NULL,power INTEGER NOT NULL DEFAULT 0,joined_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(guild_id,window_key,user_id));
 CREATE TABLE IF NOT EXISTS dungeon_window_processing(guild_id TEXT NOT NULL,window_key TEXT NOT NULL,processed_at TEXT DEFAULT CURRENT_TIMESTAMP,groups_created INTEGER NOT NULL DEFAULT 0,reserve_count INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(guild_id,window_key));
+CREATE TABLE IF NOT EXISTS dungeon_window_notifications(guild_id TEXT NOT NULL,window_key TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(guild_id,window_key));
 CREATE INDEX IF NOT EXISTS idx_dungeon_queue_window ON dungeon_queue_entries(guild_id,window_key,joined_at);
 `);
  const cols=db.prepare('PRAGMA table_info(dungeon_groups)').all().map(x=>x.name);
@@ -293,7 +294,26 @@ async function resolveGroup(client,g){
  await ensureHub(client,g.guild_id);
  await checkAchievementsForUsers(client, g.guild_id, ms.map(m => m.user_id));
 }
-async function tick(client){await processScheduledWindows(client);cleanupClosedFormingGroups();const due=db.prepare("SELECT * FROM dungeon_groups WHERE status='active' AND ends_at<=?").all(new Date().toISOString());for(const g of due)await resolveGroup(client,g).catch(e=>console.error('[Dungeon] resolve',g.id,e));await ensureHub(client).catch(()=>{});}
+async function notifyDungeonSignupWindow(client){
+ const ctx=windowContext(); if(!ctx)return;
+ for(const guild of client.guilds.cache.values()){
+  const cfg=getConfig(guild.id); if(!cfg?.channel_id)continue;
+  if(db.prepare('SELECT 1 FROM dungeon_window_notifications WHERE guild_id=? AND window_key=?').get(guild.id,ctx.key))continue;
+  const ch=await guild.channels.fetch(cfg.channel_id).catch(()=>null); if(!ch?.isTextBased())continue;
+  const spawn=getWindowSpawn(guild.id);
+  const closes=ctx.window.key==='day'?'12:00':'19:00';
+  const msg=await ch.send({
+    content:'@everyone',
+    allowedMentions:{parse:['everyone']},
+    embeds:[new EmbedBuilder().setColor(0x7c3aed).setTitle('🏰 Открыта запись в подземелье').setDescription(`${spawn?.difficulty_icon||'🎲'} **${spawn?.dungeon_name||'Подземелье'}**\nСложность: **${spawn?.difficulty_name||'случайная'}**\n\n✅ Запись открыта до **${closes} МСК**. Нажмите **«Записаться»** в хабе подземелий.`)]
+  }).catch(()=>null);
+  if(msg){
+   db.prepare('INSERT OR IGNORE INTO dungeon_window_notifications(guild_id,window_key) VALUES(?,?)').run(guild.id,ctx.key);
+   setTimeout(()=>msg.delete().catch(()=>{}),60*60*1000).unref?.();
+  }
+ }
+}
+async function tick(client){await notifyDungeonSignupWindow(client).catch(e=>console.error('[Dungeon] signup notify',e));await processScheduledWindows(client);cleanupClosedFormingGroups();const due=db.prepare("SELECT * FROM dungeon_groups WHERE status='active' AND ends_at<=?").all(new Date().toISOString());for(const g of due)await resolveGroup(client,g).catch(e=>console.error('[Dungeon] resolve',g.id,e));await ensureHub(client).catch(()=>{});}
 function startScheduler(client){if(globalThis.__gsDungeonTimer)return;globalThis.__gsDungeonTimer=setInterval(()=>tick(client),60_000);setTimeout(()=>tick(client),10_000);console.log('🏰 Group Dungeon scheduler started');}
 
 
